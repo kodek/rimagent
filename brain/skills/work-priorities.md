@@ -1,9 +1,16 @@
 ---
-name: work-priorities
-description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work), when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling, researching).
-tags: [work, priorities, skills, passion, early-game]
 always: false
+description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work),
+  when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling,
+  researching).
+name: work-priorities
+tags:
+- work
+- priorities
+- roles
+- steward
 ---
+
 # Work priorities
 
 ## How the system works
@@ -41,9 +48,17 @@ Pick roles by top skills and passions, then apply:
 
 Rules: Firefighter, Patient and PatientBedRest stay at 1 for everyone. Only the pawn holding the bolt-action rifle hunts; without a ranged weapon Hunting never runs. The Medical pawn keeps Doctor 1 even while researching. Keep two pawns at 3 on Cooking and Growing so a downed specialist does not stop food.
 
+## Steward-managed colonies (the default here)
+The steward's scorer sets priorities from skills, passions, health and colony need, and **hand-editing a pawn's priorities with `ui.set_work` ejects that pawn from management for good**. Bias the scorer instead, don't override it:
+- Posture: `steward.posture(label="warmup", hours=24, work={"Construction": 0.4, "Cooking": 0.5}, targets={"forestry": 1.5})` — `work` is -1..1 per WorkTypeDef, `targets` multiplies stock-job targets. It expires by itself.
+- Stock jobs: raise/lower a target, or `steward.stock.run(kind=...)` to force a pass now (forestry/mining/foraging/hunting).
+- **Known artifact:** with unhauled items lying around, the scorer puts **Hauling 1 on every pawn**, and then Cooking/Construction/Research starve. Symptoms: 0 meals while raw food sits in the stockpile, or a blueprint count that has not moved for a day. Fix with a posture (e.g. `work={"Hauling": -0.5, "Cooking": 0.5, "Construction": 0.4}`), not by hand.
+- Only take one pawn manual for a real blocker (e.g. literally nobody else can cook): `steward.pawn managed=false` + `ui.set_work`, note it, hand back with `managed=true`.
+- Audit order: raw food but no meals -> check `state.bills` on the stove/campfire (a missing CookMealSimple bill is the usual cause) BEFORE blaming priorities; then check the best cook isn't drowned in Hauling.
+
 ## Audit triggers
 - Raw food but no meals -> nobody has Cooking, or the stove lacks a bill (rw_ui_add_bill).
-- Blueprints untouched for a day -> Construction 0 everywhere or materials forbidden (rw_ui_designate unforbid).
+- Blueprints untouched for a day -> Construction 0 everywhere or materials forbidden (rw_ui_designate unforbid); also check the steward is not burying Construction under Hauling.
 - Items rotting outside or filth spreading -> Hauling or Cleaning 2 on one pawn temporarily.
 - New recruit -> rw_state_pawn, apply the matrix, move their best passion skill to 1 or 2.
 

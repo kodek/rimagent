@@ -1,9 +1,17 @@
 ---
-name: base-building
-description: Pull in when planning or placing walls, doors, roofs, floors, bedrooms/barracks, the home area, or choosing wood vs stone; also when a roof collapse, fire or "sleeping outside" mood problem shows up.
-tags: [building, construction, rooms, layout, materials]
 always: false
+description: Pull in when planning or placing walls, doors, roofs, floors, bedrooms/barracks,
+  the home area, or choosing wood vs stone; also when a roof collapse, fire or "sleeping
+  outside" mood problem shows up.
+name: base-building
+tags:
+- building
+- construction
+- rooms
+- layout
+- materials
 ---
+
 # Base building
 
 ## Structures: costs and numbers
@@ -15,6 +23,12 @@ always: false
 Materials: **Wood** 0.65x HP (195 HP wall), **100% flammable**, 0.7x work; **Steel** 300 HP, 40% flammable; **Sandstone** 420 HP, 0%, 5x work +140; **Granite** 510 HP, 0%, 6x work +140. Stone doors open at 0.45x speed (wood 1.2x). Blocks come 20 per chunk from a stonecutter's table (Stonecutting research). Only marble walls add beauty; granite is toughest.
 
 **Rule:** first shelter in wood (fast, cheap); replace **walls** with stone as soon as blocks flow; keep **doors and furniture** wooden (fastest to open, safe inside non-flammable walls). Do not keep wood walls once electricity exists: a short circuit or dry thunderstorm burns the base. Stone wall sections act as fire breaks; fire crosses diagonal gaps, pawns cannot.
+
+## Bridge build pitfalls (cost me steps)
+- **`ui.build` / `ui.build_many` require an explicit `stuff`** for anything stuff-made (Wall, Door, Bed, table, stool, torch...). Pass `stuff="WoodLog"` (or `"BlocksGranite"`). Omit it once ONLY to read back the list of legal stuffs with on-map quantities — omitting it is NOT an auto-pick: you get the options and no blueprint, a silent no-op.
+- `ui.build_many(ops=[...])` places a whole layout in one call: `{"def":"Wall","rect":[x,z,w,h],"stuff":...}` (outline), then `{"def":"Door","at":[x,z],"stuff":...}` (the door op replaces that wall cell inside the same batch), then furniture cells. Far fewer calls than one build per piece.
+- My tool `room(x,z,w,h,door="S",stuff="WoodLog",beds=0,dry_run=True)` does walls+door+beds with a per-op dry run; and `build_report()` lists pending blueprints grouped by def so a stuck build is obvious.
+- A blueprint count that does not change for a day = no reachable material or no builder: check `stuff` availability, `state.designations` (forbids), and whether the steward buried Construction under Hauling (see work-priorities).
 
 ## Rooms and roofs
 - A room = area fully enclosed by walls/doors/coolers/rock; corners are optional (but leak more heat). Use `rw_ui_build` with `rect` for walls and `at` for a Door on the traffic side.
