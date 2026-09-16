@@ -32,6 +32,11 @@ namespace RimBridge.Steward.Stock
         public ThingFilter ThresholdFilter => _thresholdFilter;
         public Action? SettingsChanged { get; set; }
 
+        /// <summary>Scribe_Deep reconstructs the trigger through Activator.CreateInstance(type, new object[] { job }),
+        /// which needs a constructor with exactly one parameter: optional parameters are not filled in by reflection.
+        /// Without this overload every stock job's target silently loaded as 0 (MissingMethodException in SaveableFromNode).</summary>
+        public Trigger_Threshold(StockJob job) : this(job, null, 3000) { }
+
         public Trigger_Threshold(StockJob job, IReadOnlyList<ThresholdOp>? supportedOps = null, int maxUpperThreshold = 3000)
         {
             _job = job;
