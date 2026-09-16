@@ -1,4 +1,4 @@
-# rimagent — Qwen plays RimWorld and teaches itself
+# rimagent — developer notes (agent-readable)
 
 Two halves in one repo:
 - `mod/` **RimBridge** (C#, RimWorld 1.6, Harmony): loopback HTTP bridge exposing the engine. Symlinked into the

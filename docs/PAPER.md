@@ -1,6 +1,6 @@
 # RimBridge and rimagent: A Player-Parity Interface and a Self-Editing Brain for Language-Model Agents in RimWorld
 
-**zorrobyte** (independent) and **Claude Opus 5** (Anthropic, as collaborator and co-author of the code)
+**zorrobyte** (independent)
 
 *Preprint, September 2026. Code, mod, prompts, and run logs: https://github.com/zorrobyte/rimagent*
 

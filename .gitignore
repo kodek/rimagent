@@ -17,3 +17,4 @@ config.local.yaml
 mod/ledger.jsonl
 runs/
 docs/*.tmp
+CLAUDE.md
