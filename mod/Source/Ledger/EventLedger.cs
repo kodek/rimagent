@@ -26,6 +26,8 @@ namespace RimBridge.Ledger
 
         public static void Add(string kind, string text, JObject? data = null, IntVec3? cell = null, string? thingId = null)
         {
+            // Skip events fired during world/pawn generation and loading; only "game" markers pass.
+            if (kind != "game" && Current.ProgramState != ProgramState.Playing) return;
             var e = new JObject
             {
                 ["kind"] = kind,
