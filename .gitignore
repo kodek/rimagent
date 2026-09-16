@@ -1,0 +1,15 @@
+knowledge/source-1.6/
+knowledge/source-legacy/
+knowledge/wiki/
+knowledge/*.pkl
+knowledge/*.log
+mod/1.6/Assemblies/
+mod/Source/obj/
+mod/Source/bin/
+mod/Tests/obj/
+mod/Tests/bin/
+agent/.venv/
+__pycache__/
+*.pyc
+runs/
+.DS_Store
