@@ -69,3 +69,5 @@
 - [2026-09-16 13:33] you have god mode, survive
 
 - [2026-09-16 14:28] spawn 20 pawns and recruit them
+
+- [2026-09-16 17:06] Delete all buildings and rebuild, none of the ones you built now are functinal
