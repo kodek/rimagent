@@ -12,6 +12,7 @@ agent/.venv/
 __pycache__/
 *.pyc
 runs/
+sft/
 .DS_Store
 config.local.yaml
 mod/ledger.jsonl

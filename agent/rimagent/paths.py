@@ -21,6 +21,7 @@ SOURCE_16 = KNOWLEDGE / "source-1.6"
 SOURCE_LEGACY = KNOWLEDGE / "source-legacy"
 RUNS = ROOT / "runs"
 MOD_LEDGER = ROOT / "mod" / "ledger.jsonl"
+SFT_RAW = ROOT / "sft" / "raw"          # every LLM call, gitignored; export_sft.py filters this into training data
 
-for _d in (SKILLS, TOOLS, WATCHERS, MEMORY, WIKI, RUNS):
+for _d in (SKILLS, TOOLS, WATCHERS, MEMORY, WIKI, RUNS, SFT_RAW):
     _d.mkdir(parents=True, exist_ok=True)

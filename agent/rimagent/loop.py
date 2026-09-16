@@ -107,7 +107,7 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
         reply = None
         for attempt in range(2):
             try:
-                reply = ctx.llm.chat(messages, tools_now, thinking=thinking if attempt == 0 else False)
+                reply = ctx.llm.chat(messages, tools_now, thinking=thinking if attempt == 0 else False, meta={"episode": ctx.episode, "seed": ctx.seed, "stream": st, "trigger": trigger, "step": step})
                 break
             except Exception as e:  # noqa: BLE001
                 ctx.emit("error", {"text": f"LLM call failed (attempt {attempt + 1}): {e}"})

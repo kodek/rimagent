@@ -88,6 +88,16 @@ def cmd_tools(args):
         print("load errors:", reg.load_errors)
 
 
+def cmd_export_sft(args):
+    from pathlib import Path
+    from .export_sft import export
+    streams = None if args.streams == "all" else set(args.streams.split(","))
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    kept, seen = export(out_path, args.min_score, args.include_assisted, streams)
+    print(f"wrote {kept}/{seen} captured calls to {out_path}")
+
+
 def cmd_llm(args):
     from .llm import LLM
     r = LLM().chat([{"role": "user", "content": args.prompt}], thinking=not args.no_thinking, max_tokens=400)
@@ -117,6 +127,12 @@ def main(argv=None):
     t.add_argument("--trigger", default="manual")
     t.set_defaults(fn=cmd_think)
     sub.add_parser("tools", help="list tools").set_defaults(fn=cmd_tools)
+    e = sub.add_parser("export-sft", help="export captured LLM calls from good episodes as an SFT dataset")
+    e.add_argument("--out", default="sft/dataset.jsonl")
+    e.add_argument("--min-score", type=float, default=0.0)
+    e.add_argument("--include-assisted", action="store_true")
+    e.add_argument("--streams", default="play", help="comma-separated stream names, or 'all'")
+    e.set_defaults(fn=cmd_export_sft)
     l = sub.add_parser("llm", help="test the LLM endpoint")
     l.add_argument("prompt")
     l.add_argument("--no-thinking", action="store_true")

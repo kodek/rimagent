@@ -1,7 +1,9 @@
 """OpenAI-compatible chat client for the OpenAI-compatible endpoint (Qwen with thinking + native tool calls)."""
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -10,6 +12,22 @@ from typing import Any
 from openai import OpenAI
 
 from .config import CONFIG
+from .paths import SFT_RAW
+
+_TOOLS_DIR = SFT_RAW / "tools"
+_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _tools_ref(tools: list[dict[str, Any]] | None) -> str | None:
+    """Dedup tool schemas (repeated near-identically on every call) into sft/raw/tools/<hash>.json, return the hash."""
+    if not tools:
+        return None
+    blob = json.dumps(tools, sort_keys=True).encode()
+    h = hashlib.sha256(blob).hexdigest()[:16]
+    p = _TOOLS_DIR / f"{h}.json"
+    if not p.exists():
+        p.write_bytes(blob)
+    return h
 
 
 @dataclass
@@ -30,8 +48,25 @@ class LLM:
         self._sem = threading.Semaphore(int(c.get("max_streams", 4)))
         self.default_thinking = bool(c.get("thinking", True))
         self.max_tokens = int(c.get("max_tokens", 4000))
+        self._capture_fh = None
+        if bool(c.get("capture", True)):
+            self._capture_fh = (SFT_RAW / f"capture-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}.jsonl").open("a", encoding="utf-8")
+        self._capture_lock = threading.Lock()
 
-    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, thinking: bool | None = None, max_tokens: int | None = None, temperature: float = 0.6, tool_choice: str | None = None) -> LLMReply:
+    def _capture(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None, reply: "LLMReply", meta: dict[str, Any] | None) -> None:
+        if not self._capture_fh:
+            return
+        rec = {"t": time.time(), "model": self.model, "meta": meta or {}, "messages": messages,
+               "tools_ref": _tools_ref(tools), "reply": {"content": reply.content, "reasoning": reply.reasoning, "tool_calls": reply.tool_calls},
+               "usage": reply.usage, "elapsed": reply.elapsed}
+        try:
+            with self._capture_lock:
+                self._capture_fh.write(json.dumps(rec, default=str) + "\n")
+                self._capture_fh.flush()
+        except Exception:  # noqa: BLE001 — capture must never break play
+            pass
+
+    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, thinking: bool | None = None, max_tokens: int | None = None, temperature: float = 0.6, tool_choice: str | None = None, meta: dict[str, Any] | None = None) -> LLMReply:
         thinking = self.default_thinking if thinking is None else thinking
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -64,7 +99,8 @@ class LLM:
             reply.usage = resp.usage.model_dump()
         # Qwen sometimes returns nothing after a long think; retry once without thinking.
         if thinking and not reply.content.strip() and not reply.tool_calls:
-            return self.chat(messages, tools, thinking=False, max_tokens=max_tokens, temperature=temperature, tool_choice=tool_choice)
+            return self.chat(messages, tools, thinking=False, max_tokens=max_tokens, temperature=temperature, tool_choice=tool_choice, meta=meta)
+        self._capture(messages, tools, reply, meta)
         return reply
 
     def assistant_message(self, reply: LLMReply) -> dict[str, Any]:
