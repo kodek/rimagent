@@ -4,12 +4,7 @@ description: How rimagent plays and how it improves itself, priorities, the firs
   checklist, the per-step routine, and the rules for editing skills, tools, watchers,
   notebook and journal.
 name: core-doctrine
-tags:
-- doctrine
-- priorities
-- routine
-- self-improvement
-- always
+tags: []
 ---
 
 # Core doctrine
@@ -37,15 +32,16 @@ When two things compete, the one higher on this list wins. When nothing is urgen
 7. **Work priorities** for all three by top skills (see work-priorities); Firefighter/Patient/BedRest 1; someone with Cooking 1; grower Growing 1; builder Construction 1; everyone Hauling 3-4.
 8. **Research bench** (`SimpleResearchBench`, 3x2, 75 wood/stone + 25 steel, needs no power) and pick a project; Crashlanded already has Electricity, so `Batteries` then `SolarPanels` (defNames) is the usual start (see research-order).
 9. **Defenses**: equip the starting weapons (`rw_ui_order(... label="equip")`), pick the colonist(s) capable of violence as fighters, plan a single doorway you can hold; a few sandbags/chunks outside it later.
-10. **Fire safety**: as soon as steel flows, replace wood walls with steel. Keep a 2-wide steel/stone fire break between kitchen and bedrooms. Place at least one outdoor sleeping spot or a small separate room with a bed outside the main building.
-11. Write the plan, roles and the map's key coordinates into `notebook_write`.
+10. **Butcher table**: build a `TableButcher` in the kitchen and set a `ButcherCorpse` bill on it. (Operator tip: "always build a butchering spot otherwise hunting is wasted!" and "you must always set a bill for the butchering spot!")
+11. **Fire safety**: as soon as steel flows, replace wood walls with steel. Keep a 2-wide steel/stone fire break between kitchen and bedrooms. Place at least one outdoor sleeping spot or a small separate room with a bed outside the main building.
+12. Write the plan, roles and the map's key coordinates into `notebook_write`.
 
 ## Per-step routine
 
 1. **Read**: `rw_state_summary`; if `alerts` or `pending_letters` > 0 read `rw_state_alerts` / `rw_state_letters`; scan the new events handed to you (`hostile_group`, `colonist_downed`, `mental_break`, `incident`, `building_lost`).
 2. **Triage** by the priority list. One or two problems per step, done properly, beats six half-started ones. Verify each action's result (`failed` lists, `disabled` orders, `designations` counts).
 3. **Advance the plan** from the notebook if nothing is burning: next building, next research, bills, priorities.
-4. **Notebook**: `notebook_append` for anything a future step must know (a raid killed the cook; steel is at [126,115]; door at [110,114]); `notebook_write` once a day to compact it (< 6000 chars: plan, roles, threats, open problems, what to check next).
+4. **Notebook**: `notebook_append` for anything a future step must know (a raid killed the cook; steel was at [126,115]; door at [110,114]); `notebook_write` once a day to compact it (< 6000 chars: plan, roles, threats, open problems, what to check next).
 5. **`end_turn`** with a wake plan: 1-2 h in a fight or fire, 4-6 h normally, 8-12 h when everything is fine and blueprints are queued; `wake_on` always includes `hostile_group`, `colonist_downed`, `mental_break`, `letter`.
 
 Never end a step without `end_turn`. Never spend the whole tool budget reading; act by call 10 at the latest.
@@ -65,3 +61,4 @@ Never end a step without `end_turn`. Never spend the whole tool budget reading; 
 - `rw_dev_*` tools (spawn, incident, god mode, finish research, heal, weather...) are for **drills**: rehearsing a raid response, testing a watcher, checking a build layout quickly. Any dev call marks the game `assisted` and its score is recorded separately and never compared with honest runs.
 - **Scored runs must be honest**: no dev calls, no engine writes that change game state in ways the UI could not (engine reads are fine). If you are tempted to `rw_dev_heal` a dying colonist in a scored run, don't; write down what you would have needed to do earlier instead.
 - If a drill is worth it, say so in `end_turn` notes and the notebook, do it, and treat the rest of that game as a sandbox for learning, not for score.
+- **God mode survival rule (operator tip, episode 3):** When god mode is active, use `rw_dev_*` freely to survive: spawn turrets, weapons, armor, food, medicine, walls. The goal in god mode is to survive and build impressive bases, not to score honestly. Spawn `Turret_Gun` at approach lanes, spawn `Armor_Flake` and `Gun_BoltAction` for colonists, spawn `MealSurvivalPack` for food. (Operator: "you have god mode, you can spawn in anything, weapons, defense structures etc really go at it" and "you can literally build anything. where's the giant base? where's the defenses? Where's you spawning in armor and good weapons?")

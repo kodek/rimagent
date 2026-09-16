@@ -26,7 +26,7 @@ Everything below is relative to an **origin O** = the SW corner of the hall (it 
 | bed2    | O + (7,-6,8,7)                | 8x7      | bedroom, shares bed1's east wall | Bed at `bed2:inset:1:NW +E1 +S1` rot N |
 | kitchen | O + (14,0,9,8)                | 9x8      | shares the hall's east wall | FueledStove at `kitchen:inset:2:NW +E2` rot S, TableButcher at `kitchen:inset:2:SW +E2` rot N |
 | freezer | O + (14,-7,9,8)               | 9x8      | shares kitchen's south wall and bed2's east wall | 2x Cooler in the SOUTH wall at `freezer:S +W2` and `freezer:S +E2`, rot N (cold side faces into the room); stockpile `freezer:inset:1`, Foods only, priority Important |
-| power   | O + (24,-4,5,6)               | outside  | WoodFiredGenerator at `power:C`, Battery at `power:NW +E1 +S1`; PowerConduit lines from the generator to the coolers (conduits may run under walls) |
+| power   | O + (24,-4,5,6)               | outside   | WoodFiredGenerator at `power:C`, Battery at `power:NW +E1 +S1`; PowerConduit lines from the generator to the coolers (conduits may run under walls) |
 
 Doors (steel): `hall:N` (to the older room, a door was also cut into that room's south wall), `bed1:N`, `bed2:N` (bedrooms open into the hall), `kitchen:W` (hall↔kitchen), `freezer:N` (kitchen↔freezer), `kitchen:E` (outside). Plus a DumpingStockpile outside the kitchen for corpses/rubble.
 
@@ -40,6 +40,8 @@ Materials: ~100 wall cells x5 steel, 6 doors x25, 2 coolers (90 steel + 3 compon
 5. Put every colonist on Construction 1 / Hauling 2 until the frames are done, keep the generator fueled with wood, assign bedroom beds to owners.
 6. **After the build:** run the sealed-room check on every new room (see base-building skill). Verify doors are placed and rooms are reachable.
 7. **Cooler setup:** after the freezer is built, press each cooler's gizmo `-10C` three times to get from the default 21C target to 11C. Check with `rw_ui_gizmos` on the cooler; verify via `rw_state_base` room temperature.
+8. **Butcher bill:** set a `ButcherCorpse` bill on the TableButcher (operator tip: "you must always set a bill for the butchering spot!"). Without a bill, hunted animals are never butchered and the meat is lost.
+9. **Check for existing bills before placing new ones** (operator tip: "check for existing bills before placing them as campfire has many dupes"). Use `rw_state_bills(thing=...)` to see what's already running.
 
 ## Pitfalls hit (and the fix)
 - A 1x2 thing with rot N occupies its cell AND the cell above it. Place beds at least one cell below a wall (`...:NW +S1`).
@@ -50,6 +52,8 @@ Materials: ~100 wall cells x5 steel, 6 doors x25, 2 coolers (90 steel + 3 compon
 - **Coolers start at 21C target.** After building a freezer, press the cooler gizmo `-10C` three times. If you forget, the freezer does nothing.
 - **Batteries must be roofed.** Unroofed batteries can explode. Keep the battery inside the power room (enclosed + roofed).
 - **Sealed rooms:** if a door cell is blocked by a doubled-up wall, the room is sealed and pawns inside are trapped. Deconstruct the blocking wall immediately. Check with `rw_map_detail` after every build.
+- **Power state is stale while paused.** `rw_state_power` and `rw_map_power` read the last computed state. If the game is paused (speed 0), the power grid has not re-evaluated. Before reading power, set `rw_game_speed(speed=1)`, wait a moment, then read. (Operator tip: "power doesn't update unless you unpause the game.")
+- **Wires/conduits may not be built yet.** After `rw_ui_wire`, the conduit blueprints need builders to complete them. Check `blueprints` count in `state.summary` — if > 0, builders are still working. Don't manually place extra conduits; just wait for the blueprints to finish.
 
 ## Why this shape
 Shared walls (5 steel per cell saved twice), one hub room so pawns walk short paths, bedrooms private (mood), freezer adjacent to the kitchen (haul distance), power outside (fire risk), doors facing inward toward the hub. Extend by adding rooms to the free walls: `hall:extend:W:8` for a workshop, `kitchen:extend:N:8` for storage.

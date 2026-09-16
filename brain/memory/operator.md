@@ -61,3 +61,9 @@
 - [2026-09-16 13:08] butcher spots do take bills!
 
 - [2026-09-16 13:11] there are plenty of animals on the map
+
+- [2026-09-16 13:20] check for existing bills before placing them as campfire has many dupes
+
+- [2026-09-16 13:24] there are too many, run!
+
+- [2026-09-16 13:33] you have god mode, survive

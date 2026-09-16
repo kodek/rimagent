@@ -64,3 +64,12 @@ Episode 3 day 20: 5 hunt designations were queued for hares at 52-57 cells from 
 
 ## 2026-09-16 12:51 (episode 2): Desiccated corpses: can't be hauled, use destroy_corpses tool
 Desiccated corpses (long-dead, dry biome) cannot be hauled by colonists — the game blocks the haul job. The only options are: (1) destroy them (sandbox mode: `destroy_corpses` tool, one call, uses dev.destroy internally), or (2) move the dump zone far from the base so the mood drag is less visible. 16 desiccated corpses in the dump zone caused -6 mood to all 4 colonists for multiple days. The `destroy_corpses` tool (brain/tools/destroy_corpses.py) replaces 16 individual `rw_dev_destroy` calls with one.
+
+## 2026-09-16 13:35 (episode 2): No power = no turrets = death against mechs (episode 3)
+Episode 3: 22 colonists, no power grid, no turrets. Threat points hit 500 by day 1 (≈ 10-12 pirates with guns). 4 sleeping mechs (Tesseron, Cyclops, 2x Militor) at 87-93 cells N with LordJob_SleepThenAssaultColony. Without turrets, the colony could not defend against the mech assault. The #1 fix: build a wood-fired generator + battery + 2 mini-turrets BEFORE the first raid. Cost ≈ 400 steel + 8 components. In god mode, spawn turrets directly with rw_dev_spawn(def="Turret_Gun") at the approach lane.
+
+## 2026-09-16 13:35 (episode 2): Butcher table + bill is mandatory for hunting to work
+Operator tips (episode 3): "always build a butchering spot otherwise hunting is wasted!" and "you must always set a bill for the butchering spot!" A TableButcher without a ButcherCorpse bill means hunted animals are never butchered and the meat is lost. Also: "check for existing bills before placing them as campfire has many dupes" — always check rw_state_bills before adding a new bill.
+
+## 2026-09-16 13:35 (episode 2): Large refugee influx (22 colonists) = 500 threat points by day 1
+When 19+ refugees join at once (as in episode 3), threat points jump to ~500 by day 1 (pawn points scale with colonist count). This means a 500-point raid (≈ 10-12 pirates with guns) is coming within days. Without turrets, the colony cannot defend. Rule: if 10+ colonists join at once, treat it as a raid emergency from day 0 — build turrets and a power grid immediately, not as a day-10 luxury. In god mode, spawn turrets directly.

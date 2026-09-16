@@ -59,6 +59,13 @@ When `rw_state_threats` shows a mech with `LordJob_SleepThenAssaultColony` (or a
 5. **If the odds are hopeless** (2+ mechs vs 2-3 colonists, no turrets, no walls): consider whether the colony is already lost. Do not waste steps on a lost cause. Note it in the notebook and end the episode honestly.
 6. **Mechs never flee.** They do not retreat at 40% casualties. Plan for a total engagement or a total loss.
 
+## No power = no turrets = death (episode 3 lesson)
+**The #1 cause of loss in episode 3: no power grid, therefore no turrets, therefore no defense against the mech assault.** With 22 colonists the threat points were 500 by day 1, meaning a 500-point raid (≈ 10-12 pirates with guns) was coming within days. Without turrets, the colony had to rely on manual drafting of 22 pawns, which is impossible to coordinate.
+
+**Rule: build a wood-fired generator + battery + 2 mini-turrets BEFORE the first raid.** This is a day-0 priority, not a day-10 luxury. The generator costs 100 steel + 2 components; each turret costs 30 stuff + 70 steel + 3 components; the battery costs 70 steel + 2 components. Total ≈ 400 steel + 8 components. Crashlanded loot has ~1,450 steel. If you do not have turrets by the time threat points exceed 100, you are already in danger.
+
+**In god mode / sandbox:** spawn turrets directly with `rw_dev_spawn` (def="Turret_Gun") at the approach lane. This is the fastest way to get defense in a sandbox game.
+
 ## Day 8-10 raid-prep checklist (3-colonist colony, walled barracks)
 By day 8 you should have:
 1. **Walled barracks** with one door (the chokepoint). Steel or stone walls preferred; wood is a fire risk.
@@ -69,6 +76,7 @@ By day 8 you should have:
 6. **No forbidden items** in the approach lane (forbidden items block paths and cause pathing errors).
 7. **Threat points read:** `rw_state_threats` shows the current threat level. At 35 points, expect a 1-2 raider raid (35-70 CP) within 2-3 days.
 8. **Draft positions planned:** shooters at the door corners (1 tile inside, 1 tile apart), melee pawn just outside the door gap. Fire at will on all shooters.
+9. **Turrets:** at least 1 mini-turret at the approach lane (requires power grid). If no power yet, build the generator + battery first.
 
 **On the raid letter:**
 1. `rw_state_threats` → note raider type, count, distance, and approach direction.

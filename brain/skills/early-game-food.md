@@ -49,6 +49,7 @@ The second most common food crisis cause: rice harvests but nobody cooked it bec
 - **`cook_bill` tool:** one call finds the best cooking station (FueledStove > Campfire) and sets a Forever CookMealSimple bill. Use it instead of 3-4 separate calls.
 - **`cook_gap` watcher:** fires on day tick; if no CookMealSimple bill is running and food_days < 6, it auto-sets a Forever bill on the best station and wakes the planner.
 - **Rule: after any food crisis, always verify a cooking bill is running** (check `food_outlook.cooking_bills`). If empty, run `cook_bill` immediately.
+- **Operator tip: check for existing bills before placing new ones** — the campfire often has many duplicate CookMealSimple bills. Before adding a bill, call `rw_state_bills(thing=<id>)` and only add one if none exist. If duplicates exist, delete the extras (use `rw_ui_bill` with `id` param, not `index`, since indices shift after deletion).
 - **Campfire work speed is 0.5x** (a 300-work meal takes 600). A fueled stove cooks 2x faster. Build a stove when you have the steel.
 - **Simple meals rot in 4 days** at room temperature: cook small batches until a freezer exists.
 
@@ -87,8 +88,7 @@ A campfire inside a small barracks (8x6 room) raises the room to **28-32C** in s
 Wild berry bushes give berries (14 days to rot). Find them with `rw_map_find` and harvest via `rw_ui_designate`. This bridges days 1-5 until the first rice comes in. In a crisis, designate 40-50 berry bushes for immediate food with no mood penalty.
 
 ## Hunting safely
-- Only pawns holding a **ranged weapon** hunt; never send melee. Hunters fire from max range; long-range, high-damage-per-shot weapons (bolt-action rifle, greatbow) are safest. Revenge chance is **3x higher at close range**.
-- Check **Revenge chance on harm** (`rw_defs_get` or the Wildlife list). Prefer **0%** animals: deer, gazelle, alpaca, dromedary. Do NOT hunt predators, boomrats/boomalopes (explode and start fires), or herd species with revenge chance: one manhunter can pull every same-species animal within 25 tiles.
+- Only pawns holding a **ranged weapon** hunt; never send melee. Hunters fire from max range; long-range, high-damage-per-shot weapons (bolt-action rifle, greatbow) are safest. Revenge chance is **3x higher at close range**. Check **Revenge chance on harm** (`rw_defs_get` or the Wildlife list). Prefer **0%** animals: deer, gazelle, alpaca, dromedary. Do NOT hunt predators, boomrats/boomalopes (explode and start fires), or herd species with revenge chance: one manhunter can pull every same-species animal within 25 tiles.
 - Hunting stealth = 5% per Shooting level + 5% per Animals level (cap 90%); low-skill hunters take only safe or already-injured prey. No incendiary weapons.
 - **Hunted herbivores cost the hunter -15 mood** ("killed innocent animal") for days, in a small fragile colony, hunt sparingly and rotate who hunts.
 
