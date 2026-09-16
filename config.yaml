@@ -18,7 +18,9 @@ play:
   wake_hours: 12           # scheduled think interval (in-game hours) when the model doesn't say
   min_wake_hours: 8        # floor for the model's own wake_in_hours (danger events/alerts bypass this)
   event_cooldown_hours: 3  # non-critical wake events are ignored this long after a step
-  alert_wake_priorities: [Critical]   # game alerts that interrupt (plus any "idle colonist" alert); others wait for the next step
+  alert_wake_priorities: [Critical, High]   # game alerts that interrupt (plus any "idle colonist" alert); others wait for the next step.
+                                             # High includes "medical treatment needed"/"colonist in mortal danger": waiting for Critical
+                                             # meant a wounded or chased colonist could bleed for hours, sleeping through it, before anything woke the agent.
   alert_rewake_hours: 24   # the same alert label won't interrupt again for this long
   critical_kinds: [dialog, danger, manhunter, hostile_group, colonist_downed, colonist_died, mental_break, building_lost]
   max_tool_calls: 30       # per think step
