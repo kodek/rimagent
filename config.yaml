@@ -25,6 +25,8 @@ play:
   max_days: 60             # episode length cap
   autosave: true
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
+  sandbox_every: 3         # every Nth episode is a sandbox: god mode (free, instant builds), all research, not scored; 0 = never
+  sandbox_days: 12         # sandbox episodes end after this many days
   scenario: Crashlanded
   storyteller: Cassandra
   difficulty: Rough

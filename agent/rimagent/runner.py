@@ -110,6 +110,7 @@ class Runner:
         self.last_improve_day = 0
         self.start_day = 0
         self.thinking = False
+        self.sandbox = False
         self._status_at = 0.0
         self._last_alive = time.time()
         self._alerts_at = 0.0
@@ -173,7 +174,10 @@ class Runner:
         seeds = play.get("seeds") or ["rimagent-1"]
         self.episode += 1
         self.seed = seeds[(self.episode - 1) % len(seeds)]
-        self.bus.emit("status", {"phase": "loading", "episode": self.episode, "seed": self.seed})
+        every = int(play.get("sandbox_every", 0) or 0)
+        self.sandbox = every > 0 and self.episode % every == 0
+        self.ctx.extra["sandbox"] = self.sandbox
+        self.bus.emit("status", {"phase": "loading", "episode": self.episode, "seed": self.seed, "sandbox": self.sandbox})
         self.bridge.call("game.new_game", seed=self.seed, scenario=play.get("scenario", "Crashlanded"), storyteller=play.get("storyteller", "Cassandra"), difficulty=play.get("difficulty", "Rough"))
         time.sleep(3)
         st = self.bridge.wait_for("playing", 600)
@@ -187,7 +191,14 @@ class Runner:
         from . import tracker, worlddiff
         from .tools import meta as meta_tools_mod
         tracker.reset(); worlddiff.reset(); meta_tools_mod.reset_repl()
-        self.bus.emit("episode_start", {"episode": self.episode, "seed": self.seed})
+        if self.sandbox:
+            try:
+                self.bridge.call("game.dev_mode", enabled=True, god=True)
+                self.bridge.call("dev.unlock_all_research")
+                self.bus.emit("log", {"text": "SANDBOX episode: god mode on, all research unlocked, not scored"})
+            except BridgeError as e:
+                self.bus.emit("error", {"text": f"sandbox setup failed: {e}"})
+        self.bus.emit("episode_start", {"episode": self.episode, "seed": self.seed, "sandbox": self.sandbox})
         _save_episode({"seed": self.seed, "episode": self.episode, "start_day": self.start_day, "deaths": 0, "raids": 0, "last_improve_day": self.last_improve_day})
         self.force_think = "new game started"
 
@@ -243,7 +254,7 @@ class Runner:
                 reason, self.force_end = self.force_end, None
                 self.end_episode(reason)
                 return
-            if day - self.start_day >= int(play.get("max_days", 60)):
+            if day - self.start_day >= int(play.get("sandbox_days", 12) if self.sandbox else play.get("max_days", 60)):
                 self.end_episode(f"reached max_days ({play.get('max_days')})")
                 return
             # day rollover: autosave + maybe improvement pass
@@ -422,12 +433,39 @@ class Runner:
         self._last_step_end_tick = tick
         self.next_wake_tick = tick + int(hours * TICKS_PER_HOUR)
 
+    def usage_stats(self, since_seq: int | None = None) -> str:
+        """Tool usage since the last improvement pass: counts, error rates, repeated call sequences (automation candidates)."""
+        import collections
+        since = since_seq if since_seq is not None else getattr(self, "_last_improve_seq", 0)
+        evs = self.bus.since(since, limit=5000, kinds={"tool_call", "tool_result", "think_start"})
+        self._last_improve_seq = self.bus.last_seq
+        counts: collections.Counter = collections.Counter(); errs: collections.Counter = collections.Counter()
+        seqs: collections.Counter = collections.Counter(); cur: list[str] = []
+        for e in evs:
+            d = e["data"]
+            if e["kind"] == "think_start":
+                cur = []
+            elif e["kind"] == "tool_call":
+                counts[d["name"]] += 1; cur.append(d["name"])
+                if len(cur) >= 3 and not any(x in ("end_turn", "reply_to_operator") for x in cur[-3:]):
+                    seqs[" > ".join(cur[-3:])] += 1
+            elif e["kind"] == "tool_result" and not d.get("ok"):
+                errs[d["name"]] += 1
+        lines = ["Tool calls since the last pass (calls, errors):"]
+        lines += [f"- {n}: {c}" + (f", {errs[n]} errors" if errs[n] else "") for n, c in counts.most_common(18)]
+        rep = [(k, v) for k, v in seqs.most_common(8) if v >= 3]
+        if rep:
+            lines.append("Repeated call sequences (candidates for a tool or watcher):")
+            lines += [f"- {k}  x{v}" for k, v in rep]
+        return "\n".join(lines)
+
     def start_improve_thread(self, day: int) -> None:
         """Improvement pass on a second LLM stream, concurrent with play (brain edits hot-load into the play stream)."""
         if getattr(self, "_improve_thread", None) and self._improve_thread.is_alive():
             return
         ctx2 = self.ctx.fork("improve")
         notes_snapshot = list(self.step_notes)
+        ctx2.extra["usage_stats"] = self.usage_stats()
 
         def run():
             try:
@@ -459,7 +497,7 @@ class Runner:
             pass
         days = int(st.get("day", self.last_day)) - self.start_day
         colonists = int(summary.get("colonists", st.get("colonists", 0)) or 0)
-        assisted = bool(st.get("assisted", False))
+        assisted = bool(st.get("assisted", False)) or self.sandbox
         score = scorecard.score_from(days, colonists, self.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0), int(summary.get("research_done", 0) or 0), self.raids)
         self.bus.emit("log", {"text": f"episode {self.episode} over: {reason}; days={days} colonists={colonists} deaths={self.deaths} score={score}"})
         notes = ""

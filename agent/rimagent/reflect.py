@@ -43,6 +43,9 @@ Take a step back from the colony. Look at what you have been doing every step (b
 - strategies that worked or failed → tighten the relevant skill with concrete numbers
 Do not touch the colony in this step (no rw_ui_* calls). Finish with end_turn(notes=<what you changed>).
 
+## Your tool usage since the last pass
+{usage}
+
 ## Recent step notes
 {timeline}
 
@@ -93,6 +96,7 @@ def improve(ctx: Context, step_notes: list[str], days: int) -> str:
         load_prompt("reflect_improve", DEFAULT_IMPROVE),
         days=str(days),
         timeline="\n".join(f"- {n}" for n in step_notes[-30:] if n) or "(none)",
+        usage=str(ctx.extra.get("usage_stats") or "(no stats)"),
         notebook=memory.notebook_read() or "(empty)",
         skills_index=skills.index_text(),
     )

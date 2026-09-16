@@ -187,6 +187,9 @@ def situation_packet(ctx: Context, trigger: str, events: list[dict[str, Any]], a
     from . import tracker, worlddiff
     parts: list[str] = [f"## Wake trigger\n{trigger}"]
     hint = trigger
+    if ctx.extra.get("sandbox"):
+        parts.append("## SANDBOX EPISODE (not scored)\nGod mode is on: blueprints complete instantly and cost nothing; all research is unlocked. Use this game to EXPERIMENT and LEARN: build layouts you were unsure about, wire power grids and check state.power / map.power, test defenses with rw_dev_incident, try mechanics you have not used. After each experiment write what you learned into the relevant skill (with numbers) and, if it is a repeatable check, into a tool or watcher. Do not optimise the colony; optimise your skills.")
+        hint += " experiment sandbox"
     summary: dict[str, Any] = {}
     base: dict[str, Any] = {}
     try:
