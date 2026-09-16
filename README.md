@@ -4,6 +4,8 @@
 
 A local model (tested with Qwen 3 27–32B on vLLM) runs a RimWorld colony through a mod that exposes the whole engine over HTTP. It sees the world as objects, trends and diffs rather than pixels or grids, controls the game with the same verbs a player has (right-click orders, gizmos, designators, blueprints, zones, dialogs, trade), and keeps everything it learns on disk: **skills** (markdown), **tools** and **watchers** (Python, hot-loaded), a journal, and a score per episode. Every colony ends in a reflection that edits those files and commits them. Then it starts the next one.
 
+<p align="center"><a href="docs/PAPER.md"><b>Read the paper</b></a> · <a href="https://github.com/zorrobyte/rimagent/releases/latest">Download the mod</a> · <a href="#quick-start">Quick start</a></p>
+
 <p align="center"><img src="docs/dashboard-live.png" width="900" alt="Live dashboard: tracked trends, what changed, and a think step"></p>
 
 ## What it looks like
@@ -156,6 +158,19 @@ Useful commands: `rimagent think` (one step against the live game), `rimagent to
 ## Status
 
 Early and very much alive: it loses colonies (fires, mech clusters, starvation), reflects, and comes back with new watchers and tighter skills. Cold-start play quality is not the point; the slope is. Contributions that make the *harness* see or act more faithfully are welcome; game strategy belongs in `brain/`, written by the agent.
+
+## Paper
+
+The design, the interface defects found by watching the agent play, and preliminary results from three colonies are written up in [docs/PAPER.md](docs/PAPER.md): *RimBridge and rimagent: A Player-Parity Interface and a Self-Editing Brain for Language-Model Agents in RimWorld* (preprint, September 2026). If you build on it:
+
+```bibtex
+@misc{rimagent2026,
+  title  = {RimBridge and rimagent: A Player-Parity Interface and a Self-Editing Brain for Language-Model Agents in RimWorld},
+  author = {zorrobyte},
+  year   = {2026},
+  url    = {https://github.com/zorrobyte/rimagent}
+}
+```
 
 ## License
 
