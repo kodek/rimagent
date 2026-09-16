@@ -1,9 +1,17 @@
 ---
-name: work-priorities
-description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work), when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling, researching).
-tags: [work, priorities, skills, passion, early-game]
 always: false
+description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work),
+  when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling,
+  researching).
+name: work-priorities
+tags:
+- work
+- priorities
+- skills
+- passion
+- early-game
 ---
+
 # Work priorities
 
 ## How the system works
@@ -12,7 +20,46 @@ always: false
 - Pawns only work inside their allowed area (rw_ui_set_policies area).
 
 ## Work types in game order (base game, with the skill each uses)
-Firefight (none), Patient (none), Doctor (Medical), Bed rest (none), Basic (none), Warden (Social), Handle (Animals), Cook (Cooking), Hunt (Shooting and Animals, needs a ranged weapon), Construct (Construction), Grow (Plants), Mine (Mining), Plant cut (Plants), Smith (Crafting), Tailor (Crafting), Art (Artistic), Craft (Crafting; stonecutting and smelting use no skill), Haul (none), Clean (none), Research (Intellectual). Childcare, Fish and Dark study exist only with Biotech, Odyssey and Anomaly. Verified defNames (rw_defs_work_types, in game order): Firefighter, Patient, Doctor, PatientBedRest, BasicWorker, Warden, Handling, Cooking, Hunting, Construction, Growing, Mining, PlantCutting, Smithing, Tailoring, Art, Crafting, Hauling, Cleaning, Research (Childcare, Fishing, DarkStudy also appear when their DLC is loaded).
+Firefight (none), Patient (none), Doctor (Medical), Bed rest (none), Basic (none), Warden (Social), Handle (Animals), Cook (Cooking), Hunt (Shooting and Animals, needs a ranged weapon), Construct (Construction), Grow (Plants), Mine (Mining), Plant cut (Plants), Smith (Crafting), Tailor (Crafting), Art (Artistic), Craft (Crafting; stonecutting and smmelting use no skill), Haul (none), Clean (none), Research (Intellectual). Childcare, Fish and Dark study exist only with Biotech, Odyssey and Anomaly.
+
+## Verified defNames (rw_defs_work_types, in game order)
+These are the EXACT strings to pass to rw_ui_set_work. Using any other name causes an error:
+
+| defName | Work |
+|---|---|
+| Firefighter | Firefight |
+| Patient | Patient |
+| Doctor | Doctor |
+| PatientBedRest | Bed rest |
+| BasicWorker | Basic |
+| Warden | Warden |
+| Handling | Handle |
+| Cooking | Cook |
+| Hunting | Hunt |
+| Construction | Construct |
+| Growing | Grow |
+| Mining | Mine |
+| PlantCutting | Plant cut |
+| Smithing | Smith |
+| Tailoring | Tailor |
+| Art | Art |
+| Crafting | Craft |
+| Hauling | Haul |
+| Cleaning | Clean |
+| Research | Research |
+
+**Common wrong names that cause errors (do NOT use these):**
+- "Misc" → does not exist
+- "Cutting" → should be "PlantCutting"
+- "Fueling" → does not exist (fueling is automatic)
+- "Researching" → should be "Research"
+- "Building" → should be "Construction"
+- "Cooking" is correct (not "Cook")
+- "Hunting" is correct (not "Hunt")
+- "Growing" is correct (not "Grow")
+- "Hauling" is correct (not "Haul")
+
+When in doubt, call `rw_defs_work_types` first and use the exact defName from the result.
 
 ## Skills and what they gate early
 - Plants: sow/harvest speed; healroot needs 8, devilstrand 10. Cooking: 9 minimises food poisoning, 10 maxes butcher yield. Construction: speed 50% + 15% per level, no botches from 8; solar needs 6, hospital bed 8. Medical: tend quality 20% at 0, 100% at 8. Intellectual: research speed 8% + 11.5% per level. Shooting: per-tile accuracy 89% at 0, 97% at 10, compounding with range. Mining: speed and ore yield. Crafting: item quality and bill minimums only. Social: recruiting, trade prices. Animals: taming, less hunting revenge. Artistic: ignore early.

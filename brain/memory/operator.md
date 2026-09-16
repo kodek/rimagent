@@ -43,3 +43,5 @@
 - [2026-09-16 11:56] the wires also aren't built yet
 
 - [2026-09-16 11:58] build some impressive bases
+
+- [2026-09-16 12:34] anything on the map is fair game, who cares about how far away animals are etc, also you dont seem to be butchering again so hunting is pointless

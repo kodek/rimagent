@@ -58,3 +58,6 @@ When food_days drops below 4, the colony self-corrects IF: (1) rice harvest ETA 
 
 ## 2026-09-16 12:15 (episode 2): Room comfort: barracks vs bedrooms and temperature
 Barracks (3+ beds in one room) give -7 mood to each occupant. A proper bedroom (1-2 beds, 5x5+ interior) avoids this. In summer, unroofed or poorly-ventilated rooms reach 34-38C, triggering "Slept in the heat" (-4) and "Sweaty" (-4). A cooler in the compound wall can bring temps down to 20-25C within 6-12h. The single biggest mood fix for a barracks-sleeping colonist is building a private 5x5 bedroom; the second biggest is temperature control.
+
+## 2026-09-16 12:35 (episode 2): Hunt designations: 30-cell rule must be checked before designating
+Episode 3 day 20: 5 hunt designations were queued for hares at 52-57 cells from home, violating the 30-cell rule. The colony had food_days=0.8 and no animals within 30 cells, so the hunts were both unsafe AND useless (animals too far for a single hunter to reach before the food ran out). The starvation_gap watcher now fires on day tick when food_days < 2 AND no meat-bearing animals within 30 cells. The hunt_safety tool checks all pending Hunt designations against actual animal distances in one call. Rule: before designating any hunt, run hunt_safety first; if the target is >30 cells away and armed colonists < 2, skip it.
