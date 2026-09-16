@@ -6,6 +6,8 @@ def watch(ctx, events):
     """
     out = []
     for ev in events:
+        if not isinstance(ev, dict):
+            continue
         if ev.get("kind") != "colonist_joined":
             continue
         # Unforbid any forbidden items near the new colonist's position
@@ -13,7 +15,7 @@ def watch(ctx, events):
             items = ctx.bridge.call("map.find", kind="item", forbidden=True, radius=40, limit=200)
         except Exception:
             items = []
-        ids = [it["id"] for it in (items or []) if it.get("id")]
+        ids = [it["id"] for it in (items or []) if isinstance(it, dict) and it.get("id")]
         if ids:
             try:
                 ctx.bridge.call("ui.designate", designator="unforbid", things=ids)

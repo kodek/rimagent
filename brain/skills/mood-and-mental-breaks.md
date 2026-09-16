@@ -19,14 +19,21 @@ tags:
 - `break_thresholds` in `state.pawn` is `[minor, major, extreme]` as percentages (e.g. `[35, 20, 5]`). No engine call needed.
 - Mean time to break below a line: minor 10 days, major 3 days, extreme 0.7 days. Sleeping/unconscious pawns cannot break.
 
+## The three mood zones (mood_triage now covers all three)
+| Zone | Mood range | Severity | Action |
+|---|---|---|---|
+| **at_risk** | below minor (35%) but above major (20%) | `at_risk` | Fix the biggest negative NOW; 10 days to break if unaddressed |
+| **critical** | below major (20%) | `critical` | Emergency: fix root cause, draft others, wake in 1-2h |
+| **extreme** | below extreme (5%) | `extreme` | Berserk imminent; draft everyone, keep clear |
+
+`mood_triage` flags every colonist below the **minor** threshold and returns `severity` per pawn. Use it whenever any colonist is below 35% — not just when `mood_watch` fires.
+
 ## The catharsis-fade crash (the #1 pattern that catches you off guard)
 After any mental break, the colonist gets **catharsis +40** (or +30 for minor). This buff fades over ~2 days. While it's active, the colonist's displayed mood looks fine (e.g. 50%) even though the underlying debuff (alcohol withdrawal -35, malnutrition -26) is still there. When the catharsis fades, mood crashes to (real_mood - catharsis_value) and the break threshold is crossed.
 
 **Rule: when a colonist has a catharsis buff, compute the post-fade mood = displayed_mood - catharsis_value. If that number is below the major threshold, treat it as an emergency NOW, not after the crash.**
 
-Example: Cummings at 50% mood with catharsis +40 → post-fade mood = 10% → below major threshold 20% → extreme break in ~1-2 days. Start brewing research immediately; don't wait for the crash.
-
-`mood_triage` tool returns `catharsis_buffer` per flagged pawn so you can see this without reading each pawn individually.
+`mood_triage` returns `catharsis_buffer` per flagged pawn so you can see this without reading each pawn individually.
 
 ## Simultaneous extreme-break crisis (episode 2 lesson)
 When **two or more colonists are simultaneously below their major threshold** (or one is at extreme and the other's catharsis is fading below major), the colony is in a death spiral:
@@ -38,17 +45,17 @@ When **two or more colonists are simultaneously below their major threshold** (o
 6. **Wake in 1-2 hours** when both are at extreme risk. Check: did they eat? Did the catharsis fade? Is the mood still below threshold?
 
 ## How to triage a low-mood colonist (use `mood_triage` tool)
-One call: `mood_triage()` returns for every colonist below their major threshold:
-- `mood`, `major_threshold`, `extreme_threshold`
+One call: `mood_triage()` returns for every colonist below their **minor** threshold:
+- `mood`, `severity` (`at_risk` or `critical`), `minor_threshold`, `major_threshold`, `extreme_threshold`
 - `catharsis_buffer`: the catharsis thought if present (check its `mood` value to compute post-fade mood)
-- `top_negatives`: top 4 negative thoughts sorted by value
+- `top_negatives`: top 5 negative thoughts sorted by value
 
 Fix the biggest negative first. The usual hierarchy:
 1. **Alcohol/drug withdrawal (-35)**, finish Brewing research, build FermentingBarrel, make beer. No other fix.
 2. **Malnutrition (-26)**, food crisis; fix food before mood. **Check the food policy first** (see early-game-food skill).
 3. **Killed innocent animal (-15)**, hunt sparingly, rotate hunters.
 4. **Confined interior (-10)**, expand bedroom to ≥5×5 interior.
-5. **Rotting/observed corpse (-6)**, haul to dump; desiccated corpses can't be hauled, move them far from base.
+5. **Rotting/observed corpse (-6)**, haul to dump. **Desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox mode) or move the dump zone far from base.
 6. **Darkness (-5), Unsightly (-5), Tattered apparel (-5)**, light, clean, tailor.
 
 ## Crisis debuffs that recur (the ones that actually broke colonists in play)
@@ -59,7 +66,7 @@ Fix the biggest negative first. The usual hierarchy:
 | Ate corpse meat | -12 | During a food crisis pawns eat corpses; each is -12 and a rot-stink source. Avoid by keeping ANY food above 0. |
 | Ate raw food | -7 | Set food policy to cooked/simple once a stove exists. |
 | Killed innocent animal | -15 | Hunting herbivores, the hunter eats -15 for days. Hunt sparingly, rotate hunters, only when food is critical. |
-| Observed/rotting corpse | -4 / -6 | Corpses near the base cause -6 to ALL colonists. Haul to dump; desiccated corpses may not be hauled. |
+| Observed/rotting corpse | -4 / -6 | Corpses near the base cause -6 to ALL colonists. Haul to dump; **desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox) or relocate dump zone. |
 | No shepherd role (mod) | -5 | Some mods add a "Shepherd" ideo role; unfilled it is -5 to everyone. |
 
 ## Common early debuffs (exact values)

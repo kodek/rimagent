@@ -45,3 +45,9 @@
 - [2026-09-16 11:58] build some impressive bases
 
 - [2026-09-16 12:34] anything on the map is fair game, who cares about how far away animals are etc, also you dont seem to be butchering again so hunting is pointless
+
+- [2026-09-16 12:36] you have god mode, you can spawn in anything, weapons, defense structures etc really go at it
+
+- [2026-09-16 12:38] your AC is pointed incorrectly and its blowing the hot end into the room lol
+
+- [2026-09-16 12:42] you can literally build anything. where's the giant base? where's the defenses? Where's you spawning in armor and good weapons?

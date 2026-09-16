@@ -4,22 +4,13 @@ def ideo_role(ctx, pawn, action="list", role=None, force=False):
     """
     ideo role assignment via engine.
     
-    Path: Pawn:<name>.ideo.ideo.cachedPossibleRoles is a list of RoleDef-like objects.
-    Each has .defName (e.g. 'Moralist') and .Assign(pawn, force) method.
+    cachedPossibleRoles is a List<Precept_Role> field on the Ideo object.
+    Each Precept_Role has .defName (e.g. 'IdeoRole_Moralist') and .Assign(pawn, addThoughts) method.
     
-    action='list': returns all available roles with their defNames and whether assigned.
-    action='assign': assigns the role matching `role` (substring, case-insensitive).
+    action='list': returns all available roles with their defNames.
+    action='assign': assigns the role matching `role` (substring, case-insensitive) via .Assign(pawn, force).
     """
-    # Get the pawn's ideo component
-    try:
-        ideo = ctx.bridge.call("engine.get", path=f"Pawn:{pawn}.ideo.ideo")
-    except Exception as e:
-        return {"error": f"Could not access ideo component: {e}"}
-    
-    if ideo is None:
-        return {"error": "Pawn has no ideo component (no ideo mod loaded or pawn is AI)"}
-    
-    # Get cached possible roles
+    # Get the cached possible roles (a field on Ideo, not a method)
     try:
         roles = ctx.bridge.call("engine.get", path=f"Pawn:{pawn}.ideo.ideo.cachedPossibleRoles", depth=2)
     except Exception as e:
@@ -59,11 +50,11 @@ def ideo_role(ctx, pawn, action="list", role=None, force=False):
         if target is None:
             return {"error": f"Role '{role}' not found. Available: {[r.get('defName') or r for r in roles]}"}
         
-        # Assign via engine_call
+        # Assign via engine_call: call .Assign(pawn, addThoughts) on the specific Precept_Role
         try:
             result = ctx.bridge.call(
                 "engine.call",
-                path=f"Pawn:{pawn}.ideo.ideo.cachedPossibleRoles[{target}]",
+                path=f"Pawn:{pawn}.ideo.ideo.cachedPossibleRoles[{target}].Assign",
                 args=[f"Pawn:{pawn}", bool(force)]
             )
         except Exception as e:
