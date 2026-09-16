@@ -473,14 +473,14 @@ def _repo(*parts: str) -> str:
 
 def test_skill_prose_matches_order_contracts():
     med = _repo("brain", "skills", "medicine-and-health.md")
-    assert "never touches a pawn again once you set its care by hand" in med       # Order_Policies.RunMedical: OwnedValues.Forever
-    assert "leaves any pawn you set by hand alone for 2 days" not in med
+    assert "resets to that after 2 days if you set a pawn's care by hand" in med   # Order_Policies.RunMedical: OwnedValues.TwoDays
+    assert "never touches a pawn again once you set its care by hand" not in med
     assert "waits until the combat order releases" not in med                     # Order_Rescue has no combat gate
     assert "keeps running every 300 ticks during a raid" in med
     manual = _repo("brain", "skills", "bridge-manual.md")
-    assert "medical care set by hand or changed outside the order: never touched again" in manual
+    assert "heater/cooler targets changed by hand or outside the order: never touched again" in manual   # Order_Policies.RunTemperature: OwnedValues.Forever
     system = _repo("agent", "rimagent", "prompts", "system.md")
-    assert "medical care: until you change it back, the order never resets it" in system
+    assert "heater/cooler targets: until you change it back, the order never resets it" in system
     for name in ("animals-and-hunting.md", "example-base-compound.md", "early-game-food.md"):
         body = _repo("brain", "skills", name)
         assert 'recipe="ButcherCorpse"' not in body and "standing `ButcherCorpse` bill" not in body   # the RecipeDef is ButcherCorpseFlesh
