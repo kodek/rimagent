@@ -69,6 +69,14 @@ class Controls:
     def kill(self):
         self.r.stop = True
 
+    def set_sandbox(self, value: bool):
+        """Dashboard toggle: god mode (free instant builds) + all research; the run is marked assisted."""
+        self.r.apply_sandbox(bool(value))
+
+    @property
+    def sandbox(self) -> bool:
+        return bool(self.r.sandbox)
+
     def say(self, text: str, remember: bool = True):
         """Operator message: shown in the feed, handed to the model (mid-step or next step), and wakes it.
         Also logged to brain/memory/operator.md so the episode reflection can fold missed tips into skills."""
@@ -174,9 +182,6 @@ class Runner:
         seeds = play.get("seeds") or ["rimagent-1"]
         self.episode += 1
         self.seed = seeds[(self.episode - 1) % len(seeds)]
-        every = int(play.get("sandbox_every", 0) or 0)
-        self.sandbox = every > 0 and self.episode % every == 0
-        self.ctx.extra["sandbox"] = self.sandbox
         self.bus.emit("status", {"phase": "loading", "episode": self.episode, "seed": self.seed, "sandbox": self.sandbox})
         self.bridge.call("game.new_game", seed=self.seed, scenario=play.get("scenario", "Crashlanded"), storyteller=play.get("storyteller", "Cassandra"), difficulty=play.get("difficulty", "Rough"))
         time.sleep(3)
@@ -192,12 +197,7 @@ class Runner:
         from .tools import meta as meta_tools_mod
         tracker.reset(); worlddiff.reset(); meta_tools_mod.reset_repl()
         if self.sandbox:
-            try:
-                self.bridge.call("game.dev_mode", enabled=True, god=True)
-                self.bridge.call("dev.unlock_all_research")
-                self.bus.emit("log", {"text": "SANDBOX episode: god mode on, all research unlocked, not scored"})
-            except BridgeError as e:
-                self.bus.emit("error", {"text": f"sandbox setup failed: {e}"})
+            self.apply_sandbox(True)
         self.bus.emit("episode_start", {"episode": self.episode, "seed": self.seed, "sandbox": self.sandbox})
         _save_episode({"seed": self.seed, "episode": self.episode, "start_day": self.start_day, "deaths": 0, "raids": 0, "last_improve_day": self.last_improve_day})
         self.force_think = "new game started"
@@ -254,7 +254,7 @@ class Runner:
                 reason, self.force_end = self.force_end, None
                 self.end_episode(reason)
                 return
-            if day - self.start_day >= int(play.get("sandbox_days", 12) if self.sandbox else play.get("max_days", 60)):
+            if day - self.start_day >= int(play.get("max_days", 60)):
                 self.end_episode(f"reached max_days ({play.get('max_days')})")
                 return
             # day rollover: autosave + maybe improvement pass
@@ -432,6 +432,19 @@ class Runner:
             pass
         self._last_step_end_tick = tick
         self.next_wake_tick = tick + int(hours * TICKS_PER_HOUR)
+
+    def apply_sandbox(self, on: bool) -> None:
+        self.sandbox = on
+        self.ctx.extra["sandbox"] = on
+        try:
+            self.bridge.call("game.dev_mode", enabled=True, god=on)
+            if on:
+                self.bridge.call("dev.unlock_all_research")
+            self.bus.emit("log", {"text": "SANDBOX ON: god mode, all research unlocked; this run is marked assisted" if on else "sandbox off: god mode disabled (research stays unlocked)"})
+            self.bus.emit("status", {"sandbox": on})
+            self.force_think = "sandbox mode switched " + ("on: experiment and learn" if on else "off: play normally")
+        except BridgeError as e:
+            self.bus.emit("error", {"text": f"sandbox toggle failed: {e}"})
 
     def usage_stats(self, since_seq: int | None = None) -> str:
         """Tool usage since the last improvement pass: counts, error rates, repeated call sequences (automation candidates)."""
