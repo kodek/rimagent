@@ -72,11 +72,14 @@ def run_python(ctx, code: str):
     if not REPL_NS:
         REPL_NS.update({"ctx": ctx, "json": json, "math": math, "wiki": wiki, "source": source, "result": None,
                         "rpc": lambda method, **p: ctx.bridge.call(method, **p),
-                        "find": lambda **p: ctx.bridge.call("map.find", **p),
+                        # `def` is a reserved word: `find(def="Bed")` is a SyntaxError in real Python, not just a
+                        # bridge quirk. Accept the defName positionally (find("Bed", ...)) so the common case still
+                        # works from code; find(**{"def": "Bed"}) remains available for anyone who wants the kwarg.
+                        "find": lambda defName=None, **p: ctx.bridge.call("map.find", **({"def": defName} if defName else {}), **p),
                         "summary": lambda: ctx.bridge.call("state.summary"),
                         "base": lambda **p: ctx.bridge.call("state.base", **p),
                         "detail": lambda **p: ctx.bridge.call("map.detail", **p),
-                        "build": lambda **p: ctx.bridge.call("ui.build", **p)})
+                        "build": lambda defName=None, **p: ctx.bridge.call("ui.build", **({"def": defName} if defName else {}), **p)})
     REPL_NS["ctx"] = ctx
     REPL_NS["result"] = None
     buf = io.StringIO()

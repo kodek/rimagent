@@ -102,7 +102,7 @@ namespace RimBridge.Ui
             return new JObject { ["results"] = results, ["placed_total"] = results.Sum(r => (r["placed"] as JArray)?.Count ?? 0), ["failed_total"] = results.Sum(r => (r["failed"] as JArray)?.Count ?? (r["error"] != null ? 1 : 0)) };
         }
 
-        [Rpc("ui.build", "{def: buildable defName (ThingDef or TerrainDef), at?: [x,z], rot?: N|E|S|W, stuff: ThingDef (required for stuff-made things; omit once to get the options), line?: [[x1,z1],[x2,z2]], rect?: [x,z,w,h], fill?: bool (rect: fill vs outline), dry_run?: bool} place blueprints; picks a stuff automatically if omitted (most plentiful allowed). Returns placed and failed cells with reasons.")]
+        [Rpc("ui.build", "{def: buildable defName (ThingDef or TerrainDef), at?: [x,z], rot?: N|E|S|W, stuff: ThingDef (REQUIRED for stuff-made things: Wall/Door/Bed/etc; omit once to see the options with on-map quantities and no material is guessed for you), line?: [[x1,z1],[x2,z2]], rect?: [x,z,w,h], fill?: bool (rect: fill vs outline), dry_run?: bool} place blueprints. Returns placed and failed cells with reasons.")]
         public static JToken Build(JObject p)
         {
             var map = Map();

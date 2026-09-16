@@ -343,11 +343,17 @@ namespace RimBridge.Ui
 
         // ---------- Bills ----------
 
-        [Rpc("ui.add_bill", "{thing: work table id, recipe: RecipeDef, mode?: RepeatCount|TargetCount|Forever, count?: 1, radius?: 999, suspended?: false, first?: false}")]
+        [Rpc("ui.add_bill", "{thing: work table id (aliases: station/table/bench), recipe: RecipeDef, mode?: RepeatCount|TargetCount|Forever, count?: 1, radius?: 999, suspended?: false, first?: false}")]
         public static JToken AddBill(JObject p)
         {
             Map();
-            var t = Lookup.Thing(P.Str(p, "thing"));
+            // "thing" is the documented name, but models often guess "station"/"table"/"bench" for a workbench id.
+            string thingId = p["thing"] != null ? P.Str(p, "thing")
+                : p["station"] != null ? P.Str(p, "station")
+                : p["table"] != null ? P.Str(p, "table")
+                : p["bench"] != null ? P.Str(p, "bench")
+                : throw new RpcError("missing param 'thing' (the work table id; aliases station/table/bench also accepted)");
+            var t = Lookup.Thing(thingId);
             if (!(t is IBillGiver bg)) throw new RpcError($"{t.ThingID} has no bill stack");
             var recipe = Lookup.Def<RecipeDef>(P.Str(p, "recipe"));
             if (!t.def.AllRecipes.Contains(recipe)) throw new RpcError($"{t.def.defName} cannot do {recipe.defName}. Available: " + string.Join(", ", t.def.AllRecipes.Where(r => r.AvailableNow).Select(r => r.defName)));

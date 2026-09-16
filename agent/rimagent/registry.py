@@ -64,8 +64,17 @@ class Tool:
         return {"type": "function", "function": {"name": self.name, "description": self.description[:1024], "parameters": self.schema}}
 
 
-def tool(name: str | None = None, description: str | None = None, params: dict[str, str] | None = None, group: str = "general"):
-    """Decorator for built-in and brain tools. `params` maps arg name -> description."""
+def tool(name: str | None = None, description: str | None = None, params: dict[str, str] | None = None, group: str = "general", **aliases: dict[str, str]):
+    """Decorator for built-in and brain tools. `params` maps arg name -> description.
+    Brain-authored tools sometimes guess a different keyword for the same thing (most often
+    `args=`); accept it rather than fail to load over a naming choice the docs never forbade."""
+    if params is None:
+        for alt in ("args", "arguments", "argdocs", "parameters"):
+            if alt in aliases:
+                params = aliases.pop(alt)
+                break
+    if aliases:
+        raise TypeError(f"tool() got unexpected keyword argument(s): {', '.join(aliases)}")
 
     def deco(fn: Callable) -> Callable:
         fn._tool_name = name or fn.__name__  # type: ignore[attr-defined]
