@@ -15,8 +15,15 @@ namespace RimBridge.State
     {
         static Map Map() { GameCtl.GameControl.RequirePlaying(); return Find.CurrentMap; }
 
-        [Rpc("state.summary", "colony overview: date, colonists (brief), wealth, food, mood, threats, alerts, research, zones, power, key stocks")]
-        public static JToken Summary(JObject p) => Snapshot.ColonySummary(Map());
+        [Rpc("state.summary", "colony overview: date, colonists (brief), wealth, food, mood, threats, alerts, research, zones, power, key stocks, steward {scorer, stock, posture, stock_brief, problems}")]
+        public static JToken Summary(JObject p)
+        {
+            var map = Map();
+            var o = Snapshot.ColonySummary(map);
+            try { o["steward"] = RimBridge.Steward.StewardRpc.SummaryBlock(map); }
+            catch (Exception ex) { o["steward"] = new JObject { ["error"] = ex.Message }; }
+            return o;
+        }
 
         [Rpc("state.pawns", "{filter?: colonists|prisoners|animals|hostiles|all} list pawns (brief)")]
         public static JToken Pawns(JObject p)

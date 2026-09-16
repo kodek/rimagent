@@ -52,9 +52,12 @@ flowchart LR
     E["engine objects<br/>maps, pawns, defs, windows"]
     L["event ledger<br/>letters, incidents, danger, deaths, dialogs"]
     C["off-screen camera"]
+    ST["Steward<br/>work-priority scorer + stock keeper, every tick"]
     RB --- E
     RB --- L
     RB --- C
+    RB --- ST
+    ST --> E
   end
   subgraph agent["rimagent (Python)"]
     R["runner<br/>episodes, wake policy, speed"]
@@ -120,9 +123,11 @@ flowchart LR
   C2 --> N["new seeded game"] --> P
 ```
 
-**Perception (what a think step opens with):** tracked values with trends (`food_days 9→7→5 ↓`, add your own engine path with `watch_add`), a harness-computed diff of the world since the last step, the base as rooms/doors/contents/problems (`state.base`), events, alerts, letters, open dialogs, then the raw numbers. Grids and pictures are on demand: `map.detail` (building camera), `map.view` (layers), `look` (screenshot with grid + numbered marks + anchor boxes).
+**Perception (what a think step opens with):** tracked values with trends (`food_days 9→7→5 ↓`, add your own engine path with `watch_add`), a harness-computed diff of the world since the last step, the base as rooms/doors/contents/problems (`state.base`), events, alerts, letters, open dialogs, a Steward block (posture, one line per stock target such as `wood 420/500 ↑ forestry ok`, problems), then the raw numbers. Grids and pictures are on demand: `map.detail` (building camera), `map.view` (layers), `look` (screenshot with grid + numbered marks + anchor boxes).
 
-**Control:** float-menu orders and gizmos (exactly what a player can click), designators, blueprints with a location grammar (`Campfire39256 +E2`, `@Gamble`, `bedroom2:NW`, `bedroom2:extend:E:4`, `Room:12`), zones/areas/storage, work priorities, schedules, policies, bills, research, letters and every window type (rituals, trade, naming, message boxes; a generic reader/answerer for anything else). `engine.get/set/call` reach any live object by path for the rest; the decompiled source is searchable so the model can find the right API itself.
+**Control:** float-menu orders and gizmos (exactly what a player can click), designators, blueprints with a location grammar (`Campfire39256 +E2`, `@Gamble`, `bedroom2:NW`, `bedroom2:extend:E:4`, `Room:12`), zones/areas/storage, schedules, policies, bills, research, letters and every window type (rituals, trade, naming, message boxes; a generic reader/answerer for anything else). `engine.get/set/call` reach any live object by path for the rest; the decompiled source is searchable so the model can find the right API itself. Work priorities and resource gathering are not on this list on purpose: the Steward keeps them, and the model sets policy through `steward.*` (posture, targets, per-pawn exceptions) instead of micromanaging.
+
+**Steward:** two automation engines vendored into RimBridge run every tick with no LLM in the loop. The *scorer* (a port of [Free Will](https://github.com/paul-freeman/rimworld-freewill) by Paul Freeman) recomputes each managed colonist's work priorities from skills, passions, injuries, food, fires and the current posture; the *stock keeper* (a synchronous rewrite of [Colony Manager Redux](https://github.com/ilyvion/colony-manager-redux) by ilyvion) keeps wood, forage, meat, leather and steel at targets by designating cut/harvest/hunt/mine, with safety, reachability and radius checks; a default plan scaled to colonist count is created on a new colony's first tick. The model sees the result in its situation packet and steers it with a dozen `rw_steward_*` tools: `status`, `explain` (why a pawn has a priority), `posture` (`defend`/`build`/`harvest`/`recover` or custom deltas, time-boxed), `stock_set`/`add`/`remove`/`run`, `pawn` (take one colonist manual), `settings`, `enable`. `ui.set_work` on a pawn takes that pawn out of steward management and says so. Both are MIT; origins and modifications are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 **Learning:** an improvement pass on a second LLM stream every few days (turn repeated reactions into watchers, repeated computations into tools, tighten skills with numbers), an episode reflection at the end, per-episode scores, git history of `brain/`, `brain_revert` when a change made things worse. Tips you type in the dashboard are folded into skills.
 
@@ -150,7 +155,7 @@ Useful commands: `rimagent think` (one step against the live game), `rimagent to
 
 ## Repo layout
 
-- `mod/`: RimBridge (C#). `Source/Engine` holds reflection and the location grammar, `State` the summaries and scene graph, `Map` the ASCII views, camera and screenshots, `Ui` the player-parity controls and dialogs, `Ledger` the Harmony event patches, `Dev` the training tools. `mod/Tests` (xunit) covers the pure parser.
+- `mod/`: RimBridge (C#). `Source/Engine` holds reflection and the location grammar, `State` the summaries and scene graph, `Map` the ASCII views, camera and screenshots, `Ui` the player-parity controls and dialogs, `Ledger` the Harmony event patches, `Steward` the vendored scorer and stock keeper plus their `steward.*` RPCs, `Dev` the training tools. `mod/Tests` (xunit) covers the pure parser and the stock threshold math.
 - `agent/rimagent/`: runner, loop, registry (hot-loading tools and watchers), tracker, worlddiff, annotate (Set-of-Mark), reflect, skills/memory/scorecard, dashboard, knowledge (wiki and source), prompts.
 - `brain/`: everything the agent authors. It starts with 13 seeded skills: the doctrine, the bridge manual, ten wiki-distilled strategy skills, and a worked base example.
 - `docs/`: screenshots and the paper (`PAPER.md`).

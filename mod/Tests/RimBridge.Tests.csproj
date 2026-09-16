@@ -20,6 +20,9 @@
   <!-- Verse-free source files only -->
   <ItemGroup>
     <Compile Include="../Source/Engine/PathParser.cs" />
+    <Compile Include="../Source/Steward/Stock/Triggers/ThresholdMath.cs" />
+    <Compile Include="../Source/Steward/Stock/Util/PlantMath.cs" />
+    <Compile Include="../Source/Steward/StewardRules.cs" />
   </ItemGroup>
 
 </Project>

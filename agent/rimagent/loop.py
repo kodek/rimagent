@@ -182,6 +182,127 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
     return res
 
 
+# ---------------------------------------------------------------- steward block
+
+STEWARD_UNAVAILABLE = "steward: unavailable"
+_STEWARD_MAX_STOCK, _STEWARD_MAX_PROBLEMS, _STEWARD_MAX_PAWNS = 10, 5, 6
+_STEWARD_TOOLS = "Director tools: rw_steward_stock_set (target/suspend/allow), rw_steward_posture (temporary bias with hours), rw_steward_pawn (managed=false takes a pawn manual), rw_steward_explain (why a priority), rw_steward_stock_run (run a job now)."
+
+
+def _hours_ago(h: Any) -> str:
+    if h is None:
+        return "never"
+    try:
+        h = float(h)
+    except (TypeError, ValueError):
+        return str(h)
+    if h < 1:
+        return f"{int(round(h * 60))}m ago"
+    return f"{h:.0f}h ago" if h >= 10 else f"{h:.1f}h ago".replace(".0h", "h")
+
+
+def steward_stock_line(row: dict[str, Any]) -> str:
+    """One stock job as a line: `wood 420/500 forestry ok (last run 2h ago)`; ✗ + the summary when short or stalled."""
+    label = row.get("label") or row.get("kind") or "?"
+    kind = row.get("kind") or "?"
+    target, current = row.get("target"), row.get("current")
+    failures = int(row.get("failures") or 0)
+    designations = int(row.get("designations") or 0)
+    summary = str(row.get("summary") or "").strip()
+    below = isinstance(target, (int, float)) and isinstance(current, (int, float)) and current < target
+    stalled = failures >= 3 or "stall" in summary.lower()
+    bad = False
+    if not row.get("enabled", True):
+        state = "off"
+    elif row.get("suspended"):
+        state = "suspended"
+    elif row.get("managed") is False:
+        state = "manual"
+    elif stalled:
+        state, bad = f"STALLED ({failures} failed runs)", True
+    elif below and designations > 0:
+        state = f"ok, {designations} designated"      # under target but work is queued: the job is doing its thing
+    elif below and row.get("last_run_hours_ago") is None:
+        state = "pending first run"
+    elif below:
+        state, bad = "below target, nothing designated", True
+    else:
+        state = "ok"
+    head = f"{label} {current if current is not None else '?'}/{target if target is not None else '?'} {kind} {state}"
+    if bad and summary:
+        head += f": {summary[:120]}"
+    return ("✗ " if bad else "") + head + f" (last run {_hours_ago(row.get('last_run_hours_ago'))})"
+
+
+def steward_text(status: Any) -> str:
+    """Render steward.status as the packet's Steward block body (no heading). Pure; ~25 lines max."""
+    if not isinstance(status, dict):
+        return STEWARD_UNAVAILABLE
+    lines: list[str] = []
+    en = status.get("enabled") or {}
+    if isinstance(en, dict) and not (en.get("scorer", True) or en.get("stock", True)):
+        lines.append("steward OFF (scorer and stock jobs disabled): you set priorities and designations yourself.")
+    elif isinstance(en, dict) and (not en.get("scorer", True) or not en.get("stock", True)):
+        lines.append("steward partly off: " + ", ".join(f"{k} {'on' if v else 'OFF'}" for k, v in en.items()))
+    posture = status.get("posture")
+    if isinstance(posture, dict) and posture:
+        bits = []
+        exp = posture.get("expires_in_hours")
+        if exp is not None:
+            bits.append(f"expires in {float(exp):.0f}h")
+        for key, fmt in (("work", "{k} {v:+.1f}"), ("weights", "{k} x{v}"), ("targets", "{k} x{v}")):
+            d = posture.get(key) or {}
+            if isinstance(d, dict) and d:
+                bits.append(key + ": " + ", ".join(fmt.format(k=k, v=v) for k, v in list(d.items())[:6]))
+        lines.append(f"posture: {posture.get('label', '?')}" + (f" ({'; '.join(bits)})" if bits else ""))
+    else:
+        lines.append("posture: none (steady state)")
+    stock = status.get("stock") or []
+    if stock:
+        lines.append("stock (target met = the job idles; raise the target to get more):")
+        rows = [steward_stock_line(r) for r in stock if isinstance(r, dict)]
+        rows.sort(key=lambda l: not l.startswith("✗"))   # problems first
+        lines += ["- " + r for r in rows[:_STEWARD_MAX_STOCK]]
+        if len(rows) > _STEWARD_MAX_STOCK:
+            lines.append(f"- … {len(rows) - _STEWARD_MAX_STOCK} more jobs (rw_steward_stock_list)")
+    else:
+        lines.append("stock: no jobs (rw_steward_stock_add kind=forestry target=500 …)")
+    problems = [str(x) for x in (status.get("problems") or []) if x]
+    if problems:
+        lines.append("problems:")
+        lines += ["- " + x[:160] for x in problems[:_STEWARD_MAX_PROBLEMS]]
+        if len(problems) > _STEWARD_MAX_PROBLEMS:
+            lines.append(f"- … {len(problems) - _STEWARD_MAX_PROBLEMS} more")
+    pawns = [p for p in (status.get("pawns") or []) if isinstance(p, dict) and p.get("managed") is False]
+    if pawns:
+        def prio(p: dict[str, Any]) -> str:
+            pr = p.get("priorities") or {}
+            items = sorted(pr.items(), key=lambda kv: (kv[1], kv[0]))[:4] if isinstance(pr, dict) else []
+            return ", ".join(f"{k} {v}" for k, v in items) or "nothing enabled"
+        lines.append("unmanaged pawns (their priorities are yours to keep; rw_steward_pawn managed=true hands them back):")
+        lines += [f"- {p.get('name') or p.get('id')}: {prio(p)}" for p in pawns[:_STEWARD_MAX_PAWNS]]
+        if len(pawns) > _STEWARD_MAX_PAWNS:
+            lines.append(f"- … {len(pawns) - _STEWARD_MAX_PAWNS} more")
+    research = status.get("research")
+    if isinstance(research, dict):
+        research = research.get("queue")
+    if isinstance(research, list) and research:
+        lines.append("research queue: " + ", ".join(str(r.get("label") or r.get("def") or r) if isinstance(r, dict) else str(r) for r in research[:5]) + (" …" if len(research) > 5 else ""))
+    if problems or any(l.startswith("- ✗") for l in lines):
+        lines.append(_STEWARD_TOOLS)
+    return "\n".join(lines)
+
+
+def steward_block(ctx: Context) -> str:
+    """The packet's Steward section: rendered from steward.status, or `steward: unavailable` when the RPC is missing/failing."""
+    try:
+        status = ctx.bridge.call("steward.status")
+    except Exception:  # noqa: BLE001  (BridgeError for unknown method / ok:false, or the bridge being down)
+        status = None
+    body = steward_text(status) if isinstance(status, dict) else STEWARD_UNAVAILABLE
+    return "## Steward (sets work priorities and keeps stock targets; you direct it)\n" + body
+
+
 def situation_packet(ctx: Context, trigger: str, events: list[dict[str, Any]], alerts: list[dict[str, Any]], extra: str = "") -> tuple[str, str]:
     """Build the user message for a play step: change first, then objects, then raw state. Returns (message, hint)."""
     from . import tracker, worlddiff
@@ -219,6 +340,8 @@ def situation_packet(ctx: Context, trigger: str, events: list[dict[str, Any]], a
             parts.append("## What changed since your last step\n" + worlddiff.diff_text(summary, base))
         except Exception as e:  # noqa: BLE001
             parts.append(f"## Diff unavailable: {e}")
+    parts.append(steward_block(ctx))
+    hint += " steward"
     if events:
         lines = [f"- [{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in events[-80:]]
         parts.append(f"## New events ({len(events)})\n" + "\n".join(lines))

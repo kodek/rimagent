@@ -1,4 +1,7 @@
-"""Parallel mode: four specialist streams per calm step, each owning a slice of the write tools."""
+"""Parallel mode: four specialist streams per calm step, each owning a slice of the write tools.
+
+The steward (inside the mod) already sets work priorities and keeps stock targets; the streams direct it
+through rw_steward_* and act at higher altitude (layout, defense, letters, policies)."""
 from __future__ import annotations
 
 import re
@@ -6,31 +9,34 @@ from typing import Callable
 
 from .registry import Tool
 
-# Tools every role may use (reads, knowledge, turn control).
-_SHARED = re.compile(r"^(rw_state_|rw_map_|rw_defs_|rw_engine_get$|rw_engine_members$|rw_engine_types$|rw_engine_call$|rw_anchor_list$|rw_game_status$|rw_game_log_tail$|rw_bridge_methods$|search_|read_|find_source_files$|watch_|notebook_read$|skill_read$|skill_list$|journal_read$|score_history$|tool_list$|watcher_list$|run_python$|look$|rpc$|end_turn$|reply_to_operator$)")
+# Tools every role may use (reads, knowledge, turn control, steward reads).
+_SHARED = re.compile(r"^(rw_state_|rw_map_|rw_defs_|rw_engine_get$|rw_engine_members$|rw_engine_types$|rw_engine_call$|rw_anchor_list$|rw_game_status$|rw_game_log_tail$|rw_bridge_methods$|rw_steward_status$|rw_steward_explain$|rw_steward_stock_list$|search_|read_|find_source_files$|watch_|notebook_read$|skill_read$|skill_list$|journal_read$|score_history$|tool_list$|watcher_list$|run_python$|look$|rpc$|end_turn$|reply_to_operator$)")
 
 ROLES: dict[str, dict] = {
     "econ": {
         "title": "Economy",
-        "brief": "You run the economy: work priorities and schedules, growing zones and crops, stockpiles and storage filters, bills (cooking, butchering, crafting), hunting/tree-cutting/mining designations, hauling. Keep food days above 6, wood and steel stocked, nobody idle. Do not build structures, draft pawns, answer letters or edit skills; other streams do that.",
-        "allow": re.compile(r"^(rw_ui_set_work|rw_ui_set_work_many|rw_ui_set_schedule|rw_ui_zone|rw_ui_storage|rw_ui_add_bill|rw_ui_bill|rw_ui_designate|rw_ui_area|notebook_append)$"),
+        "brief": "You run the economy at director altitude. The steward already sets everyone's work priorities and its stock jobs already designate trees, plants, animals and ore toward their targets (read them in the Steward block / rw_steward_status). Your levers: stock targets (rw_steward_stock_set / add / remove / run), a posture with a duration (rw_steward_posture), growing zones and crops, stockpiles and storage filters, bills (cooking, butchering, crafting), schedules. Keep food days above 6, wood and steel stocked. Do not set per-pawn priorities (the Caretaker owns per-pawn overrides through rw_steward_pawn + rw_ui_set_work) and do not hand-designate what a stock job covers; raise its target instead. Do not build structures, draft pawns, answer letters or edit skills; other streams do that.",
+        "allow": re.compile(r"^(rw_ui_set_schedule|rw_ui_zone|rw_ui_storage|rw_ui_add_bill|rw_ui_bill|rw_ui_designate|rw_ui_area|rw_steward_stock_set|rw_steward_stock_add|rw_steward_stock_remove|rw_steward_stock_run|rw_steward_posture|rw_steward_settings|notebook_append)$"),
     },
     "build": {
         "title": "Builder",
-        "brief": "You are the architect: rooms, walls, doors, roofs, furniture placement, base extensions, power grids (generators, batteries, conduits with rw_ui_wire), deconstruction. Use rw_map_detail and anchors; name every site with rw_anchor_set; verify with dry runs. Do not change work priorities, draft pawns, answer letters or edit skills.",
+        "brief": "You are the architect: rooms, walls, doors, roofs, furniture placement, base extensions, power grids (generators, batteries, conduits with rw_ui_wire), deconstruction. Use rw_map_detail and anchors; name every site with rw_anchor_set; verify with dry runs. The steward's forestry/mining jobs supply wood and steel: if a build is short on materials tell the notebook, do not cut or mine by hand. Do not change work priorities, draft pawns, answer letters or edit skills.",
         "allow": re.compile(r"^(rw_ui_build|rw_ui_build_many|rw_ui_wire|rw_anchor_set|rw_anchor_delete|rw_ui_designate|rw_ui_zone|rw_ui_area|notebook_append)$"),
     },
     "guard": {
         "title": "Guardian",
-        "brief": "You keep people alive: threats and defense (draft, position, attack, retreat), fires, medical care and rescue, mood and mental-break prevention, hostility/medical policies, animals and prisoners, game speed during danger (rw_game_speed). Do not build, set work priorities, answer letters or edit skills.",
-        "allow": re.compile(r"^(rw_ui_draft|rw_ui_goto|rw_ui_attack|rw_ui_job|rw_ui_cancel_job|rw_ui_set_policies|rw_ui_order|rw_ui_orders_at|rw_ui_press|rw_ui_gizmos|rw_ui_animal|rw_ui_prisoner|rw_game_speed|rw_game_pause|notebook_append)$"),
+        "brief": "You keep people alive: threats and defense (draft, position, attack, retreat), fires, medical care and rescue, mood and mental-break prevention, hostility/medical policies, animals and prisoners, game speed during danger (rw_game_speed). During a raid, siege, fire or toxic fallout set a short posture with rw_steward_posture (e.g. label 'raid', hours 6, work Firefighter/Doctor up, targets hunting x0) instead of touching priorities; the steward applies it to every managed pawn. Do not build, set work priorities, answer letters or edit skills.",
+        "allow": re.compile(r"^(rw_ui_draft|rw_ui_goto|rw_ui_attack|rw_ui_job|rw_ui_cancel_job|rw_ui_set_policies|rw_ui_order|rw_ui_orders_at|rw_ui_press|rw_ui_gizmos|rw_ui_animal|rw_ui_prisoner|rw_game_speed|rw_game_pause|rw_steward_posture|notebook_append)$"),
     },
-    "steward": {
-        "title": "Steward",
-        "brief": "You are the steward: letters, quests and dialogs (answer every open one), research choice, trade, recruiting and prisoners, the operator's messages (reply first), and the colony's memory: keep the notebook current, edit skills, write tools and watchers, journal durable lessons, and decide the wake plan for the whole colony. You may end the episode if it is truly lost. Do not build, draft, or set work priorities.",
-        "allow": re.compile(r"^(rw_ui_letter|rw_ui_dialog|rw_ui_set_research|rw_ui_prisoner|rw_game_save|rw_game_speed|notebook_|journal_|skill_|tool_|watcher_|brain_|end_episode$)"),
+    "caretaker": {
+        "title": "Caretaker",
+        "brief": "You are the caretaker: letters, quests and dialogs (answer every open one), research choice (rw_steward_research queue, or rw_ui_set_research for one project now), trade, recruiting and prisoners, the operator's messages (reply first), and the colony's memory: keep the notebook current, edit skills, write tools and watchers, journal durable lessons, and decide the wake plan for the whole colony. The steward sets work priorities; when a pawn's priorities look wrong read rw_steward_explain first, and only then hand it over with rw_steward_pawn managed=false, set that one pawn's priorities with rw_ui_set_work, and hand it back with managed=true when the reason is gone. You may end the episode if it is truly lost. Do not build or draft; set a pawn's priorities only after rw_steward_pawn managed=false.",
+        "allow": re.compile(r"^(rw_ui_letter|rw_ui_dialog|rw_ui_set_research|rw_steward_research|rw_ui_set_work|rw_ui_set_work_many|rw_ui_prisoner|rw_game_save|rw_game_speed|rw_steward_pawn|rw_steward_explain|notebook_|journal_|skill_|tool_|watcher_|brain_|end_episode$)"),
     },
 }
+
+# The stream that handles letters, dialogs and the operator (the runner routes those to it).
+CARETAKER = "caretaker"
 
 
 def allow_for(role: str) -> Callable[[Tool], bool]:

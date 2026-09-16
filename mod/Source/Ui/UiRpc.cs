@@ -233,24 +233,38 @@ namespace RimBridge.Ui
 
         // ---------- Work / schedule / policies ----------
 
-        [Rpc("ui.set_work", "{pawn, priorities: {WorkTypeDef: 0-4}} 0 = disabled, 1 = highest; enables manual priorities mode")]
+        [Rpc("ui.set_work", "{pawn, priorities: {WorkTypeDef: 0-4}} 0 = disabled, 1 = highest; enables manual priorities mode. Takes the pawn out of steward management first (steward.pawn managed=true hands it back)")]
         public static JToken SetWork(JObject p)
         {
             Map();
             var pawn = Lookup.Colonist(P.Str(p, "pawn"));
             if (pawn.workSettings == null || !pawn.workSettings.EverWork) throw new RpcError("pawn cannot work");
-            Current.Game.playSettings.useWorkPriorities = true;
+            // Validate everything first: a failed call must leave the managed flag and the priorities untouched.
             var pri = P.Obj(p, "priorities") ?? throw new RpcError("missing priorities");
-            var applied = new JObject(); var skipped = new JArray();
+            var resolved = new List<(string key, WorkTypeDef wt, int v)>();
             foreach (var kv in pri)
             {
                 var wt = Lookup.DefOrNull(typeof(WorkTypeDef), kv.Key) as WorkTypeDef ?? throw new RpcError($"unknown work type '{kv.Key}'. Known: " + string.Join(", ", DefDatabase<WorkTypeDef>.AllDefs.Select(w => w.defName)));
-                int v = Math.Max(0, Math.Min(4, (int)kv.Value!));
-                if (pawn.WorkTypeIsDisabled(wt)) { skipped.Add(kv.Key + " (disabled for this pawn)"); continue; }
+                int raw;
+                try { raw = (int)kv.Value!; } catch { throw new RpcError($"priorities.{kv.Key}: value must be an integer 0-4"); }
+                resolved.Add((kv.Key, wt, Math.Max(0, Math.Min(4, raw))));
+            }
+            // The steward's scorer would clobber manual priorities on its next pass: mark the pawn unmanaged before writing.
+            RimBridge.Steward.ScorerGate.SetManaged(pawn, false);
+            Current.Game.playSettings.useWorkPriorities = true;
+            var applied = new JObject(); var skipped = new JArray();
+            foreach (var (key, wt, v) in resolved)
+            {
+                if (pawn.WorkTypeIsDisabled(wt)) { skipped.Add(key + " (disabled for this pawn)"); continue; }
                 pawn.workSettings.SetPriority(wt, v);
                 applied[wt.defName] = v;
             }
-            return new JObject { ["pawn"] = pawn.LabelShort, ["applied"] = applied, ["skipped"] = skipped };
+            return new JObject
+            {
+                ["pawn"] = pawn.LabelShort, ["applied"] = applied, ["skipped"] = skipped,
+                ["steward_managed"] = false,
+                ["note"] = "steward no longer sets this pawn's priorities; steward.pawn managed=true to hand back",
+            };
         }
 
         [Rpc("ui.set_schedule", "{pawn, hours: 24-char string using A=Anything S=Sleep W=Work J=Joy M=Meditate (hour 0 first)}")]

@@ -26,13 +26,20 @@ play:
   autosave: true
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
   # Sandbox / god mode is a manual toggle on the dashboard (free instant builds, all research, run marked assisted).
-  parallel: false          # dashboard toggle: calm steps fan out to 4 specialist streams (econ, build, guard, steward)
+  parallel: false          # dashboard toggle: calm steps fan out to 4 specialist streams (econ, build, guard, caretaker)
   parallel_max_calls: 10   # tool-call budget per worker stream in parallel mode
   parallel_manager: true   # a fast no-tools manager call assigns directives and skips idle streams before the fan-out
   parallel_worker_thinking: false   # workers execute the manager's directives without extended thinking (much faster)
   scenario: Crashlanded
   storyteller: Cassandra
   difficulty: Rough
-  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost]
+  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost, steward]   # steward = stock stalled/reached, posture expired (non-critical: waits out event_cooldown_hours)
+steward:
+  # The steward runs inside the mod every tick: the scorer sets work priorities for managed colonists, stock jobs
+  # designate trees/plants/animals/ore toward their targets. The model directs it (targets, posture) instead of micromanaging.
+  enabled: true            # runner calls steward.enable at new_game / recover_game; dashboard toggle "steward" flips it at runtime
+  scorer: true             # work-priority scorer (Free Will) for every managed colonist; steward.pawn managed=false takes one out
+  stock: true              # stock jobs (forestry, foraging, hunting, mining, livestock) keep counted stock at their targets
+  research_queue_default: []   # research defNames queued via steward.research on a new game (empty = the director chooses)
 dashboard:
   port: 8770

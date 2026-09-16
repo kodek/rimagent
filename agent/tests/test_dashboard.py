@@ -16,6 +16,9 @@ class FakeBridge:
     def screenshot(self, x=None, z=None, w=60, **_):
         raise RuntimeError("no game")
 
+    def call(self, method, **params):
+        raise RuntimeError(f"unknown method {method}")
+
 
 class FakeControls:
     def __init__(self):
@@ -35,6 +38,12 @@ class FakeControls:
 
     def set_no_pause(self, v: bool):
         self.calls.append(("set_no_pause", v))
+
+    steward = True
+
+    def set_steward(self, v: bool):
+        self.steward = v
+        self.calls.append(("set_steward", v))
 
 
 def _client():
@@ -100,3 +109,26 @@ def test_misc_endpoints():
     assert isinstance(c.get("/api/scores").json(), list)
     assert c.get("/api/git/log").status_code == 200
     assert c.get("/api/git/diff?sha=..%2Fx").status_code == 400
+
+
+def test_steward_tab_and_control():
+    c, _, controls = _client()
+    assert "Steward" in c.get("/").text and "loadSteward" in c.get("/").text
+    r = c.get("/api/steward")
+    assert r.status_code == 503 and r.json()["unavailable"] is True
+    r = c.post("/api/control", json={"action": "steward", "value": False})
+    assert r.json()["ok"] and controls.calls[-1] == ("set_steward", False)
+    assert c.get("/api/state").json()["controls"]["steward"] is False
+
+
+def test_steward_endpoint_returns_status_with_research():
+    class Bridge(FakeBridge):
+        def call(self, method, **params):
+            if method == "steward.status":
+                return {"enabled": {"scorer": True, "stock": True}, "posture": None, "pawns": [], "stock": [], "problems": []}
+            raise RuntimeError("no steward.research")
+
+    bus = Bus(log_file=False)
+    c = TestClient(create_app(bus, Bridge(), FakeControls()))
+    j = c.get("/api/steward").json()
+    assert j["enabled"] == {"scorer": True, "stock": True} and j["research"] is None

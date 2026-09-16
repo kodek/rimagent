@@ -101,7 +101,7 @@ class Registry:
         return names
 
     def add_bridge_methods(self, methods: list[dict[str, str]]) -> None:
-        """One tool per RimBridge RPC method (dots -> underscores, prefixed rw_)."""
+        """One tool per RimBridge RPC method (dots -> underscores, prefixed rw_). Docs in BRIDGE_DOC_NOTES are appended."""
         for m in methods:
             method = m["method"]
             name = "rw_" + method.replace(".", "_")
@@ -125,6 +125,16 @@ class Registry:
                 source="bridge",
                 group=method.split(".")[0],
             )
+        self.annotate_bridge_docs()
+
+    def annotate_bridge_docs(self, notes: dict[str, str] | None = None) -> None:
+        """Append agent-side notes to bridge tool descriptions (and their schema hint) without touching the call path."""
+        for method, note in (notes or BRIDGE_DOC_NOTES).items():
+            t = self.tools.get("rw_" + method.replace(".", "_"))
+            if t is None or t.source != "bridge" or note in t.description:
+                continue
+            t.description = (t.description.rstrip() + " " + note).strip()
+            t.schema = {**t.schema, "description": (t.schema.get("description", "") + " " + note)[:900]}
 
     # ---- hot loading ----
     def reload_brain(self) -> None:
@@ -210,6 +220,14 @@ class Registry:
             tb = traceback.format_exc(limit=4)
             return {"error": f"{type(e).__name__}: {e}", "trace": tb[-1200:] if t.source == "brain" else None}, False
 
+
+# Agent-side additions to bridge tool docs: what the steward already does, so the director does not undercut it.
+BRIDGE_DOC_NOTES: dict[str, str] = {
+    "ui.set_work": "NOTE: takes the pawn out of steward management (the steward stops setting its priorities until rw_steward_pawn managed=true); prefer rw_steward_posture for a temporary bias.",
+    "ui.set_work_many": "NOTE: takes every listed pawn out of steward management (rw_steward_pawn managed=true hands one back); prefer rw_steward_posture for a temporary bias.",
+    "ui.designate": "NOTE: the steward's stock jobs already designate trees/plants/animals/ore toward their targets; prefer rw_steward_stock_set (raise the target) over hand designation while that job is enabled. For a one-off tree use designator=cut (forestry adopts harvestwood designations and releases them when its target is met).",
+    "steward.settings": "NOTE: writes the RimBridge mod settings file, which persists across games and episodes (the notebook does not); prefer rw_steward_posture for a per-colony bias. A JSON null removes a globalWorkAdjustments key.",
+}
 
 _ALIASES = {"content": "text", "body": "text", "markdown": "text", "note": "text", "message": "text", "notes": "text", "filename": "file", "path": "file", "source": "code", "python": "code", "skill": "name", "title": "name", "query": "q"}
 

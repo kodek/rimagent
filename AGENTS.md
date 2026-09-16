@@ -12,10 +12,19 @@ Two halves in one repo:
 
 ## Bridge
 `POST 127.0.0.1:8765/rpc {"method":"state.summary","params":{}}`; `GET /health /methods /events?since= /screenshot?x=&z=&w=`.
-Method groups: game.* state.* map.* ui.* engine.* defs.* dev.*, see `[Rpc(name, doc)]` attributes in `mod/Source`.
+Method groups: game.* state.* map.* ui.* engine.* defs.* dev.* steward.*, see `[Rpc(name, doc)]` attributes in `mod/Source`.
 All Verse work runs on the main thread via `MainThreadQueue` (drained in a `Root.Update` postfix); request threads
 only parse/serialize. Never throw into Unity: every RPC error becomes `{ok:false,error}`. Namespaces `GameCtl`/`MapView`
 avoid clashes with `Verse.Game`/`Verse.Map`.
+- **Steward** (`steward.*`, `mod/Source/Steward/`, namespace `RimBridge.Steward`): two vendored engines that run every tick
+  without the LLM. `Scorer/` (Free Will port, MIT) writes work priorities for every *managed* colonist; `Stock/` (synchronous
+  rewrite of Colony Manager Redux, MIT) keeps stock jobs (forestry, foraging, hunting, mining, production, livestock) at
+  targets by designating work; `StewardRpc.cs` exposes status/enable/pawn/explain/posture/stock.*/settings/research,
+  `StewardTuning.cs` holds posture deltas and the per-pawn managed gate, `StewardLedger.cs` emits `stock_stalled` /
+  `stock_reached` / `posture_expired`. Both default ON and survive save/load. Rule: `ui.set_work` marks the pawn
+  unmanaged before applying and returns `steward_managed: false` (otherwise the scorer would clobber the change);
+  `steward.pawn managed=true` hands the pawn back. Nothing in steward.* marks the game assisted. Origins in
+  `THIRD_PARTY_NOTICES.md`; keep vendored headers, add "modified for RimBridge" lines.
 
 ## Agent
 - `rimagent play [--max-days N] [--seeds a,b] [--no-pause] -v`, `rimagent think` (one step), `rimagent tools`, `rimagent llm "hi"`, `rimagent seed [--distill]`.
@@ -30,3 +39,5 @@ avoid clashes with `Verse.Game`/`Verse.Map`.
 - Log from C# via `BridgeLog` (`[RimBridge]` prefix). Watch `~/Library/Logs/Ludeon Studios/RimWorld by Ludeon Studios/Player.log`.
 - Tool results are truncated (~8k chars); prefer narrow queries in tools and docs.
 - Config: `config.yaml` (generic) + `config.local.yaml` (gitignored: your LLM endpoint). Seeds, cadence, speeds live there.
+  `steward: {enabled, scorer, stock}` (all default true): the runner calls `steward.enable` at new_game/recover_game and
+  when the dashboard toggles it; the situation packet gets a "Steward" block from `steward.status`.

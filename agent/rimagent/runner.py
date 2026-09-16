@@ -70,7 +70,7 @@ class Controls:
         self.r.stop = True
 
     def set_parallel(self, value: bool):
-        """Dashboard toggle: calm steps fan out to four specialist streams (econ, build, guard, steward)."""
+        """Dashboard toggle: calm steps fan out to four specialist streams (econ, build, guard, caretaker)."""
         self.r.parallel = bool(value)
         self.r.bus.emit("log", {"text": "parallel mode ON: 4 specialist streams per calm step" if value else "parallel mode off: single stream"})
         self.r.bus.emit("status", {"parallel": bool(value)})
@@ -86,6 +86,14 @@ class Controls:
     @property
     def sandbox(self) -> bool:
         return bool(self.r.sandbox)
+
+    def set_steward(self, value: bool):
+        """Dashboard toggle: the in-mod steward (work-priority scorer + stock jobs). Off = the model micromanages again."""
+        self.r.apply_steward(bool(value), announce=True)
+
+    @property
+    def steward(self) -> bool:
+        return bool(self.r.steward)
 
     def say(self, text: str, remember: bool = True):
         """Operator message: shown in the feed, handed to the model (mid-step or next step), and wakes it.
@@ -130,12 +138,14 @@ class Runner:
         self.thinking = False
         self.sandbox = False
         self.parallel = bool(cfg["play"].get("parallel", False))
+        self.steward = bool((cfg.get("steward") or {}).get("enabled", True))   # desired state; apply_steward pushes it to the mod
         self._status_at = 0.0
         self._last_alive = time.time()
         self._alerts_at = 0.0
         self._seen_alerts: dict[str, int] = {}   # label -> tick last woken for it
         self._last_step_end_tick = 0
         self.critical_kinds = set(cfg["play"].get("critical_kinds", ["dialog", "danger", "manhunter", "hostile_group", "colonist_downed", "colonist_died", "mental_break", "building_lost"]))
+        self.critical_kinds.discard("steward")   # steward ledger events (stock stalled/reached, posture expired) are ordinary wakes, never interrupts
 
     # ---------- lifecycle ----------
     def run(self) -> None:
@@ -181,6 +191,7 @@ class Runner:
                 self.ctx.last_seq = int(st.get("seq", 0))
                 self.ctx.episode, self.ctx.seed = self.episode, self.seed
                 self.bus.emit("episode_start", {"episode": self.episode, "seed": self.seed, "resumed": True, "day": self.start_day})
+                self.apply_steward(self.steward)
                 self.force_think = "agent (re)started mid-game"
             return
         if st.get("state") == "loading":
@@ -212,6 +223,8 @@ class Runner:
         tracker.reset(); worlddiff.reset(); meta_tools_mod.reset_repl()
         if self.sandbox:
             self.apply_sandbox(True)
+        self.apply_steward(self.steward)
+        self.queue_default_research()
         self.bus.emit("episode_start", {"episode": self.episode, "seed": self.seed, "sandbox": self.sandbox})
         _save_episode({"seed": self.seed, "episode": self.episode, "start_day": self.start_day, "deaths": 0, "raids": 0, "last_improve_day": self.last_improve_day})
         self.force_think = "new game started"
@@ -238,6 +251,7 @@ class Runner:
                     self.bridge.wait_for("playing", 600)
             except BridgeError as e:
                 self.bus.emit("error", {"text": f"autosave load failed: {e}"})
+            self.apply_steward(self.steward)
 
     # ---------- main loop ----------
     def play_until_episode_end(self) -> None:
@@ -305,7 +319,7 @@ class Runner:
         if time.time() - self._status_at < 1.0:
             return
         self._status_at = time.time()
-        self.bus.emit("status", {**st, "episode": self.episode, "seed": self.seed, "phase": "thinking" if self.thinking else "playing", "deaths": self.deaths, "raids": self.raids, "next_wake_tick": self.next_wake_tick})
+        self.bus.emit("status", {**st, "episode": self.episode, "seed": self.seed, "phase": "thinking" if self.thinking else "playing", "deaths": self.deaths, "raids": self.raids, "next_wake_tick": self.next_wake_tick, "steward": self.steward})
 
     def poll_events(self) -> list[dict[str, Any]]:
         data = self.bridge.events(self.ctx.last_seq, 500)
@@ -464,6 +478,35 @@ class Runner:
         except BridgeError as e:
             self.bus.emit("error", {"text": f"sandbox toggle failed: {e}"})
 
+    def apply_steward(self, on: bool, announce: bool = False) -> dict[str, Any] | None:
+        """Push the steward switches to the mod: steward.enable {scorer, stock} per config when on, both off otherwise.
+        Defensive: a missing method or {ok:false} is logged and leaves the runner state as requested."""
+        self.steward = bool(on)
+        scfg = self.cfg.get("steward") or {}
+        want = {"scorer": bool(on and scfg.get("scorer", True)), "stock": bool(on and scfg.get("stock", True))}
+        result: dict[str, Any] | None = None
+        try:
+            got = self.bridge.call("steward.enable", **want)
+            result = got if isinstance(got, dict) else want
+            self.bus.emit("log", {"text": f"steward {'ON' if on else 'off'}: scorer={result.get('scorer', want['scorer'])} stock={result.get('stock', want['stock'])}"})
+        except Exception as e:  # noqa: BLE001  (BridgeError for unknown method / ok:false, anything else if the bridge is down)
+            self.bus.emit("error", {"text": f"steward.enable failed ({e}); the mod keeps its own default"})
+        self.bus.emit("status", {"steward": self.steward})
+        if announce:
+            self.force_think = "steward switched " + ("on: direct it through rw_steward_* (targets, posture); stop setting priorities by hand" if on else "off: you set work priorities and designations yourself again")
+        return result
+
+    def queue_default_research(self) -> None:
+        """config steward.research_queue_default -> steward.research {queue: [...]} on a new game (best effort)."""
+        queue = list((self.cfg.get("steward") or {}).get("research_queue_default") or [])
+        if not queue or not self.steward:
+            return
+        try:
+            self.bridge.call("steward.research", queue=queue)
+            self.bus.emit("log", {"text": "steward research queue: " + ", ".join(map(str, queue))})
+        except Exception as e:  # noqa: BLE001
+            self.bus.emit("error", {"text": f"steward.research failed ({e}); queue it yourself with rw_ui_set_research"})
+
     def usage_stats(self, since_seq: int | None = None) -> str:
         """Tool usage since the last improvement pass: counts, error rates, repeated call sequences (automation candidates)."""
         import collections
@@ -513,18 +556,18 @@ class Runner:
         def run(role: str):
             ctx_r = self.ctx.fork(role)
             ctx_r.extra["role"] = role
-            if role == "steward":
+            if role == roles_mod.CARETAKER:
                 ctx_r.extra["operator_inbox"] = self.operator_inbox
             if role == "guard":
                 ctx_r.interrupt_check = self.check_interrupts
             directive = directives.get(role)
-            user = msg + "\n\n" + roles_mod.brief_for(role) + (f"\n\n## Manager directive for you this step\n{directive}" if directive else "") + ("\n\n" + extra if role == "steward" and extra else "")
+            user = msg + "\n\n" + roles_mod.brief_for(role) + (f"\n\n## Manager directive for you this step\n{directive}" if directive else "") + ("\n\n" + extra if role == roles_mod.CARETAKER and extra else "")
             try:
                 results[role] = (ctx_r, think(ctx_r, user, hint + " " + role, trigger=f"{trigger} [{role}]", max_calls=int(self.cfg["play"].get("parallel_max_calls", 10)), tool_allow=roles_mod.allow_for(role), thinking=bool(self.cfg["play"].get("parallel_worker_thinking", False))))
             except Exception as e:  # noqa: BLE001
                 self.bus.emit("error", {"text": f"{role} stream failed: {e}"})
 
-        active = [r for r in roles_mod.ROLES if r not in skip] or ["steward"]
+        active = [r for r in roles_mod.ROLES if r not in skip] or [roles_mod.CARETAKER]
         if skip:
             self.bus.emit("log", {"text": "manager skipped streams this step: " + ", ".join(sorted(skip))})
         threads = [threading.Thread(target=run, args=(r,), name=f"stream-{r}", daemon=True) for r in active]
@@ -564,9 +607,10 @@ class Runner:
         system = ("You are the colony manager for an autonomous RimWorld agent. Four specialist streams act in parallel this step: "
                   + "; ".join(f"{k} = {v['title']}: {v['brief'].split('.')[0]}" for k, v in roles_mod.ROLES.items())
                   + ". Read the situation and reply with ONLY a JSON object: {\"priorities\": [\"...\" up to 3, most urgent first], "
-                  "\"directives\": {\"econ\": \"one or two sentences of concrete orders, or empty string\", \"build\": \"...\", \"guard\": \"...\", \"steward\": \"...\"}, "
+                  "\"directives\": {\"econ\": \"one or two sentences of concrete orders, or empty string\", \"build\": \"...\", \"guard\": \"...\", \"caretaker\": \"...\"}, "
                   "\"skip\": [roles with nothing worth doing this step], \"wake_in_hours\": number (3-24; low when something is developing)}. "
-                  "Be specific: name pawns, places, quantities. Resolve conflicts between roles here (e.g. who gets the wood). Never skip steward when there are open dialogs, letters or an operator message.")
+                  "Be specific: name pawns, places, quantities. Resolve conflicts between roles here (e.g. who gets the wood). Never skip caretaker when there are open dialogs, letters or an operator message. "
+                  "The in-game steward already sets work priorities and designates trees/ore/animals toward stock targets: direct it (targets, posture) rather than ordering per-pawn priorities.")
         try:
             reply = self.llm.chat([{"role": "system", "content": system}, {"role": "user", "content": packet + ("\n\n" + extra if extra else "")}], tools=None, thinking=False, max_tokens=900, temperature=0.3)
             text = reply.content.strip()
