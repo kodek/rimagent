@@ -2,13 +2,14 @@
 always: false
 description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work),
   when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling,
-  researching).
+  researching); also for adding bills to a new work table.
 name: work-priorities
 tags:
 - work
 - priorities
 - roles
 - steward
+- bills
 ---
 
 # Work priorities
@@ -56,10 +57,24 @@ The steward's scorer sets priorities from skills, passions, health and colony ne
 - Only take one pawn manual for a real blocker (e.g. literally nobody else can cook): `steward.pawn managed=false` + `ui.set_work`, note it, hand back with `managed=true`.
 - Audit order: raw food but no meals -> check `state.bills` on the stove/campfire (a missing CookMealSimple bill is the usual cause) BEFORE blaming priorities; then check the best cook isn't drowned in Hauling.
 
+## Production bills (a new work table is USELESS until its bill is added)
+A table with no bill shows work "available" but the pawn does nothing — this looks identical to a priority problem. **After a stove/butcher/stonecutter/art bench finishes building, add its bill.** Verified recipe defNames (RimWorld 1.6, read from `defs.get`):
+| Table def | recipe defName | mode | count |
+|---|---|---|---|
+| Campfire | CookMealSimple | TargetCount | 10 |
+| FueledStove / ElectricStove | CookMealSimple | TargetCount | 20 |
+| ButcherSpot | ButcherCorpseFlesh | Forever | – |
+| TableStonecutter | Make_StoneBlocksAny | Forever | – |
+| TableSculpting | Make_SculptureSmall / Make_SculptureLarge | TargetCount | 3 |
+Comfort meals (Fine/Lavish) and Pemmican are `(locked)` until their research; `Make_SculptureLarge` needs no research but 2.5x work.
+- `rw_ui_add_bill(thing=<id>, recipe="CookMealSimple", mode="TargetCount", count=20)` — `thing` needs the built table's **id** (find it with `map.find(kind=building, def="FueledStove")`), not a label.
+- **Pitfall (cost me clutter):** `ui.add_bill` does NOT dedupe — calling it twice stacks two identical bills (I ended up with a double ButcherCorpseFlesh). Use my tools `production_status` (one call: every table + its bills + duplicates + corpses + meat) and `ensure_bills` (adds only missing bills and deletes duplicate recipes; respects "stove present -> no campfire cooking bill"). The watcher `auto_bill` adds the standard bill the moment a production table is built.
+
 ## Audit triggers
-- Raw food but no meals -> nobody has Cooking, or the stove lacks a bill (rw_ui_add_bill).
+- Raw food but no meals -> nobody has Cooking, or the stove lacks a bill (`production_status` -> `ensure_bills`, not priorities).
 - Blueprints untouched for a day -> Construction 0 everywhere or materials forbidden (rw_ui_designate unforbid); also check the steward is not burying Construction under Hauling.
+- A new stove/butcher/stonecutter/art bench sits idle -> its bill is missing; run `ensure_bills`.
 - Items rotting outside or filth spreading -> Hauling or Cleaning 2 on one pawn temporarily.
 - New recruit -> rw_state_pawn, apply the matrix, move their best passion skill to 1 or 2.
 
-Sources: Work; Skills; Doctoring; Healroot; Devilstrand (plant); Solar generator; Hospital bed; Research Speed
+Sources: Work; Skills; Doctoring; Healroot; Devilstrand (plant); Solar generator; Hospital bed; Research Speed; RecipeDefs (defs.get)
