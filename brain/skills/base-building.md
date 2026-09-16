@@ -29,6 +29,17 @@ Materials: **Wood** 0.65x HP (195 HP wall), **100% flammable**, 0.7x work; **Ste
 
 **Rule:** first shelter in wood (fast, cheap); replace **walls** with stone as soon as blocks flow; keep **doors and furniture** wooden (fastest to open, safe inside non-flammable walls). Do not keep wood walls once electricity exists: a short circuit or dry thunderstorm burns the base. Stone wall sections act as fire breaks; fire crosses diagonal gaps, pawns cannot.
 
+## Clear the footprint before you wall it in
+Walling in a plot as-is leaves whatever was already sitting there (rock chunks, slag, dead plants, filth) as clutter
+on the new floor: it blocks movement, looks like rubble instead of a room, and pawns waste time pathing around it.
+Before (or right after) placing walls for a new room: `rw_map_find(kind="chunk", near=<centre>, radius=<half the room's diagonal>)`
+and `rw_ui_designate(designator="haul", things=[<chunk ids>])` (or `mine` for stone in the way) to clear it. Do this
+for every new room, not just the day-1 shelter. Filth is not a designation, there's no player "clean" order in
+vanilla; it's the automatic Cleaning work type (the steward scorer already prioritises it) — just make sure some
+managed colonist has Cleaning enabled, don't try to designate it.
+A cluttered floor and randomly-scattered furniture (a shelf here, a chunk there, no walking lanes) reads as an
+unplanned build even when the walls are correct — space furniture along walls with a clear path down the middle.
+
 ## Rooms and roofs
 - A room = area fully enclosed by walls/doors/coolers/rock; corners are optional (but leak more heat). Use `rw_ui_build` with `rect` for walls and `at` for a Door on the traffic side.
 - Roofs extend **6 tiles** from any wall/column, so interiors up to **12 wide** roof fully; wider needs interior columns/walls. Temperature control needs **>= 75% roofed**; under that the room snaps to outdoor temperature. 300+ unroofed tiles = "outdoors" (Slept outside, no room mood).
