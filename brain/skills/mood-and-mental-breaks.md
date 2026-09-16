@@ -35,6 +35,8 @@ After any mental break, the colonist gets **catharsis +40** (or +30 for minor). 
 
 `mood_triage` returns `catharsis_buffer` per flagged pawn so you can see this without reading each pawn individually.
 
+**`food_crisis_triage`** also checks all colonists for catharsis crashes in one call (along with food status) — use it when both food and mood are in crisis simultaneously (the common refugee-influx pattern).
+
 ## Simultaneous extreme-break crisis (episode 2 lesson)
 When **two or more colonists are simultaneously below their major threshold** (or one is at extreme and the other's catharsis is fading below major), the colony is in a death spiral:
 1. **No one can tend the other.** If both are in breaks, no one is tending the downed one, no one is building, no one is cooking.
@@ -84,29 +86,27 @@ Fix the biggest negative first. The usual hierarchy:
 | Badly malnourished | -26 | Food crisis; a starving colonist breaks fast, fix food before mood |
 
 ## Confined interior, the small-bedroom trap (verified day 10)
-A bedroom smaller than ~25 interior tiles gives "Confined interior" (-10). A 2-cell room is the worst case and is a real break trigger on its own. Always build bedrooms at least 5×5 interior (>= 25 tiles). Check room size with `rw_state_rooms`; if a colonist's bedroom is small, expand it rather than leaving the -10.
+A bedroom smaller than ~25 interior tiles gives "Confined interior" (-10). A 2-cell room is the worst case and a real break trigger on its own. Always build bedrooms at least 5×5 interior (>= 25 tiles). Check room size with `rw_state_rooms`; if a colonist's bedroom is small, expand it rather than leaving the -10.
 
 ## Common buffs
 - Beauty need >65% gives Pretty environment (+2.5 to +4.5).
 - Comfort >60% gives Comfortable; a normal bed is 0.75.
 - Recreation 70-85% = satisfied, below 30% = unfulfilled, 0 = starved.
-- Catharsis after a break: +40 (major/extreme) or +30 (minor), fades in ~2 days, plan for the drop.
+- Catharsis after a break: +30 (minor), +40 (major/extreme), fades over ~2 days.
 
-## Recreation
-- Falls 2.5%/hour, gains 36%/hour times activity power. Provide 2 recreation types under 15,000 wealth, 3 from 15,000-81,000.
-- Day 1: Horseshoes pin (10 stuff, 100 work, no research; trains Shooting; needs a standable cell 5 tiles away in line of sight). Chess table needs Complex furniture.
+## Watchers and tools
+- **`mood_watch`** watcher: fires on `day`, `colonist_downed`, and `mental_break` events. Checks every colonist's mood against their major threshold AND the catharsis-fade crash. Wakes the planner with a specific alert.
+- **`mood_triage`** tool: one-call triage for all below-minor-threshold colonists.
+- **`food_crisis_triage`** tool: combined food + mood triage (use when both are in crisis simultaneously, e.g. refugee influx).
 
-## What to build days 1-5
-1. Table (1x2 suffices for 3 pawns) plus stools, indoors, before the first meal.
-2. One Bed per pawn in its own enclosed room of at least 5x5 interior; three rooms beat one barracks by 4-5 mood each.
-3. Roof everything, light bedrooms and dining room, set Cleaning 3-4 on everyone.
-4. Horseshoes pin by the dining room, chess table when wood allows.
+## When a colonist is in a mental break
+- **NOT berserk (Wander_Psychotic, Wandering, etc.):** let it play out. The break ends in 1-3 days. Do NOT draft them. Do NOT try to tend them. Just keep the colony safe and let the catharsis kick in when it ends.
+- **Berserk (Berserk, WildMan):** draft everyone, keep clear, use blunt weapons only. A berserk colonist can only be stopped by blunt melee (no guns, no sharp weapons). If they are in the barracks, the damage will be severe.
+- **After the break ends:** the colonist gets catharsis (+30/+40). The mood will look fine for ~2 days. Compute the post-fade mood NOW and plan for the crash.
 
-## Responding to a break
-- Minor: sad wander, hide in room, food binge. Wait it out.
-- Major: daze, social drug binge, tantrum, targeted tantrum. Move them; draft others clear.
-- Extreme: berserk and worse. Draft the others and keep them clear (the combat order ignores colonists, so this one is yours); a berserker is only stopped by downing with blunt melee. Undraft afterwards, the order will not.
-- Two pawns in a social fight (one holding a gun) will shoot each other: draft both and `rw_ui_goto` them far apart.
-- Thoughts do not reset after a break: fix the largest negatives shown by `mood_triage`.
-
-Sources: Mood; Mental break; Mental Break Threshold; Thoughts; Rooms; Recreation; Horseshoes pin; Bed; Sleeping Spot; Apparel
+## Heatstroke and mood (episode 4 pattern)
+In dry biomes, rooms without coolers reach 37-38C in summer. This causes:
+- "Slept in the heat" (-4) every night
+- Heatstroke hediffs (severity 0.3-0.5) that compound with other debuffs
+- No power = no coolers = no fix until power is built
+**Prevention:** build a wood-fired generator + battery + cooler BEFORE the first hot night. Cost ≈ 200 steel + 2 components. If you cannot build power, accept the -4 mood and note it.

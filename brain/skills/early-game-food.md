@@ -5,7 +5,13 @@ description: Pull in when food stock is under ~10 days, when placing the first g
   how to cook (campfire vs stove, raw food, food poisoning). Also pull in when food_days
   is 0 or negative and you need to understand why the colony is starving.
 name: early-game-food
-tags: []
+tags:
+- food
+- cooking
+- crops
+- policy
+- hunting
+- refugee-influx
 ---
 
 # Early-game food
@@ -27,7 +33,7 @@ What each policy allows (by food category):
 | Fine | YES | YES | no | no | YES |
 | Simple | **NO** (explicitly disallowed) | no | no | no | YES |
 | Paste | no | no | no | YES | no |
-| Raw | no | no | no | no | YES |
+| Raw | no | no | no | YES | no |
 | Nothing | no | no | no | no | no |
 
 Key facts:
@@ -84,6 +90,17 @@ A campfire inside a small barracks (8x6 room) raises the room to **28-32C** in s
   3. **Add a cooler** in the barracks (requires Cooler research + steel). Overkill for early game.
 - **If you can't move the campfire yet:** accept the -4 mood but note it in the notebook so you don't forget to fix it.
 
+## Refugee influx food crisis (episode 4 pattern)
+When 10+ colonists join at once (refugee wave), food_days can drop to < 1 in a single step. The response sequence:
+1. **`food_crisis_triage`** (one call): food days, rice ETA, cooking bills, policy, mood flags — all in one.
+2. If `has_cook_bill` is false: **`cook_bill`** immediately.
+3. If `food_policy` blocks survival packs: **`food_policy_set(policy="Lavish")`** — one call, all colonists.
+4. **`rw_steward_stock_set(kind="hunting", target=800)`** and **`rw_steward_stock_run(kind="hunting")`** to force-designate safe animals now.
+5. **`rw_steward_stock_set(kind="foraging", target=400)`** to boost wild food.
+6. **`rw_steward_posture(label="food emergency", hours=8, work={"PlantCutting":0.5,"Growing":0.5,"Cooking":0.5,"Hauling":0.3})`** to bias the scorer toward food work.
+7. If rice is > 50% grown: it will self-correct within 1-2 days if the cooking bill is running and the policy is correct.
+8. **Do NOT** hand-designate hunts: the steward's hunting job does it. Only designate a specific animal if the job is stalled.
+
 ## Foraging
 Wild berry bushes give berries (14 days to rot). The steward's `foraging` job harvests them toward 150+25n; this bridges days 1-5 until the first rice comes in. In a crisis raise it: `rw_steward_stock_set(kind="foraging", target=400)` then `rw_steward_stock_run(id=)` for an immediate pass (no mood penalty).
 
@@ -98,4 +115,9 @@ Wild berry bushes give berries (14 days to rot). The steward's `foraging` job ha
 - `rw_ui_build` def **Campfire**: 20 wood, burns 10 wood/day, holds 20, must sit under a roof (rain burns extra fuel). `rw_ui_add_bill` "simple meal, do until you have 10-15". Campfire work speed factor is 0.5 (a 300-work meal takes 600); a fueled stove cooks 2x faster and unlocks fine meals.
 - Give Cooking to the highest-skill cook. Food-poison chance by Cooking level: 0 = 5%, 3 = 2%, 4 = 1.5%, 6 = 0.5%, 8+ = 0.15% or less, scaled by kitchen cleanliness and difficulty (Losing is Fun x1.2). Skill 3+ in a clean room already beats raw food. Nutrient paste (dispenser + power) is 300% efficient and never poisons.
 
-Sources: Rice plant; Potato plant; Corn plant; Nutrition; Food; Saturation; Growing zone; Simple meal; Meals; Campfire; Food Poison Chance; Hunt; Hunting Stealth; Food production; Raw food; Berries; Butcher spot; FoodRestrictionDatabase.cs
+## One-call triage tools
+- **`food_crisis_triage`**: combined food + mood triage in one call. Returns food days, rice ETA, cooking bills, policy check, mood flags (catharsis crashes), and a recommended action list. Use instead of the 3-call sequence `mood_triage + food_outlook + cook_bill`.
+- **`food_outlook`**: food-only verdict (no mood). Use when you just need the food side.
+- **`cook_bill`**: sets the cooking bill. Use when `food_crisis_triage.has_cook_bill` is false.
+
+Sources: Rice plant; Potato plant; Corn plant; Nutrition; Food; Saturation; Growing zone; Simple meal; Meals; Campfire; Food production; Raw food; Berries; Butcher spot; Food production; FoodRestrictionDatabase.cs

@@ -1,30 +1,24 @@
 def watch(ctx, events):
-    """On day tick OR colonist_downed: check every colonist's mood against their
-    major-break threshold, INCLUDING the catharsis-fade crash.
+    """On day tick, colonist_downed, OR mental_break: check every colonist's mood
+    against their major-break threshold, INCLUDING the catharsis-fade crash.
 
     The catharsis-fade crash is the #1 off-guard pattern: after a mental break a
     colonist gets a +40 (major/extreme) or +30 (minor) catharsis buff that fades
     over ~2 days. While it's active their displayed mood looks fine (e.g. 50%)
-    even though the underlying debuff (alcohol withdrawal -35, malnutrition -26)
-    is still there. When the buff fades, mood crashes to (raw_mood - catharsis)
-    and can cross the major threshold.
+    even though the underlying debuff is still there. When the buff fades, mood
+    crashes and can cross the major threshold.
 
-    So for each colonist we compute:
-      raw_mood          = displayed mood (percentage 0-100)
-      catharsis_value   = the positive mood of the 'Catharsis' thought (0 if none)
-      post_fade_mood    = raw_mood - catharsis_value
-    and flag when raw_mood < major_threshold  OR  (catharsis present AND
-    post_fade_mood < major_threshold). The second case is the pre-crash window:
-    fix the cause NOW, not after the crash.
-
-    Also fires on colonist_downed because a downed colonist at low mood will
-    break the moment they wake up.
+    Fires on:
+      - day tick (routine check)
+      - colonist_downed (a downed colonist at low mood will break on waking)
+      - mental_break (the break just happened; check the OTHER colonists for
+        catharsis crashes and the breaker's post-break state)
     """
     out = []
     check_all = False
     for ev in events:
         kind = ev.get("kind")
-        if kind in ("day", "colonist_downed"):
+        if kind in ("day", "colonist_downed", "mental_break"):
             check_all = True
     if not check_all:
         return out
@@ -48,12 +42,11 @@ def watch(ctx, events):
                 path=f"Pawn:{name}.mindState.mentalBreaker.BreakThresholdMajor",
             )
             if isinstance(t, (int, float)):
-                # BreakThresholdMajor is a fraction (0.20 = 20%), convert to percentage
                 threshold = t * 100
         except Exception:
             pass
         if threshold is None:
-            threshold = 28.0  # Losing is Fun + neurotic fallback (percentage)
+            threshold = 27.0  # Losing is Fun + neurotic fallback
 
         # catharsis value from per-pawn thoughts
         catharsis = 0
@@ -88,8 +81,7 @@ def watch(ctx, events):
                     f"CATHARSIS CRASH IMMINENT: {name} looks fine at {raw_mood:.0f}% "
                     f"but has +{catharsis:.0f} catharsis that will fade -> post-fade "
                     f"~{post_fade:.0f}% (< major threshold {threshold:.0f}%). "
-                    f"Fix the underlying debuff NOW (alcohol withdrawal? malnutrition? "
-                    f"confined interior?) before the crash. Run mood_triage."
+                    f"Fix the underlying debuff NOW. Run mood_triage."
                 ),
                 "wake": True,
             })

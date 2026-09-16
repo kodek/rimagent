@@ -71,3 +71,5 @@
 - [2026-09-16 14:28] spawn 20 pawns and recruit them
 
 - [2026-09-16 17:06] Delete all buildings and rebuild, none of the ones you built now are functinal
+
+- [2026-09-16 17:53] so... how many trees do you count on the map? And what blueprints need wood? Do you think you should build from something else? How do you learn from this for the future?
