@@ -1,27 +1,15 @@
-# Episode 1, seed rimagent-1 — plan
+# Colony notebook, episode 1, seed rimagent-1
 
-Colonists (Crashlanded, temperate forest, 2C spring):
-- Gideon Human1001: Melee 8!!, Social 6!, Medicine 5!, Plants 4!, Shooting 3. Traits Wimp, Jogger. -> revolver (equipped day0)
-- Ateron Human1004: Melee 11!!, Social 9!, Intellect 7!, Crafting 4. Brawler, Recluse, NightOwl. -> plasteel knife + flak helmet
-- Kuhn Human1007: Medicine 9!!, Intellect 9!!, Crafting 8!!, Construction 4!, Shooting 4!. Nimble, Industrious, Ascetic. -> bolt-action rifle (equipped day0)
+(new game; nothing decided yet)
 
-BASE (home center [131,127]):
-- Core room A: walls rect [126,122,11,9] wood, door at [131,122] (S side). Interior x127..135, z123..129. Beds at (134,123),(134,125),(134,127) rot E; campfire (133,126).
-- Main stockpile: rect x127..133, z123..129 (col x131 removed for corridor) ~28 cells, priority Important.
-- Room B (east): walls [137,122,11,1] N, [137,130,11,1] S, [147,123,1,7] E, door at [136,126] connecting to A. Simple research bench at [139,125].
-- Rice field "rice1": [128,132,7,6] = 42 cells, Plant_Rice.
-- All trees cut in [126,122,22,10] (80 designated).
+Day 0, 6 Aprimay 5500. Crashlanded, temperate forest, spring, home_center ~[127,110].
+Colonists: Bat (Human570) Con 8!!/Plants 7!! - rifle; Kalie (Human573) Social 9!!/Med 7!!/Craft 5!! - INCAPABLE OF VIOLENCE, no weapon; Josephine (Human576) Art 14!!/Melee 13!! - plasteel knife.
+Done: main stockpile [119,106,9,6] (~54 cells, N of camp); rice1 growing zone [128,112,8,7] (56 cells) + rice crop; unforbid rect [116,102,16,14] (0 applied, drops were already unforbid); equipped rifle/knife; campfire built at [128,103]; stool x2 + table(2x2c) + simple research bench blueprints at z100-103; forestry target raised to 800, posture "day0 build" (Con +0.5) for 24h; research queue: Batteries (current) then SolarPanels.
+SUSPECT: the two `room()` calls for the shelter (walls rect [119,97,11,9] wood, door at [124,97], beds [120,98],[120,100],[120,102]) reported "placed" with no failures but the 'alert: Need colonist beds' fired and no walls appear in map_view(buildings) - VERIFY with rw_map_find(kind=building, def="Wall") and rw_map_find(kind=blueprint) next step. If absent, rebuild with rw_ui_build_many.
+Locations: loose steel/wood pile at [129,96]-[133,92] (~111 steel, 150 wood); more steel [177,75-78] (~211), [82,164] (~201), [235,232] (~104); survival meals at [35,17] and [119,222] forbidden.
+Alerts: need beds (High), need recreation variety (Med), need research bench (Med).
+Next: finish shelter, beds, then stone walls / defenses, foraging+hunting stock, cook bill on campfire.
 
-Research: current Batteries; queue SolarPanels, Pemmican, Devilstrand, Smithing.
+Day 1 15h: shelter is UP but the ROOM IS NOT ENCLOSED YET - door at [124,97] built, north door at [124,105] still a frame, so beds/campfire count as "outside" (Kalie slept outside+on ground+in cold, -12 mood, mood 45). Posture "shelter up" (Construction +0.6, Hauling -0.4) for 16h to finish the frame. Beds built at [120,98]/[120,100]/[120,102] rot E, owned by Bat/Kalie/Josephine; campfire [128,103], table+2 stools [123-126,100], research bench [124,103], horseshoes pin [133,102]. Rally set [121,99,6,4]. Wood 420, steel 413, meals 41, food_days 8.9. Research queue: Batteries(current) > SolarPanels > Pemmican > Smithing. NEXT: confirm room enclosed (room_digest shows a real room, no "furniture not in room"), then build separate bedrooms / outer wall + killbox before day 5 raid.
 
-Steward: forestry target 800 (clears build area), foraging 225, hunting 525/100, mining 300. Rally set [128,123,8,4].
-
-LOOT (forbid/unforbid): steel ~900 in base area (19 stacks x75), 500+300 silver, 30 components, 30 medicine, 50 packaged meals at ~[130,122]-[134,131]. Remote forbidden steel: [173,136] x46, [57,105] area x~240, [38,208] area x~222, [239,29] area x~212. 4 survival meals at [21,81].
-
-NEXT CHECKS: walls built? beds built? stockpile hauling steel? Kuhn research. Then beds/tables, batteries+solar power, kill box at south door.
-
-Day 0 21h: base nearly enclosed (walls x126/z122/z130 built; south of roomB x136-147 still frames). Research bench BUILT at [139,125]. Campfire [133,126] with CookMealSimple bill target 22 but 0 cooked — nobody has Cooking above 4 (Gideon 0, Ateron 4, Kuhn 0); steward gives everyone Hauling 1 because items deteriorate outside. Set posture "warmup" 24h: Construction +0.4, Cooking +0.5, forestry x1.5.
-WARM CLOTHES (High alert): parkas need CLOTH/wool, not leather (Make_Apparel_Parka = 80 cloth). Sowed cotton1 zone [138,137,6,6] (36 cells, cut 13 plants in it). Built HandTailoringBench blueprint [143,127] rot S (75 wood). NEXT: when built add bills Make_Apparel_Parka x3 + Tuque; when Batteries done build solar+battery+Heater (50 steel/1 comp) in room A.
-Stockpile "main" extended +35 cells ([142,123,5,7]) = 62 cells total (was full). Monolith letter closed.
-
-Improvement pass (day 1): added tools build_report/food_report/room (brain/tools/colony_ops.py) and watcher raid_prep (raid/fire/downed -> clock to 1x + wake). Tightened skills base-building (ui.build REQUIRES explicit stuff; build_many layouts) and work-priorities (steward Hauling-1 artifact + posture fix; audit stove bill before priorities). Bridge was unreachable at the start of this pass (connection refused) - no colony changes made, as instructed. Next step: first check rw_state_summary, wall frames closed?, meals cooked?, parka/tuque bills when tailoring bench is built.
+Automation pass (day 1): added tool `step_brief` (one call -> date/food_days/mood/blueprints+frames/alerts/designations/rooms/key_stocks with a notes verdict) and watcher `shelter_guard` (wakes me on "slept outside/on ground/in the cold" or "needs a bed" ledger lines — the half-finished-shelter trap). Tightened base-building skill: verify enclosure from state (room_digest shows Barracks + temp, blueprints==0 and frames==0), never from the build result; day-0 crashlanded shelter that worked = wood walls [119,97,11,9], door (124,97), 3 beds, interior 63 cells, temp 28C.

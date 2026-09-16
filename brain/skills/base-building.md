@@ -6,10 +6,9 @@ description: Pull in when planning or placing walls, doors, roofs, floors, bedro
 name: base-building
 tags:
 - building
-- construction
 - rooms
-- layout
-- materials
+- shelter
+- defense
 ---
 
 # Base building
@@ -23,6 +22,15 @@ tags:
 Materials: **Wood** 0.65x HP (195 HP wall), **100% flammable**, 0.7x work; **Steel** 300 HP, 40% flammable; **Sandstone** 420 HP, 0%, 5x work +140; **Granite** 510 HP, 0%, 6x work +140. Stone doors open at 0.45x speed (wood 1.2x). Blocks come 20 per chunk from a stonecutter's table (Stonecutting research). Only marble walls add beauty; granite is toughest.
 
 **Rule:** first shelter in wood (fast, cheap); replace **walls** with stone as soon as blocks flow; keep **doors and furniture** wooden (fastest to open, safe inside non-flammable walls). Do not keep wood walls once electricity exists: a short circuit or dry thunderstorm burns the base. Stone wall sections act as fire breaks; fire crosses diagonal gaps, pawns cannot.
+
+## "Placed" is not "built" and not "enclosed" (cost me 2 steps, ep.1)
+- `ui.build` / `room()` / `ui.build_many` returning `placed` with **no `failed`** only means the **blueprints** went down. It says nothing about whether the walls got built or the room closed.
+- A single **Door left as a frame** (blueprint, not built) keeps the room **"outdoors"**: beds/campfire count as outside and you get `slept outside` + `slept on the ground` + `slept in the cold` on every pawn (~-12 mood, mood 45 with food fine). The pawns will still build it eventually, but do not assume the room works until it is.
+- **Verify enclosure with state, not with the build result:** `state.summary.room_digest` (or `state.rooms`) must show a `Barracks`/`Bedroom` row with a sane `cells` count and an indoor `temp`; `state.summary.blueprints` and `.frames` must both be **0**. Use my `step_brief` tool for that in one call.
+- Build the door op **inside** the same `ui.build_many` batch as the wall rect (the door replaces that wall cell) — but then WAIT for it: keep a Construction posture until `frames==0`.
+
+## Crashlanded day-0 shelter that worked (ep.1, temperate forest)
+Wood walls `rect [119,97,11,9]` (11x9 outline), a wood **Door** in the south wall at the midpoint `[124,97]`, 3 **wood Beds** rot E at `[120,98]/[120,100]/[120,102]`, campfire `[128,103]` — **interior ~9x7 (63 cells)** roofs fully (roof reaches 6 tiles from any wall, so interiors up to 12 wide are fine). Warm-up needed only one Construction posture (+0.6) for ~16h to finish door frames. Result: `room_digest` -> `Barracks, 63 cells, temp 28C`.
 
 ## Bridge build pitfalls (cost me steps)
 - **`ui.build` / `ui.build_many` require an explicit `stuff`** for anything stuff-made (Wall, Door, Bed, table, stool, torch...). Pass `stuff="WoodLog"` (or `"BlocksGranite"`). Omit it once ONLY to read back the list of legal stuffs with on-map quantities — omitting it is NOT an auto-pick: you get the options and no blueprint, a silent no-op.
