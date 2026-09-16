@@ -53,7 +53,7 @@ One call: `mood_triage()` returns for every colonist below their **minor** thres
 Fix the biggest negative first. The usual hierarchy:
 1. **Alcohol/drug withdrawal (-35)**, finish Brewing research, build FermentingBarrel, make beer. No other fix.
 2. **Malnutrition (-26)**, food crisis; fix food before mood. **Check the food policy first** (see early-game-food skill).
-3. **Killed innocent animal (-15)**, hunt sparingly, rotate hunters.
+3. **Killed innocent animal (-15)**, keep the steward's meat target low (150) so it hunts sparingly; the scorer rotates hunters.
 4. **Confined interior (-10)**, expand bedroom to ≥5×5 interior.
 5. **Rotting/observed corpse (-6)**, haul to dump. **Desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox mode) or move the dump zone far from base.
 6. **Darkness (-5), Unsightly (-5), Tattered apparel (-5)**, light, clean, tailor.

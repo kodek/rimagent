@@ -1,8 +1,8 @@
 ---
 always: false
-description: Pull in before designating hunt or tame on any wild animal, when a predator
-  or manhunter pack is on the map, or when deciding which animals to keep, pen, train
-  or butcher.
+description: Pull in before changing the steward's hunting target or hunt_predators,
+  before designating tame on any wild animal, when a predator or manhunter pack is on
+  the map, or when deciding which animals to keep, pen, train or butcher.
 name: animals-and-hunting
 tags:
 - animals
@@ -33,12 +33,12 @@ Meat = 140 x body size (butcher spot 70%; kills by damage 66%). Revenge chance t
 | Grizzly bear | 50% | 30% | 2.15 / 301 | 80% | Predator, 7 s stun, power 200 |
 
 ## Hunting rules
-1. Ranged only: rw_ui_designate hunt on one animal at a time (rw_map_find kind animal). Hunters shoot from max range, finish the downed animal and haul it. Melee provokes any species.
-2. Prefer 0% revenge species (deer, elk, boar, turkey). Never hunt predators with one pawn.
-3. Do not hunt while rw_state_threats shows hostiles, in rain or snow (accuracy penalty), or into a muffalo herd. Wounded animals bleed out; do not chase them.
+1. The steward's `hunting` job designates animals toward the meat target (300+75n) and the leather target (100), safe species first, no predators (`hunt_predators=false`), never within 30 cells of hostiles. You set targets (`rw_steward_stock_set(kind="hunting", target=)`), not animals; `rw_ui_designate hunt` only for one specific animal (a wounded one at the door, a revenge-free target the job skipped). Only ranged pawns hunt; hunters shoot from max range, finish the downed animal and haul it. Melee provokes any species.
+2. Prefer 0% revenge species (deer, elk, boar, turkey); restrict the job with `allow=["Deer","Elk"]` if it keeps picking herd animals. Never set `hunt_predators=true` with one shooter.
+3. Suspend hunting while rw_state_threats shows hostiles (`rw_steward_stock_set(kind="hunting", suspended=true)` or posture `defend`), in rain or snow (accuracy penalty), or into a muffalo herd. Wounded animals bleed out; do not chase them.
 4. **Distance is not a concern.** (Operator tip, episode 3: "anything on the map is fair game, who cares how far away animals are.") Hunt any animal on the map regardless of distance. The 30-cell rule was removed.
 5. **Butcher spot is mandatory.** (Operator tip: "always build a butchering spot otherwise hunting is wasted!") Every base must have a TableButcher with a ButcherCorpse bill set. If you hunt an animal and there is no butcher table, the meat is lost. **Always set a bill on the butcher table** (rw_ui_add_bill thing=<butcher table> recipe="ButcherCorpse" mode="TargetCount" count=20). Check for existing bills before placing new ones (operator tip: "check for existing bills before placing them as campfire has many dupes").
-6. There are plenty of animals on the map. If food_days is low, hunt aggressively.
+6. There are plenty of animals on the map. If food_days is low, raise the meat target and force a pass (`rw_steward_stock_run`); a `stock_stalled` on hunting means no safe target in radius: raise `max_radius` to 0 (whole map).
 
 ## Predators
 Wolves, cougars and bears hunt anything smaller than themselves, pets and colonists included, when no meat or corpses are nearby. Their first strike stuns, and they keep attacking downed prey.
@@ -53,7 +53,7 @@ Pack points are 40% above a raid's; only fence-passing species are picked. They 
 ## Taming and training
 - Tame chance multiplier is 2 x (1 - wildness): dogs/chickens 2x, alpaca 1.5x, muffalo 0.8x, deer 0.5x, bear/cougar 0.4x, wolf 0.3x. Bear, wolf and cougar attack 30% of the time on failure. Handlers need non-meal food matching the diet.
 - Tame early: alpaca (wool, caravans, easy), muffalo (wool, pack animal), chickens (population doubles every ~5.7 days, eggs keep 15 days), labrador or husky (0% wildness, advanced trainability).
-- Animals above 10.1% wildness lose training and tameness unless penned; keep a handler on Animals (rw_ui_set_work).
+- Animals above 10.1% wildness lose training and tameness unless penned; the scorer gives Handling to the best Animals skill once tamed animals exist (check `rw_steward_status`). Cap a breeding herd with `rw_steward_stock_add(kind="livestock", target=6, allow=["Chicken"])`.
 - Training: Guard (3 steps) follows a master; Attack (5) can be released on enemies; Rescue (2) and Haul (7) need advanced intelligence (dogs, wolves, cougars, bears). Attack-capable animals add 8% of combat power to raid points.
 - Hunger per day: muffalo/elk 0.535, husky 0.5, alpaca 0.275, chicken 0.14; 1 hay or meat = 0.05 nutrition.
 

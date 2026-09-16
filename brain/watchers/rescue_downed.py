@@ -3,11 +3,10 @@ def watch(ctx, events):
 
     Picks a healthy, non-drafted colonist (not the downed one), preferring the
     highest Medical skill, and issues a rescue order. Wakes the planner for
-    medical setup. top_skills is a STRING like "Medicine 8!!", parse it, don't
-    iterate it as a list.
+    medical setup.
 
-    If the rescue order fails (no bed in safe temperature, sealed room), the
-    planner is woken with specific guidance.
+    Also checks if a bed exists in safe temperature before issuing the order;
+    if not, alerts the planner to place a bed blueprint in safe ground first.
     """
     import re
     out = []
@@ -40,22 +39,42 @@ def watch(ctx, events):
         candidates.sort(key=med_score, reverse=True)
         rescuer = candidates[0]
 
+        # Check if a bed exists (beds within radius 40 of home)
+        try:
+            beds = ctx.bridge.call("map.find", kind="building", **{"def": "Bed"}, limit=20)
+            bed_count = len(beds.get("things") or [])
+        except Exception:
+            bed_count = 0
+
         out.append({
             "type": "action",
             "method": "ui.order",
             "params": {"pawn": rescuer["name"], "at": downed_id, "label": "rescue"},
-            "note": f"{rescuer['name']} rescuing {downed_name}",
+            "note": f"{rescuer['name']} rescuing {downed_name} ({bed_count} beds found)",
         })
-        out.append({
-            "type": "alert",
-            "text": (
-                f"{downed_name} downed - {rescuer['name']} sent to rescue. "
-                "If the rescue order fails (no bed in safe temperature, or sealed room): "
-                "(1) check rw_state_base for TRAPPED colonists, "
-                "(2) deconstruct blocking walls if sealed, "
-                "(3) place a bed blueprint in safe ground and have a builder construct it, "
-                "(4) check medical policy and set Doctor priority 1."
-            ),
-            "wake": True,
-        })
+
+        if bed_count == 0:
+            out.append({
+                "type": "alert",
+                "text": (
+                    f"{downed_name} downed - NO BEDS FOUND. "
+                    "Place a bed blueprint in safe ground immediately "
+                    "(rw_ui_build def=Bed at a safe cell outside the fire zone). "
+                    f"{rescuer['name']} is rescuing but will fail without a bed. "
+                    "Check rw_state_base for TRAPPED colonists."
+                ),
+                "wake": True,
+            })
+        else:
+            out.append({
+                "type": "alert",
+                "text": (
+                    f"{downed_name} downed - {rescuer['name']} sent to rescue "
+                    f"({bed_count} beds available). "
+                    "If the rescue order fails: (1) check rw_state_base for TRAPPED colonists, "
+                    "(2) deconstruct blocking walls if sealed, "
+                    "(3) check medical policy and set Doctor priority 1."
+                ),
+                "wake": True,
+            })
     return out

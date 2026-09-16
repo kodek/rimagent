@@ -64,7 +64,7 @@ When `rw_state_threats` shows a mech with `LordJob_SleepThenAssaultColony` (or a
 
 **Rule: build a wood-fired generator + battery + 2 mini-turrets BEFORE the first raid.** This is a day-0 priority, not a day-10 luxury. The generator costs 100 steel + 2 components; each turret costs 30 stuff + 70 steel + 3 components; the battery costs 70 steel + 2 components. Total ≈ 400 steel + 8 components. Crashlanded loot has ~1,450 steel. If you do not have turrets by the time threat points exceed 100, you are already in danger.
 
-**In god mode / sandbox:** spawn turrets directly with `rw_dev_spawn` (def="Turret_Gun") at the approach lane. This is the fastest way to get defense in a sandbox game.
+**In god mode / sandbox:** spawn turrets directly with `rw_dev_spawn` (def="Turret_MiniTurret") at the approach lane. This is the fastest way to get defense in a sandbox game. Note: the defName is `Turret_MiniTurret`, not `Turret_Gun`.
 
 ## Day 8-10 raid-prep checklist (3-colonist colony, walled barracks)
 By day 8 you should have:
@@ -80,23 +80,10 @@ By day 8 you should have:
 
 **On the raid letter:**
 1. `rw_state_threats` → note raider type, count, distance, and approach direction.
-2. `rw_ui_draft` every violence-capable pawn BEFORE enemies are in range.
-3. `rw_ui_goto` shooters to the door corners; melee pawn to the outside gap.
-4. `rw_ui_attack` to focus the nearest raider or the one with a gun.
-5. `rw_game_speed(speed=1)`, slow the fight down for precise orders.
-6. After the raid: `rw_ui_draft(drafted=false)` for all, haul loot, capture downed raiders, rebuild traps, repair walls.
+2. **The `hostile_draft` watcher auto-drafts all colonists and positions them at home center.** Reposition to the door cell with `position_shooters(cell=[door_x, door_z])` — one call instead of N `rw_ui_goto` calls.
+3. `rw_ui_attack` to focus the nearest raider or the one with a gun.
+4. `rw_game_speed(speed=1)`, slow the fight down for precise orders.
+5. After the raid: `undraft_after_fight` watcher auto-undrafts all colonists. Haul loot.
 
-## Drafting checklist
-1. On the letter: rw_state_threats, then rw_ui_draft every violence-capable pawn BEFORE enemies are in range. Drafted pawns ignore needs, so feed and rest them first if time allows.
-2. rw_ui_goto shooters to wall corners or sandbags facing the approach, 1 tile apart. Up to 3 melee pawns stand just outside the door gap (not in it) to force a 1v3.
-3. Fire at will handles targeting; rw_ui_attack to focus grenadiers or the nearest melee rusher. Never chase fleeing raiders.
-4. Drag wounded out of the line of fire at once (a bleeding pawn has ~2 hours). Undraft when the raid flees so pawns eat, sleep and tend.
-5. After: haul loot, capture downed raiders, rebuild traps, repair walls.
-
-## First raid with 3 colonists
-Expect 1-2 poorly armed raiders (35-50 points). Before day 10: walled bedroom block with one door, 3-5 wood spike traps in the approach lane, a chunk or sandbag line, best gun on the best Shooting pawn. Fight from the doorway, others beside a wall corner; never fight in the open.
-
-## Desert biome note
-In a desert biome wood is scarce (~150 logs total). Budget it: keep the day-1 shelter in wood (fast, cheap), but (a) build a 2-wide steel/stone fire break between the campfire/kitchen and the beds, (b) put at least one bed OUTSIDE the main building as a rescue target, and (c) only convert the walls adjacent to the fire source to steel/stone first. Do not queue a full steel re-wall until wood is no longer needed for beds/doors/research bench.
-
-Sources: Raid points; Raider; Pirates/Pawns; Tribes/Pawns; Defense tactics; Defense structures; Cover; Sandbags; Spike trap; Mini-turret; Drafting
+## Turret defName
+The correct defName for the mini-turret is `Turret_MiniTurret` (not `Turret_Gun`). Use `rw_defs_search(query="turret")` to verify.

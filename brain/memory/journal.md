@@ -73,3 +73,12 @@ Operator tips (episode 3): "always build a butchering spot otherwise hunting is 
 
 ## 2026-09-16 13:35 (episode 2): Large refugee influx (22 colonists) = 500 threat points by day 1
 When 19+ refugees join at once (as in episode 3), threat points jump to ~500 by day 1 (pawn points scale with colonist count). This means a 500-point raid (≈ 10-12 pirates with guns) is coming within days. Without turrets, the colony cannot defend. Rule: if 10+ colonists join at once, treat it as a raid emergency from day 0 — build turrets and a power grid immediately, not as a day-10 luxury. In god mode, spawn turrets directly.
+
+## 2026-09-16 13:43 (episode 3): Automation pass: position_shooters tool + improved hostile_draft watcher
+Mid-game improvement pass (day 1, episode 3):
+1. Created `position_shooters` tool: one call issues rw_ui_goto for all drafted colonists to a target cell. Collapses the x39 rw_ui_goto pattern into one call. Usage: position_shooters(cell=[door_x, door_z]).
+2. Updated `hostile_draft` watcher: now also issues ui.goto to home center for each drafted pawn (default position). Planner repositions to the actual door cell with position_shooters.
+3. Created `set_bill` tool: one call sets a bill on any station (butcher, research, drug lab), checks for existing bills first to avoid duplicates. Replaces the x11 rw_ui_bill pattern. Usage: set_bill(station="ButcherTable1234", recipe="ButcherCorpseFlesh", mode="Forever").
+4. Updated `rescue_downed` watcher: now checks bed count before issuing the rescue order. If no beds exist, alerts the planner to place a bed blueprint first (the #1 cause of failed rescue orders).
+5. Updated `defense-basics` skill: added position_shooters reference, corrected Turret_MiniTurret defName (not Turret_Gun), added the "on the raid letter" workflow using the new tools.
+Key lesson: rw_ui_order had 11/14 errors (79% failure) — most were failed rescue orders with no beds in safe temperature. The rescue_downed watcher now checks bed count first.

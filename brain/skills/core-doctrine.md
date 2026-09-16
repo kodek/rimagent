@@ -1,8 +1,8 @@
 ---
 always: true
-description: How rimagent plays and how it improves itself, priorities, the first-day
-  checklist, the per-step routine, and the rules for editing skills, tools, watchers,
-  notebook and journal.
+description: How rimagent plays and how it improves itself, priorities, the altitude
+  ladder (steward policy first), the first-day checklist, the per-step routine, and the
+  rules for editing skills, tools, watchers, notebook and journal.
 name: core-doctrine
 tags: []
 ---
@@ -21,15 +21,28 @@ You are running a Crashlanded colony (3 colonists, Cassandra, Rough) and you are
 
 When two things compete, the one higher on this list wins. When nothing is urgent, invest in the next tier down.
 
+## You are the director; the steward does the chores
+
+Two engines inside RimBridge run every tick without you: the **steward scorer** sets every managed colonist's work priorities from skills, passions and colony needs; the **stock keeper** designates trees, berries, animals and ore until wood, food, meat and steel meet their targets (defaults: 500 wood, 150+25n forage, 300+75n meat, 300 steel for n colonists). Your job is layout and construction (blueprints), research, defense and drafting, letters/dialogs/trade/quests, mood and health crises, policies and schedules, zones and storage, **stock targets and posture**. It is not typing priorities pawn-by-pawn or hand-designating trees, ore and animals.
+
+**The altitude ladder (pick the highest rung that says what you mean):**
+1. **Policy: posture and targets.** `rw_steward_posture(label="build"|"defend"|"harvest"|"recover", hours=12)`, `rw_steward_stock_set(kind=, target=)`, `rw_steward_settings`. One call moves the whole colony for hours.
+2. **Orders and gizmos.** `rw_ui_order`, `rw_ui_press`, draft/goto/attack: one pawn, one thing, now.
+3. **Designators, blueprints, zones.** `rw_ui_build`, `rw_ui_zone`, `rw_ui_designate` for one-offs the steward does not cover (a tree on a blueprint, ore under a planned room, deconstruct, unforbid).
+4. **Direct jobs.** `rw_ui_job`, last resort.
+5. **Engine.** `rw_engine_*`, reads freely, writes only when nothing above can express it.
+
+**Never micromanage what the steward does.** Do not `rw_ui_set_work` a managed pawn (it silently unmanages them and the scorer stops caring for them); do not designate `harvestwood`/`hunt`/`mine` for stock; do not write watchers that do either. If the steward is wrong, change the target, the posture or a weight, or take exactly one pawn manual (`rw_steward_pawn managed=false`) for a stated reason and hand it back. Read `rw_steward_explain` before overriding; `rw_steward_status.problems` is the list of decisions it needs from you.
+
 ## First-day checklist (day 0, do all of it before the first end_turn or two)
 
 1. `rw_state_summary`, note colonist ids, top skills, `home_center`, biome, season, `growing_now`.
 2. **Unforbid the drops**: `rw_map_find(kind=item, forbidden=true)` -> `rw_ui_designate(designator=unforbid, things=[...])`.
 3. **Stockpile**: `rw_map_open_rects(w=8,h=6)` -> `rw_ui_zone(action=create_stockpile, rect=..., label="main")`, priority Important. Nothing gets hauled without it.
 4. **Growing zone with rice** on fertile (`f`) soil, ~36-50 cells for 3 colonists: `rw_ui_zone(action=create_growing, rect=..., plant="Plant_Rice")`. Rice is the fastest first crop (see early-game-food).
-5. **Wood**: designate `harvestwood` on 20-30 nearby trees; keep 300+ logs flowing (walls, doors, beds, campfire fuel).
+5. **Wood**: the steward's forestry job is already cutting toward 500 logs; confirm with `rw_steward_status` (`stock` row `forestry`, `designations > 0`). Designate trees yourself only where a blueprint needs the cell.
 6. **Shelter**: walls + door around ~8x6, beds (one each), a campfire inside if cold outdoors, roof forms automatically once enclosed. Use `dry_run=true` first. **After the shelter is built, run the sealed-room check** (see base-building skill): verify the door is placed and the room is reachable.
-7. **Work priorities** for all three by top skills (see work-priorities); Firefighter/Patient/BedRest 1; someone with Cooking 1; grower Growing 1; builder Construction 1; everyone Hauling 3-4.
+7. **Work priorities**: the scorer sets them. `rw_steward_status` after the first hour shows each pawn's top 3 with reasons; `rw_steward_posture(label="build", hours=12)` if the shelter must go up before anything else. Do not `rw_ui_set_work` (see work-priorities for the one case where you should).
 8. **Research bench** (`SimpleResearchBench`, 3x2, 75 wood/stone + 25 steel, needs no power) and pick a project; Crashlanded already has Electricity, so `Batteries` then `SolarPanels` (defNames) is the usual start (see research-order).
 9. **Defenses**: equip the starting weapons (`rw_ui_order(... label="equip")`), pick the colonist(s) capable of violence as fighters, plan a single doorway you can hold; a few sandbags/chunks outside it later.
 10. **Butcher table**: build a `TableButcher` in the kitchen and set a `ButcherCorpse` bill on it. (Operator tip: "always build a butchering spot otherwise hunting is wasted!" and "you must always set a bill for the butchering spot!")
@@ -40,7 +53,7 @@ When two things compete, the one higher on this list wins. When nothing is urgen
 
 1. **Read**: `rw_state_summary`; if `alerts` or `pending_letters` > 0 read `rw_state_alerts` / `rw_state_letters`; scan the new events handed to you (`hostile_group`, `colonist_downed`, `mental_break`, `incident`, `building_lost`).
 2. **Triage** by the priority list. One or two problems per step, done properly, beats six half-started ones. Verify each action's result (`failed` lists, `disabled` orders, `designations` counts).
-3. **Advance the plan** from the notebook if nothing is burning: next building, next research, bills, priorities.
+3. **Advance the plan** from the notebook if nothing is burning: next building, next research, bills, stock targets, posture. Glance at the Steward block: a stalled job or an unmanaged pawn is a decision for you; `current` climbing toward `target` is not.
 4. **Notebook**: `notebook_append` for anything a future step must know (a raid killed the cook; steel was at [126,115]; door at [110,114]); `notebook_write` once a day to compact it (< 6000 chars: plan, roles, threats, open problems, what to check next).
 5. **`end_turn`** with a wake plan: 1-2 h in a fight or fire, 4-6 h normally, 8-12 h when everything is fine and blueprints are queued; `wake_on` always includes `hostile_group`, `colonist_downed`, `mental_break`, `letter`.
 
@@ -50,7 +63,7 @@ Never end a step without `end_turn`. Never spend the whole tool budget reading; 
 
 - **Notebook after notable events** (raid outcome, death, disease, food crisis, a tool that misbehaved). It is per-game working memory and is reset at episode start.
 - **Daily reflection tightens skills with concrete numbers.** "Build defenses early" is not a lesson; "on Rough the first raid was day 8 and 9 with 1-2 raiders; have 2 ranged weapons equipped and a doorway by day 6" is. Edit the existing skill (`skill_read` -> `skill_write` with the same name) rather than adding a near-duplicate. Keep `always: true` to the manual and this doctrine.
-- **Watchers for reflexes.** Anything you find yourself doing reactively on the same event every time becomes a watcher (`watcher_write`): draft the fighters and send them to the doorway on `hostile_group`; unforbid newly dropped items on the `message` for drop pods; alert on `*` fire near home; wake the planner when `colonist_downed`. Watchers run every ~0.5 s without the LLM: react to `events`, avoid polling, return `{'type':'action', ...}` or `{'type':'alert', 'wake': True}`; a raising watcher is disabled until fixed (`watcher_list` shows errors).
+- **Watchers for reflexes.** Anything you find yourself doing reactively on the same event every time becomes a watcher (`watcher_write`): draft the fighters and send them to the doorway on `hostile_group` and call `steward.posture` `defend`; unforbid newly dropped items on the `message` for drop pods; alert on `*` fire near home; wake the planner when `colonist_downed`. Not stock or priorities: the steward already owns those and a watcher that designates or sets work fights it. Watchers run every ~0.5 s without the LLM: react to `events`, avoid polling, return `{'type':'action', ...}` or `{'type':'alert', 'wake': True}`; a raising watcher is disabled until fixed (`watcher_list` shows errors).
 - **Tools for repeated multi-call computations.** If a step routinely does the same 3+ calls plus arithmetic (find drops + unforbid; free rect + build room + door + beds; count food days from stocks), prototype with `run_python` then `tool_write` it. Tools take `(ctx, ...)`, call `ctx.bridge.call("ui.build", def=..., rect=...)`, and hot-load next step; `tool_list` shows load errors.
 - **Journal only durable lessons** (`journal_append`): things true in every game, mechanics you verified, tool quirks, orderings that worked. Not "steel was at [126,115]".
 - **Check `score_history` before changing core skills**, and note in the journal what you changed and why. After a change, if the next honest episodes score lower, `brain_log` -> `brain_diff` -> `brain_revert(sha)`.

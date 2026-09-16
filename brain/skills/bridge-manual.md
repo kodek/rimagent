@@ -1,6 +1,6 @@
 ---
 name: bridge-manual
-description: Operator's manual for the RimBridge tools, how to sense the map, which control altitude to use for each kind of action, the engine escape hatch, the think-step protocol, and the pitfalls that waste steps.
+description: Operator's manual for the RimBridge tools, how to sense the map, which control altitude to use for each kind of action, the Steward (stock targets and work priorities as policy), the engine escape hatch, the think-step protocol, and the pitfalls that waste steps.
 tags: [tools, bridge, protocol, manual, always]
 always: true
 ---
@@ -29,17 +29,39 @@ The roof layer uses `R` thick rock (unminable-overhead, no drop pods), `r` thin 
 
 ## 2. Control altitudes (pick the lowest that works)
 
+0. **Policy: the Steward (`rw_steward_*`, section 2b).** Stock targets and work priorities are kept by the mod every tick. Before you designate trees/ore/animals or type priorities, ask whether a target, a posture or a manual pawn says the same thing once.
 1. **Right-click menu: `rw_ui_orders_at` / `rw_ui_order`.** Exactly what a player gets by right-clicking with a pawn selected: pick up, equip, eat, rescue, tend, prioritize hauling, prioritize construction, attack, capture. `rw_ui_orders_at(pawn="Manu", at="Steel2851")` lists `[{label, disabled, priority}]`; `rw_ui_order(pawn="Manu", at="Steel2851", label="haul")` runs one (label is a substring match; `i` picks by index). A `disabled` entry tells you why ("incapable of violence", "forbidden", "no path"). Works on cells (`at=[x,z]`) and thing ids.
 2. **Buttons: `rw_ui_gizmos` / `rw_ui_press`.** The gizmo bar of a selected thing: Draft, Fire at will, Hold fire, Rest until healed, Copy/Paste bills, Toggle power, Rearm, Rename, Prioritise. `rw_ui_gizmos(thing="Human102")` then `rw_ui_press(thing="Human102", label="draft")`. Targeted gizmos (throw, cast, fire mortar) take `target`.
-3. **Designators: `rw_ui_designate`.** `designator=mine|cut|harvest|harvestwood|hunt|haul|deconstruct|cancel|uninstall|tame|slaughter|strip|open|smooth|removefloor|claim|forbid|unforbid|plan|unplan` (or any `Designator_ClassName`), applied to `cells=[[x,z],...]`, `rect=[x,z,w,h]`, or `things=[ids]`. This is how you queue work for the whole colony rather than one pawn.
+3. **Designators: `rw_ui_designate`.** `designator=mine|cut|harvest|harvestwood|hunt|haul|deconstruct|cancel|uninstall|tame|slaughter|strip|open|smooth|removefloor|claim|forbid|unforbid|plan|unplan` (or any `Designator_ClassName`), applied to `cells=[[x,z],...]`, `rect=[x,z,w,h]`, or `things=[ids]`. This is how you queue work for the whole colony rather than one pawn. Wood, berries, meat and steel are queued by the steward's stock jobs; designate them yourself only for a one-off (a tree blocking a blueprint, ore under a planned room, a specific animal).
 4. **Blueprints: `rw_ui_build`.** `def` (ThingDef or TerrainDef), then one of `at=[x,z]`, `line=[[x1,z1],[x2,z2]]`, `rect=[x,z,w,h]` (+`fill=true` for a filled area, default outline). `rot=N|E|S|W` for beds/tables/doors when orientation matters. `stuff` is chosen automatically (most plentiful allowed material) unless you pass e.g. `stuff="BlocksGranite"`. Pass `dry_run=true` first for big placements: it returns `placed`, `failed` (cell + reason), `cost_each` and `work`. Floors are TerrainDefs (e.g. `WoodPlankFloor`), placed the same way.
 5. **Zones: `rw_ui_zone`.** `action=create_stockpile|create_growing|delete|add_cells|remove_cells|set_plant|rename|set_priority`, with `rect`/`cells`, `label`, `plant="Plant_Rice"`, `priority=Low|Normal|Preferred|Important|Critical`, `preset=DefaultStockpile|DumpingStockpile`. Storage filters: `rw_ui_storage(zone="main", allow=[...], disallow=[...], priority=...)`. Home area: `rw_ui_area(action=home_add, rect=...)`.
-6. **Colony management.** `rw_ui_set_work(pawn, priorities={"Cooking":1,"Growing":2,"Hauling":3})` (1 = highest, 4 = lowest, 0 = off; switches on manual priorities). `rw_ui_set_schedule(pawn, hours="SSSSSSWWWWWWWWWWWWJJJJSS")` (24 chars, hour 0 first, A/S/W/J/M). `rw_ui_set_policies(pawn, food=, apparel=, drug=, area=, medical=NoCare|NoMeds|HerbalOrWorse|NormalOrWorse|Best, hostility=Flee|Attack|Ignore, self_tend=)`. `rw_ui_set_research(def="Electricity")`. `rw_ui_add_bill(thing=<table id>, recipe="CookMealSimple", mode=TargetCount, count=10)` then `rw_ui_bill(thing, index, action=set|suspend|resume|delete|top, count=, radius=)`. `rw_ui_prisoner`, `rw_ui_animal`.
+6. **Colony management.** `rw_ui_set_work(pawn, priorities={"Cooking":1,"Growing":2,"Hauling":3})` (1 = highest, 4 = lowest, 0 = off; switches on manual priorities **and takes the pawn out of steward management**: the result says `steward_managed: false`; `rw_steward_pawn(pawn, managed=true)` hands it back). `rw_ui_set_schedule(pawn, hours="SSSSSSWWWWWWWWWWWWJJJJSS")` (24 chars, hour 0 first, A/S/W/J/M). `rw_ui_set_policies(pawn, food=, apparel=, drug=, area=, medical=NoCare|NoMeds|HerbalOrWorse|NormalOrWorse|Best, hostility=Flee|Attack|Ignore, self_tend=)`. `rw_ui_set_research(def="Electricity")`. `rw_ui_add_bill(thing=<table id>, recipe="CookMealSimple", mode=TargetCount, count=10)` then `rw_ui_bill(thing, index, action=set|suspend|resume|delete|top, count=, radius=)`. `rw_ui_prisoner`, `rw_ui_animal`.
 7. **Combat: `rw_ui_draft` / `rw_ui_goto` / `rw_ui_attack`.** `rw_ui_draft(pawn, drafted=true)`; `rw_ui_goto(pawn, cell=[x,z])` drafts automatically (pass `draft=false` for an undrafted walk); `rw_ui_attack(pawn, target=<hostile id>, melee=false)`. Drafted pawns do not eat, sleep or work: undraft when the fight ends. `rw_ui_cancel_job(pawn)` interrupts.
 8. **Letters and quests: `rw_ui_letter`.** `rw_state_letters` gives `id` and `choices`; `rw_ui_letter(id, action=choose, choice="Accept")` or `action=dismiss`. Unanswered letters pile up and some expire.
 9. **Direct jobs: `rw_ui_job` (last resort).** `rw_ui_job(pawn, job="Ingest", target="MealSimple1234")`, `job="Equip"`, `"Wear"`, `"Rescue"`, `"TendPatient"`, `"HaulToCell"` (`target` = thing, `target_b` = cell), `"Research"`. Use it only when no order/gizmo/designator does the thing; it bypasses the game's own checks and often fails silently if the pawn cannot reach or is incapable.
 
 Game clock: `rw_game_speed(speed=0..3)` (0 pause, 1 normal, 2 fast, 3 superfast), `rw_game_pause(paused=)`, `rw_game_status`, `rw_game_save(name=)`. The runner slows the game to normal speed while you think and restores fast speed after `end_turn`; do not leave the game paused on purpose.
+
+## 2b. The Steward: policy, not chores
+
+Two engines inside RimBridge run every tick without you: the **scorer** (Free Will) sets each managed colonist's work priorities from skills, passions, colony needs and your posture; the **stock keeper** (Colony Manager Redux) designates cut/harvest/hunt/mine until counted stock meets a target. Both default on. The situation packet carries a "Steward" block (posture, one line per stock job `wood 420/500 ↑ forestry ok`, problems, unmanaged pawns) and `rw_state_summary.steward` a brief. Stock kinds: `forestry`, `foraging`, `hunting`, `mining`, `production`, `livestock`. Posture presets: `defend`, `build`, `harvest`, `recover`, `normal`; or custom deltas.
+
+| Tool | Example | Returns |
+|---|---|---|
+| `rw_steward_status` | `rw_steward_status()` | `{enabled:{scorer,stock}, posture, pawns:[{id,name,managed,priorities,top:[{work,priority,why}]}], stock:[{id,kind,label,target,current,enabled,suspended,managed,last_run_hours_ago,designations,failures,summary,notes}], problems:[...]}` |
+| `rw_steward_enable` | `rw_steward_enable(stock=false)` | `{scorer: true, stock: false}`; omit a key to leave it |
+| `rw_steward_pawn` | `rw_steward_pawn(pawn="Sparky", managed=false)` | `{pawn, managed}`; unmanaged pawns keep whatever `rw_ui_set_work` gave them |
+| `rw_steward_explain` | `rw_steward_explain(pawn="Jen", work="Cooking")` | `[{work, priority, score, reasons:[{label, delta}]}]`; omit `work` for every work type, sorted by priority |
+| `rw_steward_posture` | `rw_steward_posture(label="build", hours=12)` or `rw_steward_posture(label="frost", hours=8, work={"PlantCutting":0.6,"Research":-0.5}, targets={"forestry":1.5})` | the posture `{label, expires_in_hours, work, weights, targets}`; `rw_steward_posture(clear=true)` -> `null` |
+| `rw_steward_stock_list` | `rw_steward_stock_list()` | stock rows plus `allowed:[defName]` and per-kind settings |
+| `rw_steward_stock_set` | `rw_steward_stock_set(kind="forestry", target=800)`; `rw_steward_stock_set(kind="hunting", suspended=true)`; `rw_steward_stock_set(id="mining1", allow=["MineableComponentsIndustrial"], max_radius=90)` | the job row |
+| `rw_steward_stock_add` | `rw_steward_stock_add(kind="production", target=20, allow=["MealSimple"])` | the new job row |
+| `rw_steward_stock_remove` | `rw_steward_stock_remove(id="livestock1")` | `{removed: true}` |
+| `rw_steward_stock_run` | `rw_steward_stock_run(id="forestry1")` | `{ran, summary}`; forces one pass now instead of waiting for the interval |
+| `rw_steward_settings` | `rw_steward_settings()` to read; `rw_steward_settings(scorer={"ConsiderBestAtDoing":1.0, "globalWorkAdjustments":{"Research":0.3}}, stock={"MaxWorkRadius":90, "HuntPredators":false})` | `{scorer:{...all fields}, stock:{...}}` |
+| `rw_steward_research` | `rw_steward_research()` | the steward's view of research: what it would pick next and why; `rw_ui_set_research(def=)` still decides |
+
+Rules: read `rw_steward_status` before touching work or stock; `rw_steward_explain` before any override; posture for the next 6-48 h, `rw_steward_settings` for the colony's standing shape, `rw_steward_pawn managed=false` for one pawn with one fixed role (hand back when done). Never set priorities on a managed pawn, the next pass overwrites them. Never designate what a stock job already covers. Nothing in `steward.*` marks the game assisted. Numbers and defaults: manager-patterns and work-priorities.
 
 ## 3. The escape hatch: engine access
 
@@ -65,7 +87,7 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 - **`rw_state_stocks` counts unforbidden things on the map, `key_stocks` in the summary only stored ones.** Loose logs in the forest are invisible to both until they lie in a stockpile; use `rw_map_find(def="WoodLog")`.
 - **You need a stockpile before hauling works** (`rw_ui_zone(action=create_stockpile, rect=..., label="main")`). Put it under a roof; steel and food in the rain is fine, but corpses and rot are not.
 - **Walls need a door** or the room is sealed and pawns path around; **roofs need walls** (a roof grows automatically over an enclosed room; unsupported roof further than 6 cells from a wall collapses). A room is only "indoors" (temperature, mood) when enclosed and roofed.
-- **Work priorities: 1 = highest, 4 = lowest, 0 = off.** Firefighter/Patient/BedRest at 1 for everyone. A pawn "incapable" of a work type cannot be assigned it (the tool errors).
+- **Work priorities belong to the steward.** 1 = highest, 4 = lowest, 0 = off. `rw_ui_set_work` unmanages the pawn (its result says `steward_managed: false`) and the scorer stops touching it until `rw_steward_pawn(managed=true)`. Setting priorities on a managed pawn is overwritten within a minute. A pawn "incapable" of a work type cannot be assigned it (the tool errors).
 - **Speed.** The runner runs the game at normal speed while you think (a step costs 1-3 in-game hours) and at fast speed between steps. Do not call `rw_game_pause(paused=true)` yourself except mid-combat for a single precise order, and unpause before `end_turn`.
 - **Truncation.** Results are cut at ~8k chars. Use `limit`, `category`, `filter`, small map windows, and `layer=` to keep results short; a truncated result is a wasted call.
 - **Thing ids** look like `Steel2851`, `Human102`, `WoodLog2861`; pawns are accepted by name (`"Sparky"`) or id. Ids change between games, never hardcode them into skills.
@@ -86,7 +108,7 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 **B. Rice field**
 1. `rw_map_view(x=90, z=118, w=30, h=15, layer="terrain")` -> pick a block of `f` cells.
 2. `rw_ui_zone(action="create_growing", rect=[101,123,6,6], plant="Plant_Rice", label="rice1")` -> `{cells: 36, failed: [...]}`.
-3. `rw_ui_set_work(pawn="Jen", priorities={"Growing":1, "PlantCutting":2})`.
+3. Nothing else: the scorer gives Growing/PlantCutting to the best Plants pawn on its own (`rw_steward_explain(pawn="Jen", work="Growing")` to see it). If the harvest must happen before a frost: `rw_steward_posture(label="harvest", hours=12)`.
 
 **C. A wooden room with a door, then beds**
 1. `rw_ui_build(def="Wall", rect=[106,114,8,6], dry_run=true)` -> check `failed`.
@@ -94,10 +116,11 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 3. `rw_ui_build(def="Door", at=[110,114])`, the door replaces one wall blueprint on the south edge.
 4. After `built` events / `blueprints: 0`: `rw_ui_build(def="Bed", at=[107,118], rot="S")` x3, then `rw_ui_build(def="Campfire", at=[112,111])` outside.
 
-**D. Cutting trees for wood and mining steel**
-1. `rw_map_find(kind="tree", near=[102,122], radius=25, limit=30)` -> `rw_ui_designate(designator="harvestwood", things=[...])` (or `rect`).
-2. `rw_map_find(kind="resource_rock", def="MineableSteel", limit=20)` -> `rw_ui_designate(designator="mine", things=[...])`.
-3. Verify: `rw_state_designations` shows `HarvestPlant`/`Mine` counts.
+**D. Wood and steel (the steward's job)**
+1. `rw_steward_status()` -> `stock: [{kind:"forestry", target:500, current:120, designations:24, ...}, {kind:"mining", target:300, current:60, ...}]`. It is already cutting and mining.
+2. Need more for a stone base? `rw_steward_stock_set(kind="mining", target=600)`; in a hurry: `rw_steward_stock_run(id=<mining id>)`.
+3. Only for a one-off (a tree on a blueprint cell, ore under a planned room): `rw_ui_designate(designator="harvestwood", things=[...])` / `rw_ui_designate(designator="mine", rect=[...])`.
+4. Verify: `rw_state_designations` shows `HarvestPlant`/`Mine` counts; `problems` in the status names a stalled job.
 
 **E. First raid**
 1. Woken by `hostile_group`. `rw_state_threats` -> ids, weapons, distance.
@@ -108,7 +131,7 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 **F. Cooking**
 1. `rw_map_find(kind="building", def="Campfire")` -> `Campfire2977`.
 2. `rw_ui_add_bill(thing="Campfire2977", recipe="CookMealSimple", mode="TargetCount", count=8)`.
-3. `rw_ui_set_work(pawn="Sparky", priorities={"Cooking":1})`; check `rw_state_bills(thing="Campfire2977")` later.
+3. The scorer now raises Cooking for the best cook because a bill exists; `rw_steward_stock_add(kind="production", target=20, allow=["MealSimple"])` keeps the count growing with the colony. Check `rw_state_bills(thing="Campfire2977")` later.
 
 **G. A letter with choices**
 1. `rw_state_letters` -> `[{id: "Letter_1203", label: "Quest: ...", choices: ["Accept","Reject"]}]`.
@@ -133,7 +156,8 @@ Rooms: leave at least one free cell around furniture, put the door on the side f
 1. **Tracked values + "what changed"** open every step. They are computed by the harness from the engine; trust them and react to trends (food_days falling, a room gaining a PROBLEM, a colonist's mood dropping). Add your own with `watch_add(label, path)`; remove noise with `watch_remove`.
 2. **The base as objects** (`rw_state_base`): rooms with `Room:<id>` refs, size, free floor, doors and where they lead, contents (with ids and interaction cells in verbose mode), problems (unroofed / no door / dark / cold / no free floor), structures outside rooms, anchors, TRAPPED colonists. Reason about rooms and objects, not cells.
 3. **Locations are names, not numbers.** Everywhere a cell or rect is accepted you can write: `Campfire39256` (a thing), `@Gamble` (a pawn), `bedroom2` (an anchor you named), `bedroom2:NW` / `:N` / `:C` (corners/edges/centre), `bedroom2:inset:1` (interior), `bedroom2:extend:E:4` (the 4-wide strip beyond its east wall, how you extend a room), `Room:12`, `home`, and offsets `Campfire39256 +E2 +N1`. Name every room and site the moment you create it: `rw_anchor_set(name="bedroom2", rect=[139,127,6,5])` or `rw_anchor_set(name="kitchen", rect="Room:14")`. Then build with `rw_ui_build(def="Bed", at="bedroom2:NW +E1 +S1", rot="N")` and never do coordinate arithmetic in your head.
-4. **The building camera** (`rw_map_detail`) for exact placement, with anchors drawn in its legend; failed builds now return a mini camera with the failed cells marked `X` and the reason, read it before retrying.
-5. **`look`** shows the real picture with a labelled 5-cell grid, anchor boxes, and numbered marks on every building/blueprint (red = planned, blue = built) plus a table number → id/def/cell, so what you see is addressable.
-6. **`run_python` is a persistent REPL**: `beds = find(def="Bed")["things"]` stays available next step; `base()`, `summary()`, `detail(...)`, `build(...)`, `rpc(method, **params)` are pre-bound. Compute, don't guess.
-7. Raw reads (`rw_map_find`, `rw_map_cell`, `rw_engine_get`) when you need a specific fact.
+4. **The Steward block**: posture, one line per stock job (`wood 420/500 ↑ forestry ok`), problems and unmanaged pawns. A stalled job or an empty problems list is your cue; the numbers themselves are the steward's business.
+5. **The building camera** (`rw_map_detail`) for exact placement, with anchors drawn in its legend; failed builds now return a mini camera with the failed cells marked `X` and the reason, read it before retrying.
+6. **`look`** shows the real picture with a labelled 5-cell grid, anchor boxes, and numbered marks on every building/blueprint (red = planned, blue = built) plus a table number → id/def/cell, so what you see is addressable.
+7. **`run_python` is a persistent REPL**: `beds = find(def="Bed")["things"]` stays available next step; `base()`, `summary()`, `detail(...)`, `build(...)`, `rpc(method, **params)` are pre-bound. Compute, don't guess.
+8. Raw reads (`rw_map_find`, `rw_map_cell`, `rw_engine_get`) when you need a specific fact.
