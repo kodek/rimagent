@@ -69,6 +69,16 @@ class Controls:
     def kill(self):
         self.r.stop = True
 
+    def set_parallel(self, value: bool):
+        """Dashboard toggle: calm steps fan out to four specialist streams (econ, build, guard, steward)."""
+        self.r.parallel = bool(value)
+        self.r.bus.emit("log", {"text": "parallel mode ON: 4 specialist streams per calm step" if value else "parallel mode off: single stream"})
+        self.r.bus.emit("status", {"parallel": bool(value)})
+
+    @property
+    def parallel(self) -> bool:
+        return bool(self.r.parallel)
+
     def set_sandbox(self, value: bool):
         """Dashboard toggle: god mode (free instant builds) + all research; the run is marked assisted."""
         self.r.apply_sandbox(bool(value))
@@ -119,6 +129,7 @@ class Runner:
         self.start_day = 0
         self.thinking = False
         self.sandbox = False
+        self.parallel = bool(cfg["play"].get("parallel", False))
         self._status_at = 0.0
         self._last_alive = time.time()
         self._alerts_at = 0.0
@@ -276,7 +287,11 @@ class Runner:
                 continue
             trigger = self.wake_trigger(tick, new_events)
             if trigger:
-                self.with_pause(lambda: self.play_step(trigger, tick), urgent=self.is_urgent(trigger))
+                urgent = self.is_urgent(trigger)
+                if self.parallel and not urgent:
+                    self.with_pause(lambda: self.play_step_parallel(trigger, tick), urgent=False)
+                else:
+                    self.with_pause(lambda: self.play_step(trigger, tick), urgent=urgent)
                 if self.ctx.end_episode_reason:
                     self.end_episode(self.ctx.end_episode_reason)
                     return
@@ -471,6 +486,97 @@ class Runner:
             lines.append("Repeated call sequences (candidates for a tool or watcher):")
             lines += [f"- {k}  x{v}" for k, v in rep]
         return "\n".join(lines)
+
+    def play_step_parallel(self, trigger: str, tick: int) -> None:
+        """Fan a calm step out to the four specialist streams; merge notes and wake plans."""
+        from . import roles as roles_mod
+        events, self.pending_events = self.pending_events, []
+        alerts, self.pending_alerts = self.pending_alerts, []
+        self.ctx.watcher_alerts = alerts
+        extra = ""
+        if self.operator_inbox:
+            msgs, self.operator_inbox[:] = list(self.operator_inbox), []
+            extra = ("## Message from the human operator\nAnswer it FIRST with the reply_to_operator tool (one or two sentences). "
+                     "If it is a tip or instruction about how to play, LEARN it: edit the most relevant skill with skill_write so it says this from now on "
+                     "(mark the line 'operator tip'), and act on it in the colony if it applies right now.\n" + "\n".join(f"- {m}" for m in msgs))
+        msg, hint = situation_packet(self.ctx, trigger, events, alerts)
+        plan = self.manager_plan(msg, extra) if self.cfg["play"].get("parallel_manager", True) else {}
+        directives = plan.get("directives") or {}
+        skip = set(plan.get("skip") or [])
+        if plan.get("wake_in_hours"):
+            self.ctx.wake.in_hours = plan["wake_in_hours"]
+        results: dict[str, Any] = {}
+
+        def run(role: str):
+            ctx_r = self.ctx.fork(role)
+            ctx_r.extra["role"] = role
+            if role == "steward":
+                ctx_r.extra["operator_inbox"] = self.operator_inbox
+            if role == "guard":
+                ctx_r.interrupt_check = self.check_interrupts
+            directive = directives.get(role)
+            user = msg + "\n\n" + roles_mod.brief_for(role) + (f"\n\n## Manager directive for you this step\n{directive}" if directive else "") + ("\n\n" + extra if role == "steward" and extra else "")
+            try:
+                results[role] = (ctx_r, think(ctx_r, user, hint + " " + role, trigger=f"{trigger} [{role}]", max_calls=int(self.cfg["play"].get("parallel_max_calls", 14)), tool_allow=roles_mod.allow_for(role)))
+            except Exception as e:  # noqa: BLE001
+                self.bus.emit("error", {"text": f"{role} stream failed: {e}"})
+
+        active = [r for r in roles_mod.ROLES if r not in skip] or ["steward"]
+        if skip:
+            self.bus.emit("log", {"text": "manager skipped streams this step: " + ", ".join(sorted(skip))})
+        threads = [threading.Thread(target=run, args=(r,), name=f"stream-{r}", daemon=True) for r in active]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=900)
+        notes = []; hours = []; end_reason = None
+        for role, (ctx_r, res) in results.items():
+            if res.notes:
+                notes.append(f"[{role}] {res.notes}")
+            if ctx_r.wake.in_hours:
+                hours.append(float(ctx_r.wake.in_hours))
+            if ctx_r.end_episode_reason:
+                end_reason = ctx_r.end_episode_reason
+            if ctx_r.extra.get("model_speed") is not None:
+                self.ctx.extra["model_speed"] = ctx_r.extra["model_speed"]
+        self.step_notes.append(" | ".join(notes))
+        if end_reason:
+            self.ctx.end_episode_reason = end_reason
+        play = self.cfg["play"]
+        h = float(plan.get("wake_in_hours") or (min(hours) if hours else float(play.get("wake_hours", 8))))
+        h = max(float(play.get("min_wake_hours", 3)), min(48.0, h))
+        try:
+            tick = int(self.bridge.status().get("tick", tick))
+        except BridgeError:
+            pass
+        self._last_step_end_tick = tick
+        self.next_wake_tick = tick + int(h * TICKS_PER_HOUR)
+
+    def manager_plan(self, packet: str, extra: str = "") -> dict[str, Any]:
+        """Manager-lite: one fast planning call (no tools, thinking off) that assigns directives to the specialist streams."""
+        import json as _json
+        from . import roles as roles_mod
+        self.bus.emit("think_start", {"trigger": "manager plan", "stream": "manager", "prompt_chars": len(packet), "tools": 0})
+        t0 = time.time()
+        system = ("You are the colony manager for an autonomous RimWorld agent. Four specialist streams act in parallel this step: "
+                  + "; ".join(f"{k} = {v['title']}: {v['brief'].split('.')[0]}" for k, v in roles_mod.ROLES.items())
+                  + ". Read the situation and reply with ONLY a JSON object: {\"priorities\": [\"...\" up to 3, most urgent first], "
+                  "\"directives\": {\"econ\": \"one or two sentences of concrete orders, or empty string\", \"build\": \"...\", \"guard\": \"...\", \"steward\": \"...\"}, "
+                  "\"skip\": [roles with nothing worth doing this step], \"wake_in_hours\": number (3-24; low when something is developing)}. "
+                  "Be specific: name pawns, places, quantities. Resolve conflicts between roles here (e.g. who gets the wood). Never skip steward when there are open dialogs, letters or an operator message.")
+        try:
+            reply = self.llm.chat([{"role": "system", "content": system}, {"role": "user", "content": packet + ("\n\n" + extra if extra else "")}], tools=None, thinking=False, max_tokens=900, temperature=0.3)
+            text = reply.content.strip()
+            start, end = text.find("{"), text.rfind("}")
+            plan = _json.loads(text[start:end + 1]) if start >= 0 and end > start else {}
+            if not isinstance(plan, dict):
+                plan = {}
+        except Exception as e:  # noqa: BLE001
+            self.bus.emit("error", {"text": f"manager plan failed: {e}"})
+            plan = {}
+        self.bus.emit("assistant", {"text": _json.dumps(plan, ensure_ascii=False, indent=1), "stream": "manager"})
+        self.bus.emit("think_end", {"notes": "; ".join(plan.get("priorities") or []) or "(no plan)", "wake": {"in_hours": plan.get("wake_in_hours")}, "calls": 0, "elapsed": round(time.time() - t0, 1), "stream": "manager"})
+        return plan
 
     def start_improve_thread(self, day: int) -> None:
         """Improvement pass on a second LLM stream, concurrent with play (brain edits hot-load into the play stream)."""

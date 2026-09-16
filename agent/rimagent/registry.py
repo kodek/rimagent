@@ -177,12 +177,14 @@ class Registry:
                 self.watcher_errors[path.name] = "no watch(ctx, events) function"
 
     # ---- execution ----
-    def specs(self, groups: set[str] | None = None, exclude: set[str] | None = None) -> list[dict[str, Any]]:
+    def specs(self, groups: set[str] | None = None, exclude: set[str] | None = None, allow: Callable[[Tool], bool] | None = None) -> list[dict[str, Any]]:
         out = []
         for t in self.tools.values():
             if groups and t.group not in groups and t.source != "brain":
                 continue
             if exclude and t.name in exclude:
+                continue
+            if allow is not None and not allow(t):
                 continue
             out.append(t.spec())
         return out

@@ -82,7 +82,7 @@ def build_system(ctx: Context, situation_hint: str) -> str:
     )
 
 
-def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_calls: int | None = None, tool_groups: set[str] | None = None, thinking: bool | None = None, trigger: str = "scheduled") -> StepResult:
+def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_calls: int | None = None, tool_groups: set[str] | None = None, thinking: bool | None = None, trigger: str = "scheduled", tool_allow=None) -> StepResult:
     """Run a bounded tool-use loop. Returns when the model calls end_turn/end_episode, stops calling tools, or hits max_calls."""
     cfg = ctx.config
     max_calls = max_calls or int(cfg["play"].get("max_tool_calls", 30))
@@ -92,7 +92,7 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
     res = StepResult()
     system = build_system(ctx, situation_hint or user_message[:2000])
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}, {"role": "user", "content": user_message}]
-    tools = ctx.registry.specs(groups=tool_groups)
+    tools = ctx.registry.specs(groups=tool_groups, allow=tool_allow)
     st = ctx.stream
     ctx.emit("think_start", {"trigger": trigger, "prompt_chars": len(system) + len(user_message), "tools": len(tools), "stream": st})
     step = 0

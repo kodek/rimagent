@@ -25,7 +25,7 @@ from .. import braingit, scorecard, skills
 from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHERS
 
 _KIND_DIRS: dict[str, Path] = {"skill": SKILLS, "tool": TOOLS, "watcher": WATCHERS}
-_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "kill": "kill"}
+_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "kill": "kill"}
 
 
 class ControlRequest(BaseModel):
@@ -124,7 +124,7 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
             game = await _call_with_timeout(bridge.status, timeout=5.0)
         except Exception:  # noqa: BLE001
             game = None
-        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False))}
+        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False)), "parallel": bool(getattr(controls, "parallel", False))}
         return {"bus": bus.state, "last_seq": bus.last_seq, "game": game, "controls": ctl}
 
     @app.get("/api/brain/tree")
@@ -268,7 +268,7 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
         if not callable(fn):
             return {"ok": False, "error": f"controls has no {method}()", "paused": bool(getattr(controls, "paused", False))}
         try:
-            result = fn(bool(req.value)) if req.action in ("no_pause", "sandbox") else fn()
+            result = fn(bool(req.value)) if req.action in ("no_pause", "sandbox", "parallel") else fn()
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e), "paused": bool(getattr(controls, "paused", False))}
         return {"ok": True, "result": result if isinstance(result, (str, int, float, bool, dict, list)) or result is None else str(result), "paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None)}
@@ -461,7 +461,8 @@ footer .r{margin-left:auto}
     <button class="primary" onclick="control('think')">Think now</button>
     <button onclick="if(confirm('End the current episode?'))control('end_episode')">End episode</button>
     <label title="Do not pause the game while the model thinks"><input type="checkbox" id="c-nopause" onchange="control('no_pause',this.checked)"> no-pause</label>
-    <label title="God mode: blueprints complete instantly and cost nothing, all research unlocked, the run is marked assisted. The agent is told to experiment and write what it learns into skills." style="color:var(--warn)"><input type="checkbox" id="c-sandbox" onchange="if(!this.checked||confirm('Turn on sandbox / god mode? Builds become free and instant, all research unlocks, and this run is marked assisted.'))control('sandbox',this.checked);else this.checked=false"> sandbox</label>
+    <label title="God mode: blueprints complete instantly and cost nothing, all research unlocked, the run is marked assisted. The agent is told to experiment and write what it learns into skills." style="color:var(--warn)"><input type="checkbox" id="c-parallel" onchange="control('parallel',this.checked)"> <span title="Calm steps fan out to four specialist LLM streams (economy, builder, guardian, steward) running at the same time; urgent steps stay single-stream">parallel x4</span></label>
+    <label title="God mode" style="color:var(--warn)"><input type="checkbox" id="c-sandbox" onchange="if(!this.checked||confirm('Turn on sandbox / god mode? Builds become free and instant, all research unlocks, and this run is marked assisted.'))control('sandbox',this.checked);else this.checked=false"> sandbox</label>
     <button class="danger" onclick="if(confirm('Kill the agent process?'))control('kill')">Kill</button>
   </div>
 </header>
@@ -657,7 +658,7 @@ function setControls(c) {
   if (!c) return;
   $('agentpaused').classList.toggle('on', !!c.paused);
   $('b-pause').disabled = !!c.paused; $('b-resume').disabled = !c.paused;
-  if (c.no_pause != null) $('c-nopause').checked = !!c.no_pause; if ($('c-sandbox') && typeof c.sandbox === 'boolean') $('c-sandbox').checked = c.sandbox;
+  if (c.no_pause != null) $('c-nopause').checked = !!c.no_pause; if ($('c-sandbox') && typeof c.sandbox === 'boolean') $('c-sandbox').checked = c.sandbox; if ($('c-parallel') && typeof c.parallel === 'boolean') $('c-parallel').checked = c.parallel;
 }
 async function control(action, value) {
   try {

@@ -1,12 +1,24 @@
 ---
-name: power-basics
-description: Pull in whenever you build anything electrical (generator, battery, cooler, turret, lamp, workbench with power) or state.power shows unpowered consumers. How grids work, how to wire them with ui.wire, and the checks that catch a dead grid.
-tags: [power, electricity, conduit, generator, battery, cooler, turret]
 always: false
+description: Pull in whenever you build anything electrical (generator, battery, cooler,
+  turret, lamp, workbench with power) or state.power shows unpowered consumers. How
+  grids work, how to wire them with ui.wire, and the checks that catch a dead grid.
+name: power-basics
+tags:
+- power
+- electricity
+- conduit
+- generator
+- battery
+- cooler
+- turret
 ---
+
 # Power in one page
 
 A building only gets power if it is on a **power net**. A net is everything connected through **conduits** (1 steel each, `PowerConduit`, can run under walls and doors) or directly adjacent transmitters. Generators feed the net, batteries store it, consumers drain it. No conduit touching a consumer = no power, no matter how close the generator is.
+
+**Operator tip: power state is stale while the game is paused.** `rw_state_power` and `rw_map_power` read the last computed state. If the game is paused (speed 0), the power grid has not re-evaluated since the last tick. Before reading power, set `rw_game_speed(speed=1)`, wait a moment, then read. Or just check `rw_map_power` which shows the spatial layout and is more reliable for "is this connected" questions.
 
 Sources (Crashlanded starts with Electricity researched):
 - `WoodFiredGenerator` 2x2, 1000 W, burns wood (needs refuelling; keep 50+ wood in reach and "auto refuel" on). 100 steel + 2 components.
@@ -31,3 +43,14 @@ Consumers (typical): cooler 200 W (low power mode 20 W when at target), turret 4
 - Consumption > generation with empty batteries = brownout: everything flickers off. Add a generator or cut consumers.
 - Coolers default to a 21C target. For a freezer press the cooler's `-10C` gizmo three times (target -9C or lower) and verify the room temp in `state.base`.
 - Short circuit ("Zzzt") happens on conduits when batteries are charged; keep conduit runs short and batteries few, or accept the occasional fire (build a firefoam popper nearby).
+
+## Two-net join (verified sandbox)
+When a battery and a solar generator are placed in different locations, they start on **separate nets** (net 0 and net 1). `rw_ui_wire(from=battery, to=solar)` will skip cells that are already on the solar's net and place 0 conduits. But `rw_ui_wire(from=cooler, to=battery)` correctly places conduit blueprints along the path. Once builders complete those blueprints, the battery joins the solar's net and everything is on one net.
+
+**Key**: the "two nets" state is transient - it resolves when conduit blueprints are built. Check `blueprints` count in `state.summary`; if > 0, builders are still working. Don't try to manually place extra conduits; just wait for the blueprints to finish.
+
+## Bed + cooler interaction spot
+A cooler placed against a wall (e.g. rot=E at [107,120]) has its interaction spot on the cold side. A bed at [109,121] rot=N fails if [109,122] is a wall. Use rot=S instead (interaction spot at [109,120], which is free). Always check the camera after a failed placement - it shows `*` for the interaction spot and `X` for the failed cell.
+
+## God mode note
+In god mode, conduit blueprints still need builders to complete them (they don't auto-complete). Check `blueprints` count in `state.summary` - if it's > 0, builders are still working.
