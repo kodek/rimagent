@@ -64,3 +64,27 @@ Episode 3 day 20: 5 hunt designations were queued for hares at 52-57 cells from 
 
 ## 2026-09-16 12:51 (episode 2): Desiccated corpses: can't be hauled, use destroy_corpses tool
 Desiccated corpses (long-dead, dry biome) cannot be hauled by colonists — the game blocks the haul job. The only options are: (1) destroy them (sandbox mode: `destroy_corpses` tool, one call, uses dev.destroy internally), or (2) move the dump zone far from the base so the mood drag is less visible. 16 desiccated corpses in the dump zone caused -6 mood to all 4 colonists for multiple days. The `destroy_corpses` tool (brain/tools/destroy_corpses.py) replaces 16 individual `rw_dev_destroy` calls with one.
+
+## 2026-09-16 13:35 (episode 2): No power = no turrets = death against mechs (episode 3)
+Episode 3: 22 colonists, no power grid, no turrets. Threat points hit 500 by day 1 (≈ 10-12 pirates with guns). 4 sleeping mechs (Tesseron, Cyclops, 2x Militor) at 87-93 cells N with LordJob_SleepThenAssaultColony. Without turrets, the colony could not defend against the mech assault. The #1 fix: build a wood-fired generator + battery + 2 mini-turrets BEFORE the first raid. Cost ≈ 400 steel + 8 components. In god mode, spawn turrets directly with rw_dev_spawn(def="Turret_Gun") at the approach lane.
+
+## 2026-09-16 13:35 (episode 2): Butcher table + bill is mandatory for hunting to work
+Operator tips (episode 3): "always build a butchering spot otherwise hunting is wasted!" and "you must always set a bill for the butchering spot!" A TableButcher without a ButcherCorpse bill means hunted animals are never butchered and the meat is lost. Also: "check for existing bills before placing them as campfire has many dupes" — always check rw_state_bills before adding a new bill.
+
+## 2026-09-16 13:35 (episode 2): Large refugee influx (22 colonists) = 500 threat points by day 1
+When 19+ refugees join at once (as in episode 3), threat points jump to ~500 by day 1 (pawn points scale with colonist count). This means a 500-point raid (≈ 10-12 pirates with guns) is coming within days. Without turrets, the colony cannot defend. Rule: if 10+ colonists join at once, treat it as a raid emergency from day 0 — build turrets and a power grid immediately, not as a day-10 luxury. In god mode, spawn turrets directly.
+
+## 2026-09-16 13:43 (episode 3): Automation pass: position_shooters tool + improved hostile_draft watcher
+Mid-game improvement pass (day 1, episode 3):
+1. Created `position_shooters` tool: one call issues rw_ui_goto for all drafted colonists to a target cell. Collapses the x39 rw_ui_goto pattern into one call. Usage: position_shooters(cell=[door_x, door_z]).
+2. Updated `hostile_draft` watcher: now also issues ui.goto to home center for each drafted pawn (default position). Planner repositions to the actual door cell with position_shooters.
+3. Created `set_bill` tool: one call sets a bill on any station (butcher, research, drug lab), checks for existing bills first to avoid duplicates. Replaces the x11 rw_ui_bill pattern. Usage: set_bill(station="ButcherTable1234", recipe="ButcherCorpseFlesh", mode="Forever").
+4. Updated `rescue_downed` watcher: now checks bed count before issuing the rescue order. If no beds exist, alerts the planner to place a bed blueprint first (the #1 cause of failed rescue orders).
+5. Updated `defense-basics` skill: added position_shooters reference, corrected Turret_MiniTurret defName (not Turret_Gun), added the "on the raid letter" workflow using the new tools.
+Key lesson: rw_ui_order had 11/14 errors (79% failure) — most were failed rescue orders with no beds in safe temperature. The rescue_downed watcher now checks bed count first.
+
+## 2026-09-16 14:29 (episode 3): Spawn+recruit pawns in one call (operator tip, sandbox)
+Operator tip: "spawn 20 pawns and recruit them." Verified: rw_dev_spawn_pawn(kind="Colonist", faction="Player", cell=[x,z], count=20) spawns them ALREADY as Player-faction colonists — they are recruited instantly, no separate recruit/interact step needed. They spawn clustered at the target cell and immediately start working (e.g. firefighting, hauling meals). Use this in sandbox/god-mode games to scale the colony fast. Note: spawning 20 at once jumps threat points and colonist count; in a scored game this is a dev call (assisted).
+
+## 2026-09-16 17:53 (episode 4): Refugee influx food crisis: one-call triage pattern
+When 10+ colonists join at once, food_days drops to <1 in one step. The response sequence that works: (1) food_crisis_triage (one call: food days, rice ETA, cooking bills, policy, mood flags), (2) cook_bill if has_cook_bill is false, (3) food_policy_set(policy="Lavish") if policy blocks survival packs, (4) rw_steward_stock_set(kind="hunting", target=800) + stock_run, (5) rw_steward_stock_set(kind="foraging", target=400), (6) posture "food emergency" 8h. The rice harvest will self-correct within 1-2 days if the cooking bill is running and the policy is correct. Do NOT hand-designate hunts — the steward's hunting job does it.

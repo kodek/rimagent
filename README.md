@@ -52,19 +52,24 @@ flowchart LR
     E["engine objects<br/>maps, pawns, defs, windows"]
     L["event ledger<br/>letters, incidents, danger, deaths, dialogs"]
     C["off-screen camera"]
+    ST["Steward<br/>work-priority scorer + stock keeper + standing orders, every tick"]
     RB --- E
     RB --- L
     RB --- C
+    RB --- ST
+    ST --> E
   end
   subgraph agent["rimagent (Python)"]
     R["runner<br/>episodes, wake policy, speed"]
     T["think step<br/>bounded tool-use loop"]
     W["watchers<br/>reflexes, no LLM"]
     I["improve stream<br/>concurrent"]
+    WD["watchdog stream<br/>concurrent, error-gated"]
     D["dashboard<br/>SSE, operator chat"]
     R --> T
     R --> W
     R --> I
+    R --> WD
     R --> D
   end
   subgraph brain["brain/ (git)"]
@@ -75,14 +80,18 @@ flowchart LR
   end
   K["knowledge<br/>wiki index, decompiled source"]
   LLM["LLM<br/>OpenAI-compatible, tool calls, vision"]
+  SRC["mod/Source, agent/rimagent<br/>(git; a human deploys)"]
   RB <-- "HTTP 127.0.0.1:8765" --> R
   T <--> LLM
   I <--> LLM
+  WD <--> LLM
   T --> brain
   I --> brain
+  WD -->|"verified patch, local commit"| SRC
   brain -. hot-load .-> T
   brain -. hot-load .-> W
   K --> T
+  K --> WD
 ```
 
 One think step, from wake to sleep:
@@ -120,11 +129,40 @@ flowchart LR
   C2 --> N["new seeded game"] --> P
 ```
 
-**Perception (what a think step opens with):** tracked values with trends (`food_days 9→7→5 ↓`, add your own engine path with `watch_add`), a harness-computed diff of the world since the last step, the base as rooms/doors/contents/problems (`state.base`), events, alerts, letters, open dialogs, then the raw numbers. Grids and pictures are on demand: `map.detail` (building camera), `map.view` (layers), `look` (screenshot with grid + numbered marks + anchor boxes).
+Three LLM streams, three scopes. What each one may touch, and what gates it, is enforced in code rather than in the prompt:
 
-**Control:** float-menu orders and gizmos (exactly what a player can click), designators, blueprints with a location grammar (`Campfire39256 +E2`, `@Gamble`, `bedroom2:NW`, `bedroom2:extend:E:4`, `Room:12`), zones/areas/storage, work priorities, schedules, policies, bills, research, letters and every window type (rituals, trade, naming, message boxes; a generic reader/answerer for anything else). `engine.get/set/call` reach any live object by path for the rest; the decompiled source is searchable so the model can find the right API itself.
+```mermaid
+flowchart TB
+  subgraph s1["play stream · every wake"]
+    direction LR
+    P1["think step<br/>30 tool calls"] -->|"rw_* (orders, build, steward policy, engine)"| G1["the running game"]
+    P1 -->|"notebook, skill/tool/watcher writes"| B1["brain/"]
+  end
+  subgraph s2["improve stream · day 1, then every 3 days"]
+    direction LR
+    I1["improvement pass"] -->|"skills, tools, watchers"| B2["brain/<br/>hot-reloaded next step<br/>committed per episode, brain_revert"]
+  end
+  subgraph s3["watchdog stream · every 6 h wall clock, only if ≥ 8 tool calls failed"]
+    direction LR
+    E1["failed tool calls<br/>stitched to their args and step, grouped by repeat"] --> W1["watchdog pass<br/>40 tool calls<br/>repo_read / grep / patch / revert only"]
+    W1 -->|"path allowlist"| S1["mod/Source/**<br/>agent/rimagent/**"]
+    S1 -->|"watchdog_verify_mod / _python<br/>build to runs/watchdog-build, both test suites"| V1["green, after the last patch?"]
+    V1 -->|"watchdog_commit: touched paths only"| C1["local commit<br/>no push"]
+    C1 -.->|"a human restarts the game"| G1
+  end
+```
+
+The play and improve streams write `brain/`, which the harness reloads. The watchdog writes the project's own source and nothing it writes runs until a person deploys it.
+
+**Perception (what a think step opens with):** tracked values with trends (`food_days 9→7→5 ↓`, add your own engine path with `watch_add`), a harness-computed diff of the world since the last step, the base as rooms/doors/contents/problems (`state.base`), events, alerts, letters, open dialogs, a Steward block (posture, one line per stock target such as `wood 420/500 ↑ forestry ok`, problems), then the raw numbers. Grids and pictures are on demand: `map.detail` (building camera), `map.view` (layers), `look` (screenshot with grid + numbered marks + anchor boxes).
+
+**Control:** float-menu orders and gizmos (exactly what a player can click), designators, blueprints with a location grammar (`Campfire39256 +E2`, `@Gamble`, `bedroom2:NW`, `bedroom2:extend:E:4`, `Room:12`), zones/areas/storage, schedules, policies, bills, research, letters and every window type (rituals, trade, naming, message boxes; a generic reader/answerer for anything else). `engine.get/set/call` reach any live object by path for the rest; the decompiled source is searchable so the model can find the right API itself. Work priorities and resource gathering are not on this list on purpose: the Steward keeps them, and the model sets policy through `steward.*` (posture, targets, per-pawn exceptions) instead of micromanaging.
+
+**Steward:** three automation layers inside RimBridge run every tick with no LLM in the loop: a work-priority scorer, a stock keeper, and standing orders. The *scorer* (a port of [Free Will](https://github.com/paul-freeman/rimworld-freewill) by Paul Freeman) recomputes each managed colonist's work priorities from skills, passions, injuries, food, fires and the current posture; the *stock keeper* (a synchronous rewrite of [Colony Manager Redux](https://github.com/ilyvion/colony-manager-redux) by ilyvion) keeps wood, forage, meat, leather and steel at targets by designating cut/harvest/hunt/mine, with safety, reachability and radius checks; a default plan scaled to colonist count is created on a new colony's first tick. The model sees the result in its situation packet and steers it with a dozen `rw_steward_*` tools: `status`, `explain` (why a pawn has a priority), `posture` (`defend`/`build`/`harvest`/`recover` or custom deltas, time-boxed), `stock_set`/`add`/`remove`/`run`, `pawn` (take one colonist manual), `settings`, `enable`. `ui.set_work` on a pawn takes that pawn out of steward management and says so. *Standing orders* are eight deterministic reflexes (combat draft to a rally point, rescue, unforbid, corpses, beds, policies, blueprints, fire), each toggleable and explainable through `rw_steward_orders*`, and a manual action on a pawn or thing pauses the matching order for it (the older brain watchers that drafted, rescued or unforbade from Python are skipped while the order that replaced them is on). The scorer and stock keeper are MIT; origins and modifications are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 **Learning:** an improvement pass on a second LLM stream every few days (turn repeated reactions into watchers, repeated computations into tools, tighten skills with numbers), an episode reflection at the end, per-episode scores, git history of `brain/`, `brain_revert` when a change made things worse. Tips you type in the dashboard are folded into skills.
+
+**Watchdog:** a third stream that does for the harness what the improvement pass does for the brain. The improvement pass stays inside `brain/`: text the harness hot-reloads, safe by construction. The watchdog reads the tool-call *error* stream instead of the game (each failed call stitched back to its arguments and the step it came from, identical failures grouped, because a failure that repeats across steps is a defect and one corrected on the next call is a guess) and patches the defects behind it in `mod/Source/**` and `agent/rimagent/**`: a bridge method that crashes on a legal input, a doc string the code contradicts, a helper whose signature cannot be called. It runs on its own thread when both gates pass, `every_hours` of wall clock and at least `min_errors` failures since the last pass (config `watchdog:`; a clean error stream fires nothing), never beside an improvement pass. Its guardrails are in the tools, not the prompt: a path allowlist (`safe_path` rejects `..`, absolute and symlink escapes, `.git`, build output, and everything outside the two trees, so `brain/`, `config.local.yaml`, `knowledge/` and `mod/1.6/` are unreachable, and so are the test suites it is judged by); an exact tool allowlist with no `run_python`, `rpc`, `rw_*` or brain tools (an unsandboxed exec with a bridge handle would make the path checks decorative), and a tool group the registry never offers to any other stream; and verify-before-commit tracked server-side, where a patch marks its root unverified and `watchdog_commit` refuses until `watchdog_verify_mod` (build plus mod tests) or `watchdog_verify_python` (pytest) has run, passed, and run after the last patch, then stages exactly the touched paths and never pushes. It never deploys: the verification build writes to `runs/watchdog-build/`, not the `mod/1.6/Assemblies/` symlink the running game loaded, the game is never restarted, and verified fixes are local commits that wait for a human at the next natural restart. Each pass appends to `brain/memory/watchdog_log.md` and shows in the dashboard's Watchdog tab.
 
 **Knowledge:** the RimWorld wiki (scraped, BM25) and the decompiled game source (`search_source`, `read_source`). It reads the actual raid-point formula rather than guessing it.
 
@@ -142,7 +180,7 @@ cd agent && uv run rimagent seed         # wiki → knowledge/wiki + BM25 (~10 m
 cd .. && script/start.sh                 # launches RimWorld via Steam if needed, starts the agent, opens the dashboard
 ```
 
-Enable `RimBridge` in the mod list (after Harmony) the first time. The dashboard at http://127.0.0.1:8770 has tabs for Live (steps, the situation the model was shown, chat with the agent), Ledger, Watchers, Brain (skills, tools, watchers, memory, git history), Scores, Base, Map and ASCII.
+Enable `RimBridge` in the mod list (after Harmony) the first time. The dashboard at http://127.0.0.1:8770 has tabs for Live (steps, the situation the model was shown, chat with the agent), Ledger, Watchers, Brain (skills, tools, watchers, memory, git history), Scores, Base, Steward (posture, stock rows, standing orders, rally point, toggles), Watchdog (its log and configuration), Map and ASCII.
 
 Optional: decompile your own `Assembly-CSharp.dll` into `knowledge/source-1.6/` with [ilspycmd](https://github.com/icsharpcode/ILSpy) so the model can read the exact game code (`dotnet tool install -g ilspycmd; ilspycmd -p -o knowledge/source-1.6 <path to Assembly-CSharp.dll>`). Decompiled source is not part of this repo.
 
@@ -150,10 +188,10 @@ Useful commands: `rimagent think` (one step against the live game), `rimagent to
 
 ## Repo layout
 
-- `mod/`: RimBridge (C#). `Source/Engine` holds reflection and the location grammar, `State` the summaries and scene graph, `Map` the ASCII views, camera and screenshots, `Ui` the player-parity controls and dialogs, `Ledger` the Harmony event patches, `Dev` the training tools. `mod/Tests` (xunit) covers the pure parser.
-- `agent/rimagent/`: runner, loop, registry (hot-loading tools and watchers), tracker, worlddiff, annotate (Set-of-Mark), reflect, skills/memory/scorecard, dashboard, knowledge (wiki and source), prompts.
+- `mod/`: RimBridge (C#). `Source/Engine` holds reflection and the location grammar, `State` the summaries and scene graph, `Map` the ASCII views, camera and screenshots, `Ui` the player-parity controls and dialogs, `Ledger` the Harmony event patches, `Steward` the vendored scorer and stock keeper plus their `steward.*` RPCs, `Dev` the training tools. `mod/Tests` (xunit) covers the pure parser and the stock threshold math.
+- `agent/rimagent/`: runner, loop, registry (hot-loading tools and watchers), tracker, worlddiff, annotate (Set-of-Mark), reflect, skills/memory/scorecard, watchdog (the self-correction stream and its scoped repo tools), dashboard, knowledge (wiki and source), prompts.
 - `brain/`: everything the agent authors. It starts with 13 seeded skills: the doctrine, the bridge manual, ten wiki-distilled strategy skills, and a worked base example.
-- `docs/`: screenshots and the paper (`PAPER.md`).
+- `docs/`: screenshots, the paper (`PAPER.md`) and release notes.
 
 ## Status
 

@@ -61,3 +61,15 @@
 - [2026-09-16 13:08] butcher spots do take bills!
 
 - [2026-09-16 13:11] there are plenty of animals on the map
+
+- [2026-09-16 13:20] check for existing bills before placing them as campfire has many dupes
+
+- [2026-09-16 13:24] there are too many, run!
+
+- [2026-09-16 13:33] you have god mode, survive
+
+- [2026-09-16 14:28] spawn 20 pawns and recruit them
+
+- [2026-09-16 17:06] Delete all buildings and rebuild, none of the ones you built now are functinal
+
+- [2026-09-16 17:53] so... how many trees do you count on the map? And what blueprints need wood? Do you think you should build from something else? How do you learn from this for the future?

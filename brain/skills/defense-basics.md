@@ -1,8 +1,8 @@
 ---
 always: false
 description: Pull in when a raid letter arrives, rw_state_threats shows hostiles,
-  or when planning walls, traps, turrets, chokepoints and draft positioning for a
-  small colony. Also pull in when a mech (Scyther, Centipede, Scorcher, Lancer) is
+  or when planning walls, traps, turrets, chokepoints, the rally point and draft
+  positioning for a small colony. Also pull in when a mech (Scyther, Centipede, Scorcher, Lancer) is
   on the map or sleeping nearby.
 name: defense-basics
 tags:
@@ -11,6 +11,7 @@ tags:
 - traps
 - turrets
 - drafting
+- rally
 - mechs
 ---
 
@@ -28,11 +29,20 @@ Human raiders flee once 40-70% of their group is downed or after 10-15 hours; me
 ## Raid types
 | Letter | Behavior | Response |
 |---|---|---|
-| Walk in (45%) | Shortest open path to a colonist; walls only bashed if no open path | Fight at your chokepoint |
-| "Preparing" | Idle near spawn first | Draft now, or snipe them |
-| Drop pods (30%) | Land near a colonist (10% mid-base); ~9 s before pods open | Draft all armed pawns nearby, melee them as they emerge |
-| Sappers / Breachers | Dig or smash walls straight toward an assigned bed; sappers avoid turret sight; smaller raid | Sortie and hit them at the wall; do not wait in the killbox |
+| Walk in (45%) | Shortest open path to a colonist; walls only bashed if no open path | The combat order holds the rally point; watch, do not touch |
+| "Preparing" | Idle near spawn first | The order already drafted; snipe with one pawn if they idle in rifle range |
+| Drop pods (30%) | Land near a colonist (10% mid-base); ~9 s before pods open | Pods inside the base: the order switches to attack-nearest; add `rw_ui_attack` focus fire on the first raider out |
+| Sappers / Breachers | Dig or smash walls straight toward an assigned bed; sappers avoid turret sight; smaller raid | Intervene: the rally point faces the wrong way. `rw_ui_goto` the shooters to the breach and hit them at the wall; do not wait in the killbox |
 | Siege | 2 mortars outside; assault after 1.5-3 days, or 8% chance per hit taken | Attack the camp early, or wound one to trigger the assault into your defenses |
+
+## The rally point and the combat order
+The `combat` standing order (`rw_steward_orders`) is the colony's draft reflex. When any hostile has a path to the home area, or a raid/siege/mech-cluster/manhunter event lands, it drafts every colonist who holds a ranged or melee weapon (skips downed, prisoners, children, pacifists, anyone under 30% health or in a mental break, and pawns you took unmanaged), sends each to its own cell inside the **rally rect** (cover-aware: cells next to walls and sandbags first), restricts the non-fighters to the Home area, and re-issues positions to anyone who wandered every 250 ticks. Once no hostile is left for 600 ticks it undrafts, restores allowed areas and runs `rescue` once. If a hostile reaches the base or comes within 5 cells of the rally centre it switches every fighter to attack-nearest.
+
+**Set the rally point on day 1-2, the moment the first walls stand:** `rw_steward_orders_rally(rect=[x,z,w,h])`, a 3x2 to 4x3 rect just inside the single door, behind the wall corners, out of the trap lane, on the hospital side of the base so the downed are carried a short way. `rw_steward_orders_rally()` reads it, `rw_steward_orders_rally(clear=true)` removes it; move it whenever the door moves. Without one the order still drafts, but it parks the fighters around the base centre in the open, which is how colonists die in the yard. The situation packet says `rally: none` until you set it.
+
+**What it does not do:** no kiting, no focus fire, no turret management (rearm, power, hold fire), no sorties, no mortars, no retreat into the hospital, nothing for animals, nothing against a berserk colonist or a manhunter already inside a closed base. It targets only hostiles and never uses dev tools.
+
+**When to intervene** (and only then): breachers and sappers coming through a wall the rally does not cover; drop pods inside the walls; a mech cluster (sleeping mechs are not a raid until they wake, see below); a siege you want to sortie against; a fire during the fight (drafted pawns cannot fight fire: undraft two). `rw_ui_draft`/`rw_ui_goto`/`rw_ui_attack` on a pawn makes the order leave that pawn alone for ~2500 ticks (an hour), so an override sticks; `position_shooters(cell=)` does the same for several. Do not draft pawns yourself otherwise: a hand-drafted pawn is a pawn the order will not undraft when the raid ends, and a pawn you drafted for a chore keeps standing there. `rw_steward_orders_explain(id="combat")` lists who is hands-off and for how long.
 
 ## Structures
 - Walls: 75% cover, block line of fire, pawns lean out at corners. Raiders take the quickest unobstructed route, so a perimeter with exactly ONE 1-wide entrance (bent so they cannot shoot in) turns every raid into a chokepoint fight. Stone is best; wood and steel burn. rw_ui_build def Wall.
@@ -55,9 +65,16 @@ When `rw_state_threats` shows a mech with `LordJob_SleepThenAssaultColony` (or a
    - If you have steel: build sandbags (5 steel each) or a wall line at the chokepoint.
    - If you have wood: spike traps in the approach lane (5+ traps).
    - If you have cloth: sandbags (5 cloth each).
-4. **Draft all shooters** and position them at the chokepoint BEFORE the mechs wake.
+4. **Put the rally point at the chokepoint** (`rw_steward_orders_rally`) BEFORE the mechs wake; the combat order drafts the shooters there the moment they do. Draft by hand only if you want them in position early (a hand-drafted pawn is hands-off to the order for an hour).
 5. **If the odds are hopeless** (2+ mechs vs 2-3 colonists, no turrets, no walls): consider whether the colony is already lost. Do not waste steps on a lost cause. Note it in the notebook and end the episode honestly.
 6. **Mechs never flee.** They do not retreat at 40% casualties. Plan for a total engagement or a total loss.
+
+## No power = no turrets = death (episode 3 lesson)
+**The #1 cause of loss in episode 3: no power grid, therefore no turrets, therefore no defense against the mech assault.** With 22 colonists the threat points were 500 by day 1, meaning a 500-point raid (≈ 10-12 pirates with guns) was coming within days. Without turrets, the colony had to rely on manual drafting of 22 pawns, which is impossible to coordinate.
+
+**Rule: build a wood-fired generator + battery + 2 mini-turrets BEFORE the first raid.** This is a day-0 priority, not a day-10 luxury. The generator costs 100 steel + 2 components; each turret costs 30 stuff + 70 steel + 3 components; the battery costs 70 steel + 2 components. Total ≈ 400 steel + 8 components. Crashlanded loot has ~1,450 steel. If you do not have turrets by the time threat points exceed 100, you are already in danger.
+
+**In god mode / sandbox:** spawn turrets directly with `rw_dev_spawn` (def="Turret_MiniTurret") at the approach lane. This is the fastest way to get defense in a sandbox game. Note: the defName is `Turret_MiniTurret`, not `Turret_Gun`.
 
 ## Day 8-10 raid-prep checklist (3-colonist colony, walled barracks)
 By day 8 you should have:
@@ -68,27 +85,15 @@ By day 8 you should have:
 5. **Cooking bill running** (Forever CookMealSimple on campfire or stove). Food days >= 3.
 6. **No forbidden items** in the approach lane (forbidden items block paths and cause pathing errors).
 7. **Threat points read:** `rw_state_threats` shows the current threat level. At 35 points, expect a 1-2 raider raid (35-70 CP) within 2-3 days.
-8. **Draft positions planned:** shooters at the door corners (1 tile inside, 1 tile apart), melee pawn just outside the door gap. Fire at will on all shooters.
+8. **Rally point set:** `rw_steward_orders_rally(rect=)` over the door corners (1 tile inside, 1 tile apart); the combat order spreads the fighters over it. Fire at will on all shooters.
+9. **Turrets:** at least 1 mini-turret at the approach lane (requires power grid). If no power yet, build the generator + battery first.
 
 **On the raid letter:**
 1. `rw_state_threats` → note raider type, count, distance, and approach direction.
-2. `rw_ui_draft` every violence-capable pawn BEFORE enemies are in range.
-3. `rw_ui_goto` shooters to the door corners; melee pawn to the outside gap.
-4. `rw_ui_attack` to focus the nearest raider or the one with a gun.
-5. `rw_game_speed(speed=1)`, slow the fight down for precise orders.
-6. After the raid: `rw_ui_draft(drafted=false)` for all, haul loot, capture downed raiders, rebuild traps, repair walls.
+2. **The combat order has already drafted the armed colonists to the rally rect** (`rw_steward_orders` shows `combat` acting on N). Only if the raid comes from a side the rally does not cover: `position_shooters(cell=[door_x, door_z])`, one call instead of N `rw_ui_goto` calls, and those pawns are yours for the next hour.
+3. `rw_ui_attack` to focus the raider with a gun; that pawn stays hands-off to the order for an hour, so undraft it yourself after.
+4. `rw_game_speed(speed=1)`, slow the fight down for precise orders.
+5. After the raid: the order undrafts everyone it drafted, restores areas and runs `rescue`. The `unforbid` and `corpses` orders take the loot and the bodies; you decide what to smelt or gift.
 
-## Drafting checklist
-1. On the letter: rw_state_threats, then rw_ui_draft every violence-capable pawn BEFORE enemies are in range. Drafted pawns ignore needs, so feed and rest them first if time allows.
-2. rw_ui_goto shooters to wall corners or sandbags facing the approach, 1 tile apart. Up to 3 melee pawns stand just outside the door gap (not in it) to force a 1v3.
-3. Fire at will handles targeting; rw_ui_attack to focus grenadiers or the nearest melee rusher. Never chase fleeing raiders.
-4. Drag wounded out of the line of fire at once (a bleeding pawn has ~2 hours). Undraft when the raid flees so pawns eat, sleep and tend.
-5. After: haul loot, capture downed raiders, rebuild traps, repair walls.
-
-## First raid with 3 colonists
-Expect 1-2 poorly armed raiders (35-50 points). Before day 10: walled bedroom block with one door, 3-5 wood spike traps in the approach lane, a chunk or sandbag line, best gun on the best Shooting pawn. Fight from the doorway, others beside a wall corner; never fight in the open.
-
-## Desert biome note
-In a desert biome wood is scarce (~150 logs total). Budget it: keep the day-1 shelter in wood (fast, cheap), but (a) build a 2-wide steel/stone fire break between the campfire/kitchen and the beds, (b) put at least one bed OUTSIDE the main building as a rescue target, and (c) only convert the walls adjacent to the fire source to steel/stone first. Do not queue a full steel re-wall until wood is no longer needed for beds/doors/research bench.
-
-Sources: Raid points; Raider; Pirates/Pawns; Tribes/Pawns; Defense tactics; Defense structures; Cover; Sandbags; Spike trap; Mini-turret; Drafting
+## Turret defName
+The correct defName for the mini-turret is `Turret_MiniTurret` (not `Turret_Gun`). Use `rw_defs_search(query="turret")` to verify.

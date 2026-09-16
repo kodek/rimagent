@@ -151,6 +151,9 @@ namespace RimBridge.Ledger
         {
             try { EventLedger.Add("research_finished", proj.label, new JObject { ["def"] = proj.defName }); }
             catch (Exception ex) { BridgeLog.Warning("ledger research: " + ex.Message); }
+            // steward.research queue: start the next available queued project once nothing is being researched
+            try { RimBridge.Steward.StewardResearch.Notify_ProjectFinished(proj); }
+            catch (Exception ex) { BridgeLog.Warning("steward research queue: " + ex.Message); }
         }
     }
 

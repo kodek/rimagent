@@ -4,6 +4,7 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 using RimBridge.Engine;
 using RimBridge.Server;
+using RimBridge.Steward.Orders;
 using RimWorld;
 using Verse;
 
@@ -47,6 +48,7 @@ namespace RimBridge.Ui
             try { d = (Designator)Activator.CreateInstance(type)!; }
             catch (Exception ex) { throw new RpcError($"cannot instantiate {cls}: {ex.Message}"); }
             int ok = 0; var failed = new JArray();
+            bool isForbid = type == typeof(Designator_Forbid) || type == typeof(Designator_Unforbid);
             var things = P.Arr(p, "things");
             if (things != null)
                 foreach (var id in things)
@@ -56,6 +58,7 @@ namespace RimBridge.Ui
                     var r = d.CanDesignateThing(t);
                     if (!r.Accepted) { failed.Add(new JObject { ["thing"] = t.ThingID, ["reason"] = r.Reason ?? "not applicable" }); continue; }
                     d.DesignateThing(t); ok++;
+                    if (isForbid) StandingOrders.Touch(t, "ui.designate:" + cls);
                 }
             var cells = Cells(p, map).ToList();
             if (cells.Count > 0)
@@ -68,7 +71,15 @@ namespace RimBridge.Ui
                     if (!r.Accepted) { if (failed.Count < 20) failed.Add(new JObject { ["cell"] = State.Snapshot.Cell(c), ["reason"] = r.Reason ?? "not applicable" }); continue; }
                     good.Add(c);
                 }
-                if (good.Count > 0) { d.DesignateMultiCell(good); ok += good.Count; }
+                if (good.Count > 0)
+                {
+                    d.DesignateMultiCell(good);
+                    ok += good.Count;
+                    if (isForbid)
+                        foreach (var c in good)
+                            foreach (var th in c.GetThingList(map))
+                                if (th.def.EverHaulable || th is Building) StandingOrders.Touch(th, "ui.designate:" + cls);
+                }
             }
             if (ok == 0 && things == null && cells.Count == 0) throw new RpcError("give cells, rect or things");
             return new JObject { ["designator"] = cls, ["applied"] = ok, ["failed"] = failed };
@@ -91,7 +102,7 @@ namespace RimBridge.Ui
             return new JObject { ["results"] = results, ["placed_total"] = results.Sum(r => (r["placed"] as JArray)?.Count ?? 0), ["failed_total"] = results.Sum(r => (r["failed"] as JArray)?.Count ?? (r["error"] != null ? 1 : 0)) };
         }
 
-        [Rpc("ui.build", "{def: buildable defName (ThingDef or TerrainDef), at?: [x,z], rot?: N|E|S|W, stuff: ThingDef (required for stuff-made things; omit once to get the options), line?: [[x1,z1],[x2,z2]], rect?: [x,z,w,h], fill?: bool (rect: fill vs outline), dry_run?: bool} place blueprints; picks a stuff automatically if omitted (most plentiful allowed). Returns placed and failed cells with reasons.")]
+        [Rpc("ui.build", "{def: buildable defName (ThingDef or TerrainDef), at?: [x,z], rot?: N|E|S|W, stuff: ThingDef (REQUIRED for stuff-made things: Wall/Door/Bed/etc; omit once to see the options with on-map quantities and no material is guessed for you), line?: [[x1,z1],[x2,z2]], rect?: [x,z,w,h], fill?: bool (rect: fill vs outline), dry_run?: bool} place blueprints. Returns placed and failed cells with reasons.")]
         public static JToken Build(JObject p)
         {
             var map = Map();

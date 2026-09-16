@@ -11,6 +11,7 @@ Every event is {"seq": int, "t": epoch seconds, "kind": str, "data": dict}. Kind
   ledger        data: one game ledger event (kind, text, tick, day, ...)
   watcher       data: {"name": str, "action"|"alert"|"error": ...}
   brain_change  data: {"kind": skill|tool|watcher|notebook|journal|git, "name"?: str, "action": str}
+  watchdog      data: {"summary", "fixes": [...], "skipped": [...], "commits": [...], "errors": int, "uncommitted": [...]}   one self-correction pass over mod/Source + agent/rimagent
   episode_start data: {"episode": int, "seed": str}
   episode_end   data: {"episode": int, "score": float, "reason": str, "assisted": bool, "brain_sha": str}
   situation     data: {"trigger", "tracked": str, "changes": str, "day", "hour", "chars"}   what the model was just shown

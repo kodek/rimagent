@@ -37,15 +37,17 @@ namespace RimBridge.MapView
             return (JObject)Detail(p);
         }
 
-        [Rpc("map.detail", "{x?, z?, around?: thingId|pawn (centre on it), w?: 24, h?: 24 (max 60, enough for a whole base), roof?: false} the BUILDING CAMERA: zoomed ASCII where every column is numbered, each building type gets its own letter (UPPER = built, lower = blueprint/frame), '*' marks interaction spots that must stay clear, '+' doors, '_' stockpile, ',' growing zone, 'i' items, '@' colonists, '!' hostiles, '^' rock, '~' water, '.' open ground. Returns legend + list of things in view with id/rot/size. Use before and after placing anything.")]
+        [Rpc("map.detail", "{x?, z?, around?: thingId|pawn|location-grammar e.g. Room:12/anchor name (centre on it), w?: 24, h?: 24 (max 60, enough for a whole base), roof?: false} the BUILDING CAMERA: zoomed ASCII where every column is numbered, each building type gets its own letter (UPPER = built, lower = blueprint/frame), '*' marks interaction spots that must stay clear, '+' doors, '_' stockpile, ',' growing zone, 'i' items, '@' colonists, '!' hostiles, '^' rock, '~' water, '.' open ground. Returns legend + list of things in view with id/rot/size. Use before and after placing anything.")]
         public static JToken Detail(JObject p)
         {
             var map = Map();
             IntVec3 center;
             if (p["around"] != null)
             {
-                var t = Lookup.ThingOrNull(P.Str(p, "around")) ?? Lookup.Pawn(P.Str(p, "around"));
-                center = t.PositionHeld;
+                var t = Lookup.ThingOrNull(P.Str(p, "around")) ?? Lookup.PawnOrNull(P.Str(p, "around"));
+                // Same location grammar as ui.build's rect (Room:N, anchors, @pawn, +offsets); falls back to it
+                // for anything that isn't a thing/pawn id so the model can centre on a room the same way it builds in one.
+                center = t?.PositionHeld ?? Locate.Rect(p["around"], map, "around").CenterCell;
             }
             else
             {

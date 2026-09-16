@@ -1,6 +1,6 @@
 ---
 name: sandbox-experiments
-description: What to do in a SANDBOX episode (god mode, all research, not scored): a checklist of experiments whose results should become skills, tools and watchers.
+description: "What to do in a SANDBOX episode (god mode, all research, not scored): a checklist of experiments whose results should become skills, tools and watchers."
 tags: [sandbox, experiment, learning, curriculum]
 always: false
 ---

@@ -26,13 +26,41 @@ play:
   autosave: true
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
   # Sandbox / god mode is a manual toggle on the dashboard (free instant builds, all research, run marked assisted).
-  parallel: false          # dashboard toggle: calm steps fan out to 4 specialist streams (econ, build, guard, steward)
+  parallel: false          # dashboard toggle: calm steps fan out to 4 specialist streams (econ, build, guard, caretaker)
   parallel_max_calls: 10   # tool-call budget per worker stream in parallel mode
   parallel_manager: true   # a fast no-tools manager call assigns directives and skips idle streams before the fan-out
   parallel_worker_thinking: false   # workers execute the manager's directives without extended thinking (much faster)
   scenario: Crashlanded
   storyteller: Cassandra
   difficulty: Rough
-  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost]
+  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost, steward, orders]   # steward = stock stalled/reached, posture expired; orders = combat engaged/released, rescue, corpses, blueprints cancelled, fire (both non-critical: they wait out event_cooldown_hours)
+steward:
+  # The steward runs inside the mod every tick: the scorer sets work priorities for managed colonists, stock jobs
+  # designate trees/plants/animals/ore toward their targets. The model directs it (targets, posture) instead of micromanaging.
+  enabled: true            # runner calls steward.enable at new_game / recover_game; dashboard toggle "steward" flips it at runtime
+  scorer: true             # work-priority scorer (Free Will) for every managed colonist; steward.pawn managed=false takes one out
+  stock: true              # stock jobs (forestry, foraging, hunting, mining, livestock) keep counted stock at their targets
+  research_queue_default: []   # research defNames queued via steward.research on a new game (empty = the director chooses)
+  orders:                  # standing orders: deterministic reflexes the mod runs every few hundred ticks (combat rally + draft, rescue,
+                           # unforbid, corpses, beds, policies, blueprints, fire). The director toggles them (rw_steward_orders_set) and
+                           # sets the rally rect (rw_steward_orders_rally); a pawn/thing it touched by hand is left alone for a cooldown.
+    enabled: true          # runner calls steward.orders.set (all on, then each `off` id off) at new_game / recover_game; false = all orders off
+    "off": []              # order ids to start disabled, e.g. [corpses, policies] (quoted: a bare `off` is YAML for false)
+    # Brain watchers the orders replaced (stem: order id). While that order is on and the mod answers steward.orders.set, the
+    # runner skips the watcher: its ui.draft/goto/order/designate calls would record manual touches that make the order leave
+    # those pawns alone. Omit for the built-in table (agent/rimagent/watchers.py SUPERSEDED_WATCHERS), {} to disable, or your own map.
+    # superseded_watchers: {hostile_draft: combat, undraft_after_fight: combat, fire_alert: fire, rescue_downed: rescue,
+    #                       unforbid_drops_watcher: unforbid, rotting_corpses: corpses, food_policy_watcher: policies, build_stall: blueprints}
+watchdog:
+  # A privileged, low-frequency self-correction stream. It reads the tool-call errors the play streams produced,
+  # separates model noise from genuine defects, and patches the PROJECT'S OWN SOURCE (mod/Source/** and
+  # agent/rimagent/**, nothing else) with a fix it has proved with the real build and both test suites. It never
+  # deploys: the verification build goes to a scratch directory, the game is never restarted, nothing is pushed.
+  # Verified fixes are committed locally and wait for a human to deploy at the next natural restart.
+  # This is NOT the improvement pass: that one stays inside brain/ (skills, tools, watchers) and hot-reloads.
+  enabled: true
+  every_hours: 6           # wall-clock hours between passes (checked at each in-game day rollover)
+  min_errors: 8            # and only if at least this many tool calls failed since the last pass (a clean stream fires nothing)
+  max_tool_calls: 40       # budget for the whole pass (smaller than play's max_tool_calls; reading source is expensive)
 dashboard:
   port: 8770

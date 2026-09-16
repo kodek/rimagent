@@ -6,6 +6,7 @@ using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using RimBridge.Engine;
 using RimBridge.Server;
+using RimBridge.Steward.Orders;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -69,6 +70,10 @@ namespace RimBridge.Ui
                 if (g == null) throw new RpcError($"no gizmo matching '{label}'. Available: " + string.Join(" | ", gizmos.OfType<Command>().Select(c => c.Label?.StripTags())));
             }
             if (g.Disabled) throw new RpcError($"gizmo is disabled: {g.disabledReason?.StripTags()}");
+            // beds: any gizmo (the beds order honours ui.press); pawns: only the draft/undraft gizmo pauses the combat order (Hold fire etc. do not)
+            string pressLabel = (g as Command)?.Label?.StripTags() ?? g.GetType().Name;
+            if (t is Building_Bed) StandingOrders.Touch(t, "ui.press:" + pressLabel);
+            else if (t is Pawn && pressLabel.IndexOf("draft", StringComparison.OrdinalIgnoreCase) >= 0) StandingOrders.Touch(t, "ui.press:draft");
             switch (g)
             {
                 case Command_Toggle ct: ct.toggleAction(); return new JObject { ["pressed"] = ct.Label?.StripTags(), ["active"] = ct.isActive() };
@@ -156,6 +161,9 @@ namespace RimBridge.Ui
             }
             if (o.Disabled) throw new RpcError($"order is disabled: {o.Label.StripTags()}");
             if (o.action == null) throw new RpcError("order has no action");
+            StandingOrders.Touch(pawn, "ui.order:" + o.Label.StripTags());
+            if (pawn.Drafted) StandingOrders.Touch(pawn, "ui.order.drafted:" + o.Label.StripTags());   // a drafted attack/move order pauses the combat order for this pawn
+            if (target.Thing is Pawn tpawn) StandingOrders.Touch(tpawn, "ui.order:" + o.Label.StripTags());
             o.action();
             return new JObject { ["ordered"] = o.Label.StripTags(), ["pawn"] = pawn.LabelShort, ["job"] = State.Snapshot.JobText(pawn) };
         }
@@ -170,6 +178,7 @@ namespace RimBridge.Ui
             if (pawn.drafter == null) throw new RpcError("pawn cannot be drafted");
             if (pawn.Downed) throw new RpcError("pawn is downed");
             pawn.drafter.Drafted = P.Bool(p, "drafted", true);
+            StandingOrders.Touch(pawn, "ui.draft");
             return new JObject { ["pawn"] = pawn.LabelShort, ["drafted"] = pawn.Drafted };
         }
 
@@ -185,6 +194,7 @@ namespace RimBridge.Ui
             var job = JobMaker.MakeJob(JobDefOf.Goto, cell);
             job.playerForced = true;
             bool ok = pawn.jobs.TryTakeOrderedJob(job, JobTag.DraftedOrder);
+            StandingOrders.Touch(pawn, "ui.goto");
             return new JObject { ["ok"] = ok, ["pawn"] = pawn.LabelShort, ["cell"] = State.Snapshot.Cell(cell), ["drafted"] = pawn.Drafted };
         }
 
@@ -202,6 +212,7 @@ namespace RimBridge.Ui
             job.playerForced = true;
             if (target is Pawn tp) pawn.mindState.enemyTarget = tp;
             bool ok = pawn.jobs.TryTakeOrderedJob(job, JobTag.DraftedOrder);
+            StandingOrders.Touch(pawn, "ui.attack");
             return new JObject { ["ok"] = ok, ["pawn"] = pawn.LabelShort, ["target"] = target.ThingID, ["melee"] = melee };
         }
 
@@ -217,7 +228,18 @@ namespace RimBridge.Ui
             if (p["target_c"] != null) job.targetC = (LocalTargetInfo)Coerce.To(p["target_c"], typeof(LocalTargetInfo))!;
             if (p["count"] != null) job.count = P.Int(p, "count");
             job.playerForced = true;
+            bool wasDrafted = pawn.Drafted;
             bool ok = pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc, P.Bool(p, "queue", false));
+            if (def == JobDefOf.Rescue || def == JobDefOf.TendPatient)
+            {
+                StandingOrders.Touch(pawn, "ui.job:" + def.defName);
+                if (job.targetA.Thing is Pawn patient) StandingOrders.Touch(patient, "ui.job:" + def.defName);
+            }
+            else if (wasDrafted || def == JobDefOf.AttackMelee || def == JobDefOf.AttackStatic || def == JobDefOf.Goto)
+            {
+                // a drafted pawn's job, or an attack/move job, is manual military control: the combat order leaves the pawn alone for an hour
+                StandingOrders.Touch(pawn, "ui.job:" + def.defName);
+            }
             return new JObject { ["ok"] = ok, ["pawn"] = pawn.LabelShort, ["job"] = def.defName, ["now"] = State.Snapshot.JobText(pawn) };
         }
 
@@ -233,24 +255,38 @@ namespace RimBridge.Ui
 
         // ---------- Work / schedule / policies ----------
 
-        [Rpc("ui.set_work", "{pawn, priorities: {WorkTypeDef: 0-4}} 0 = disabled, 1 = highest; enables manual priorities mode")]
+        [Rpc("ui.set_work", "{pawn, priorities: {WorkTypeDef: 0-4}} 0 = disabled, 1 = highest; enables manual priorities mode. Takes the pawn out of steward management first (steward.pawn managed=true hands it back)")]
         public static JToken SetWork(JObject p)
         {
             Map();
             var pawn = Lookup.Colonist(P.Str(p, "pawn"));
             if (pawn.workSettings == null || !pawn.workSettings.EverWork) throw new RpcError("pawn cannot work");
-            Current.Game.playSettings.useWorkPriorities = true;
+            // Validate everything first: a failed call must leave the managed flag and the priorities untouched.
             var pri = P.Obj(p, "priorities") ?? throw new RpcError("missing priorities");
-            var applied = new JObject(); var skipped = new JArray();
+            var resolved = new List<(string key, WorkTypeDef wt, int v)>();
             foreach (var kv in pri)
             {
                 var wt = Lookup.DefOrNull(typeof(WorkTypeDef), kv.Key) as WorkTypeDef ?? throw new RpcError($"unknown work type '{kv.Key}'. Known: " + string.Join(", ", DefDatabase<WorkTypeDef>.AllDefs.Select(w => w.defName)));
-                int v = Math.Max(0, Math.Min(4, (int)kv.Value!));
-                if (pawn.WorkTypeIsDisabled(wt)) { skipped.Add(kv.Key + " (disabled for this pawn)"); continue; }
+                int raw;
+                try { raw = (int)kv.Value!; } catch { throw new RpcError($"priorities.{kv.Key}: value must be an integer 0-4"); }
+                resolved.Add((kv.Key, wt, Math.Max(0, Math.Min(4, raw))));
+            }
+            // The steward's scorer would clobber manual priorities on its next pass: mark the pawn unmanaged before writing.
+            RimBridge.Steward.ScorerGate.SetManaged(pawn, false);
+            Current.Game.playSettings.useWorkPriorities = true;
+            var applied = new JObject(); var skipped = new JArray();
+            foreach (var (key, wt, v) in resolved)
+            {
+                if (pawn.WorkTypeIsDisabled(wt)) { skipped.Add(key + " (disabled for this pawn)"); continue; }
                 pawn.workSettings.SetPriority(wt, v);
                 applied[wt.defName] = v;
             }
-            return new JObject { ["pawn"] = pawn.LabelShort, ["applied"] = applied, ["skipped"] = skipped };
+            return new JObject
+            {
+                ["pawn"] = pawn.LabelShort, ["applied"] = applied, ["skipped"] = skipped,
+                ["steward_managed"] = false,
+                ["note"] = "steward no longer sets this pawn's priorities or drafts it in combat (the combat order skips unmanaged pawns: draft or shelter it yourself in a raid); steward.pawn managed=true to hand back",
+            };
         }
 
         [Rpc("ui.set_schedule", "{pawn, hours: 24-char string using A=Anything S=Sleep W=Work J=Joy M=Meditate (hour 0 first)}")]
@@ -289,6 +325,8 @@ namespace RimBridge.Ui
             if (p["medical"] != null && pawn.playerSettings != null) { pawn.playerSettings.medCare = (MedicalCareCategory)Enum.Parse(typeof(MedicalCareCategory), P.Str(p, "medical"), true); o["medical"] = pawn.playerSettings.medCare.ToString(); }
             if (p["hostility"] != null && pawn.playerSettings != null) { pawn.playerSettings.hostilityResponse = (HostilityResponseMode)Enum.Parse(typeof(HostilityResponseMode), P.Str(p, "hostility"), true); o["hostility"] = pawn.playerSettings.hostilityResponse.ToString(); }
             if (p["self_tend"] != null && pawn.playerSettings != null) { pawn.playerSettings.selfTend = P.Bool(p, "self_tend", true); o["self_tend"] = pawn.playerSettings.selfTend; }
+            foreach (var key in new[] { "apparel", "food", "drug", "reading", "area", "medical", "hostility", "self_tend" })
+                if (p[key] != null) StandingOrders.Touch(pawn, "ui.set_policies:" + key);
             return o;
         }
 
@@ -305,11 +343,17 @@ namespace RimBridge.Ui
 
         // ---------- Bills ----------
 
-        [Rpc("ui.add_bill", "{thing: work table id, recipe: RecipeDef, mode?: RepeatCount|TargetCount|Forever, count?: 1, radius?: 999, suspended?: false, first?: false}")]
+        [Rpc("ui.add_bill", "{thing: work table id (aliases: station/table/bench), recipe: RecipeDef, mode?: RepeatCount|TargetCount|Forever, count?: 1, radius?: 999, suspended?: false, first?: false}")]
         public static JToken AddBill(JObject p)
         {
             Map();
-            var t = Lookup.Thing(P.Str(p, "thing"));
+            // "thing" is the documented name, but models often guess "station"/"table"/"bench" for a workbench id.
+            string thingId = p["thing"] != null ? P.Str(p, "thing")
+                : p["station"] != null ? P.Str(p, "station")
+                : p["table"] != null ? P.Str(p, "table")
+                : p["bench"] != null ? P.Str(p, "bench")
+                : throw new RpcError("missing param 'thing' (the work table id; aliases station/table/bench also accepted)");
+            var t = Lookup.Thing(thingId);
             if (!(t is IBillGiver bg)) throw new RpcError($"{t.ThingID} has no bill stack");
             var recipe = Lookup.Def<RecipeDef>(P.Str(p, "recipe"));
             if (!t.def.AllRecipes.Contains(recipe)) throw new RpcError($"{t.def.defName} cannot do {recipe.defName}. Available: " + string.Join(", ", t.def.AllRecipes.Where(r => r.AvailableNow).Select(r => r.defName)));

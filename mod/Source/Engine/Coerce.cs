@@ -90,7 +90,14 @@ namespace RimBridge.Engine
             {
                 if (t is JArray) return new LocalTargetInfo(Lookup.Cell(t));
                 var th = Lookup.ThingOrNull(t.ToString()) ?? Lookup.PawnOrNull(t.ToString());
-                if (th != null) return new LocalTargetInfo(th);
+                if (th != null)
+                {
+                    // A thing/pawn that fled off-map (fled to the map edge, in a caravan, etc.) has no Map/Position;
+                    // building a job/order against it crashes deep in vanilla with a bare NullReferenceException.
+                    // Fail here with a clear reason instead (never throw an unexplained exception into Unity).
+                    if (!th.Spawned || th.Map == null) throw new RpcError($"{th.ThingID} is not spawned on any map (fled off-map, in a caravan, or in transit) — no job/order can target it right now");
+                    return new LocalTargetInfo(th);
+                }
                 return new LocalTargetInfo(Lookup.Cell(t));
             }
             if (type == typeof(TargetInfo))

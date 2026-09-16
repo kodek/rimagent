@@ -1,4 +1,4 @@
-"""Web dashboard for rimagent: live transcript, game ledger, watchers, brain browser, scores, map.
+"""Web dashboard for rimagent: live transcript, game ledger, watchers, brain browser, scores, base, steward, map.
 
     app = create_app(BUS, bridge, controls)
     serve_in_thread(app, CONFIG["dashboard"]["port"])
@@ -22,15 +22,19 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .. import braingit, scorecard, skills
-from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHERS
+from .. import watchdog as watchdog_mod
+from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHDOG_LOG, WATCHERS
 
 _KIND_DIRS: dict[str, Path] = {"skill": SKILLS, "tool": TOOLS, "watcher": WATCHERS}
-_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "kill": "kill"}
+_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "steward": "set_steward", "order": "set_order", "rally": "set_rally", "kill": "kill"}
+_BOOL_ACTIONS = {"no_pause", "sandbox", "parallel", "steward"}
 
 
 class ControlRequest(BaseModel):
     action: str
     value: bool | None = None
+    id: str | None = None                 # action "order": the standing order id (or "all"); value = enabled
+    rect: list[int] | None = None         # action "rally": [x, z, w, h]; None/absent clears the rally point
 
 
 def _brain_file(kind: str, name: str | None) -> Path:
@@ -124,7 +128,7 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
             game = await _call_with_timeout(bridge.status, timeout=5.0)
         except Exception:  # noqa: BLE001
             game = None
-        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False)), "parallel": bool(getattr(controls, "parallel", False))}
+        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False)), "parallel": bool(getattr(controls, "parallel", False)), "steward": getattr(controls, "steward", None), "orders_off": getattr(controls, "orders_off", None)}
         return {"bus": bus.state, "last_seq": bus.last_seq, "game": game, "controls": ctl}
 
     @app.get("/api/brain/tree")
@@ -167,6 +171,20 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
         except Exception as e:  # noqa: BLE001
             return f"(error: {e})"
 
+    @app.get("/api/watchdog")
+    def api_watchdog() -> dict[str, Any]:
+        """The watchdog's own log: brain/memory/watchdog_log.md, newest entry last, plus when it last ran."""
+        try:
+            text = watchdog_mod.read_log()
+        except OSError as e:
+            return {"text": "", "error": str(e), "last_run": None}
+        try:
+            mtime = WATCHDOG_LOG.stat().st_mtime if WATCHDOG_LOG.exists() else None
+        except OSError:
+            mtime = None
+        cfg = (getattr(controls, "r", None).cfg if hasattr(controls, "r") else {}) or {}
+        return {"text": text, "last_run": mtime, "config": (cfg.get("watchdog") or {})}
+
     @app.get("/api/scores")
     def api_scores() -> list[dict[str, Any]]:
         try:
@@ -206,6 +224,31 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
             return await _call_with_timeout(lambda: bridge.call("state.base", verbose=verbose), timeout=20.0)
         except Exception as e:  # noqa: BLE001
             return JSONResponse({"error": str(e)}, status_code=503)
+
+    @app.get("/api/steward")
+    async def steward_view():
+        """steward.status (+ the research queue when the mod exposes steward.research); 503 with `unavailable` when the RPC is missing."""
+        try:
+            status = await _call_with_timeout(lambda: bridge.call("steward.status"), timeout=15.0)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e), "unavailable": True}, status_code=503)
+        if not isinstance(status, dict):
+            return JSONResponse({"error": "steward.status returned no object", "unavailable": True}, status_code=503)
+        if "research" not in status:
+            try:
+                status["research"] = await _call_with_timeout(lambda: bridge.call("steward.research"), timeout=10.0)
+            except Exception:  # noqa: BLE001
+                status["research"] = None
+        # steward.status keeps its order rows compact ({id, enabled, summary, acting_on}); the Orders table also shows
+        # label / interval / last run, which only steward.orders carries. Keep the compact rows if that call fails.
+        if isinstance(status.get("orders"), list):
+            try:
+                rows = await _call_with_timeout(lambda: bridge.call("steward.orders"), timeout=10.0)
+                if isinstance(rows, list) and rows:
+                    status["orders"] = rows
+            except Exception:  # noqa: BLE001
+                pass
+        return status
 
     @app.get("/api/anchors")
     async def anchors_view():
@@ -268,7 +311,16 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
         if not callable(fn):
             return {"ok": False, "error": f"controls has no {method}()", "paused": bool(getattr(controls, "paused", False))}
         try:
-            result = fn(bool(req.value)) if req.action in ("no_pause", "sandbox", "parallel") else fn()
+            if req.action == "order":
+                if not req.id:
+                    raise HTTPException(400, "order needs an id")
+                result = fn(req.id, bool(req.value))
+            elif req.action == "rally":
+                result = fn(list(req.rect) if req.rect else None)
+            else:
+                result = fn(bool(req.value)) if req.action in _BOOL_ACTIONS else fn()
+        except HTTPException:
+            raise
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e), "paused": bool(getattr(controls, "paused", False))}
         return {"ok": True, "result": result if isinstance(result, (str, int, float, bool, dict, list)) or result is None else str(result), "paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None)}
@@ -461,7 +513,7 @@ footer .r{margin-left:auto}
     <button class="primary" onclick="control('think')">Think now</button>
     <button onclick="if(confirm('End the current episode?'))control('end_episode')">End episode</button>
     <label title="Do not pause the game while the model thinks"><input type="checkbox" id="c-nopause" onchange="control('no_pause',this.checked)"> no-pause</label>
-    <label title="God mode: blueprints complete instantly and cost nothing, all research unlocked, the run is marked assisted. The agent is told to experiment and write what it learns into skills." style="color:var(--warn)"><input type="checkbox" id="c-parallel" onchange="control('parallel',this.checked)"> <span title="Calm steps fan out to four specialist LLM streams (economy, builder, guardian, steward) running at the same time; urgent steps stay single-stream">parallel x4</span></label>
+    <label title="God mode: blueprints complete instantly and cost nothing, all research unlocked, the run is marked assisted. The agent is told to experiment and write what it learns into skills." style="color:var(--warn)"><input type="checkbox" id="c-parallel" onchange="control('parallel',this.checked)"> <span title="Calm steps fan out to four specialist LLM streams (economy, builder, guardian, caretaker) running at the same time; urgent steps stay single-stream">parallel x4</span></label>
     <label title="God mode" style="color:var(--warn)"><input type="checkbox" id="c-sandbox" onchange="if(!this.checked||confirm('Turn on sandbox / god mode? Builds become free and instant, all research unlocks, and this run is marked assisted.'))control('sandbox',this.checked);else this.checked=false"> sandbox</label>
     <button class="danger" onclick="if(confirm('Kill the agent process?'))control('kill')">Kill</button>
   </div>
@@ -474,6 +526,8 @@ footer .r{margin-left:auto}
   <button data-tab="brain">Brain</button>
   <button data-tab="scores">Scores</button>
   <button data-tab="base">Base</button>
+  <button data-tab="steward">Steward</button>
+  <button data-tab="watchdog">Watchdog</button>
   <button data-tab="map">Map</button>
   <button data-tab="ascii">ASCII</button>
 </nav>
@@ -510,6 +564,18 @@ footer .r{margin-left:auto}
       <span class="dimmer" id="base-when" style="margin-left:auto"></span>
     </div>
     <div class="scroll" id="base-view" style="padding:8px"></div>
+  </section>
+
+  <section class="tab col" id="tab-steward">
+    <div class="toolbar">
+      <span class="dim">The steward (in the mod): work-priority scorer + stock jobs + standing orders; the model directs it through rw_steward_*</span>
+      <label title="Runner control: steward.enable per config (scorer, stock). Off = the model sets priorities and designations by hand again" style="color:var(--teal)"><input type="checkbox" id="c-steward" onchange="control('steward',this.checked)"> steward on</label>
+      <button class="primary" onclick="loadSteward()">Refresh</button>
+      <label class="dim"><input type="checkbox" id="c-steward-auto" checked> auto every 20s</label>
+      <span id="steward-err" style="color:var(--err);font-family:var(--mono)"></span>
+      <span class="dimmer" id="steward-when" style="margin-left:auto"></span>
+    </div>
+    <div class="scroll" id="steward-view" style="padding:8px"><div class="empty">Refresh to load steward.status.</div></div>
   </section>
 
   <section class="tab col" id="tab-ledger">
@@ -559,6 +625,15 @@ footer .r{margin-left:auto}
       <div style="height:10px"></div>
       <div id="scores-table"><div class="empty">No episodes scored yet.</div></div>
     </div>
+  </section>
+
+  <section class="tab col" id="tab-watchdog">
+    <div class="toolbar">
+      <span class="dim">Self-correction passes over the project's own source (mod/Source, agent/rimagent). Verified and committed locally; never deployed — restart the game to pick the fixes up.</span>
+      <button class="primary" onclick="loadWatchdog()" style="margin-left:auto">Refresh</button>
+      <span class="dimmer" id="watchdog-when"></span>
+    </div>
+    <div class="scroll" id="watchdog-view" style="padding:8px"><div class="empty">No watchdog passes yet.</div></div>
   </section>
 
   <section class="tab col" id="tab-map">
@@ -627,6 +702,8 @@ tabsEl.addEventListener('click', e => {
   if (b.dataset.tab === 'watchers') loadTree();
   if (b.dataset.tab === 'scores' && !scoresLoaded) loadScores();
   if (b.dataset.tab === 'map' && !mapLoaded) loadMap();
+  if (b.dataset.tab === 'steward') loadSteward();
+  if (b.dataset.tab === 'watchdog') loadWatchdog();
   if (b.dataset.tab === 'live') scrollBottom($('live'), true);
   if (b.dataset.tab === 'ledger') scrollBottom($('ledger'), true);
 });
@@ -659,11 +736,11 @@ function setControls(c) {
   if (!c) return;
   $('agentpaused').classList.toggle('on', !!c.paused);
   $('b-pause').disabled = !!c.paused; $('b-resume').disabled = !c.paused;
-  if (c.no_pause != null) $('c-nopause').checked = !!c.no_pause; if ($('c-sandbox') && typeof c.sandbox === 'boolean') $('c-sandbox').checked = c.sandbox; if ($('c-parallel') && typeof c.parallel === 'boolean') $('c-parallel').checked = c.parallel;
+  if (c.no_pause != null) $('c-nopause').checked = !!c.no_pause; if ($('c-sandbox') && typeof c.sandbox === 'boolean') $('c-sandbox').checked = c.sandbox; if ($('c-parallel') && typeof c.parallel === 'boolean') $('c-parallel').checked = c.parallel; if ($('c-steward') && typeof c.steward === 'boolean') $('c-steward').checked = c.steward;
 }
-async function control(action, value) {
+async function control(action, value, extra) {
   try {
-    const r = await fetch('/api/control', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({action, value})});
+    const r = await fetch('/api/control', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(Object.assign({action, value}, extra || {}))});
     const j = await r.json();
     $('f-ctl').textContent = j.ok ? `${action} ok` : `${action}: ${j.error || j.detail || 'failed'}`;
     setControls(j);
@@ -682,10 +759,10 @@ async function pollState() {
 const live = $('live');
 const KEEP_OPEN = 5, KEEP_STEPS = 60;
 let curStep = null, stepCount = 0; const stepsByStream = {};
-const STREAM_COLORS = { play: '#6aa8ff', manager: '#f2c14e', econ: '#5fd39a', build: '#ff9f6e', guard: '#ff6b7a', steward: '#c79bff', improve: '#f2c14e', reflect: '#f2c14e' };
-const STREAM_LABELS = { play: 'play', manager: 'manager', econ: 'economy', build: 'builder', guard: 'guardian', steward: 'steward', improve: 'improve', reflect: 'reflection' };
+const STREAM_COLORS = { play: '#6aa8ff', manager: '#f2c14e', econ: '#5fd39a', build: '#ff9f6e', guard: '#ff6b7a', caretaker: '#c79bff', improve: '#f2c14e', reflect: '#f2c14e' };
+const STREAM_LABELS = { play: 'play', manager: 'manager', econ: 'economy', build: 'builder', guard: 'guardian', caretaker: 'caretaker', improve: 'improve', reflect: 'reflection' };
 function streamColor(st) { return STREAM_COLORS[st] || '#9aa3ad'; }
-(function () { const el = document.getElementById('stream-legend'); if (!el) return; el.innerHTML = ['play', 'manager', 'econ', 'build', 'guard', 'steward', 'improve'].map(k => `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${STREAM_COLORS[k]};display:inline-block"></span>${STREAM_LABELS[k]}</span>`).join(''); })();
+(function () { const el = document.getElementById('stream-legend'); if (!el) return; el.innerHTML = ['play', 'manager', 'econ', 'build', 'guard', 'caretaker', 'improve'].map(k => `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${STREAM_COLORS[k]};display:inline-block"></span>${STREAM_LABELS[k]}</span>`).join(''); })();
 function useStream(d) { const st = (d && d.stream) || 'play'; if (stepsByStream[st] !== undefined) curStep = stepsByStream[st]; return st; }
 function clearLive() { live.innerHTML = ''; curStep = null; }
 function liveAppend(node) {
@@ -776,7 +853,7 @@ function sysLine(cls, t, text) { const n = document.createElement('div'); n.clas
 // ---------- ledger ----------
 const ledger = $('ledger'), ledgerKinds = new Set();
 let nLedger = 0;
-const KIND_CLS = {letter: 'info', incident: 'warn', colonist_died: 'err', pawn_died: 'err', colonist_downed: 'err', mental_break: 'warn', hostile_group: 'err', quest: 'pur', building_lost: 'warn', message: '', game: 'teal', research: 'teal'};
+const KIND_CLS = {letter: 'info', incident: 'warn', colonist_died: 'err', pawn_died: 'err', colonist_downed: 'err', mental_break: 'warn', hostile_group: 'err', quest: 'pur', building_lost: 'warn', message: '', game: 'teal', research: 'teal', steward: 'teal'};
 function addLedger(d, t) {
   const e = ledger.querySelector('.empty'); if (e) e.remove();
   const k = d.kind || '?';
@@ -1020,6 +1097,84 @@ async function loadBase() {
   } catch (e) { $('base-err').textContent = 'failed: ' + e; }
 }
 setInterval(() => { if ($('c-base-auto').checked && $('tab-base').classList.contains('active')) loadBase(); }, 20000);
+
+// ---------- steward ----------
+async function loadSteward() {
+  $('steward-err').textContent = '';
+  try {
+    const r = await fetch('/api/steward'); const j = await r.json();
+    if (j.error || j.unavailable) { $('steward-err').textContent = 'steward: unavailable' + (j.error ? ' (' + j.error + ')' : ''); $('steward-view').innerHTML = '<div class="empty">steward: unavailable, the mod does not answer steward.status</div>'; return; }
+    const en = j.enabled || {};
+    let h = `<div class="dim">scorer <span class="badge ${en.scorer ? 'ok' : 'err'}">${en.scorer ? 'on' : 'off'}</span> · stock jobs <span class="badge ${en.stock ? 'ok' : 'err'}">${en.stock ? 'on' : 'off'}</span></div>`;
+    const po = j.posture;
+    if (po) {
+      const kv = (o, f) => Object.entries(o || {}).map(([k, v]) => `${k} ${f(v)}`).join(', ');
+      h += `<h4 style="margin:10px 0 4px">Posture: ${esc2(po.label)} <span class="dimmer">expires in ${fmtN(po.expires_in_hours)}h</span></h4><div style="font-size:12px">` +
+        (Object.keys(po.work || {}).length ? `work: ${esc2(kv(po.work, v => (v > 0 ? '+' : '') + v))}<br>` : '') +
+        (Object.keys(po.weights || {}).length ? `weights: ${esc2(kv(po.weights, v => 'x' + v))}<br>` : '') +
+        (Object.keys(po.targets || {}).length ? `targets: ${esc2(kv(po.targets, v => 'x' + v))}` : '') + '</div>';
+    } else h += '<h4 style="margin:10px 0 4px">Posture: <span class="dimmer">none</span></h4>';
+    const probs = j.problems || [];
+    if (probs.length) h += '<h4 style="margin:10px 0 4px;color:var(--warn)">Problems</h4><ul style="margin:0 0 0 18px;padding:0;font-size:12px">' + probs.map(x => `<li>${esc2(x)}</li>`).join('') + '</ul>';
+    h += '<h4 style="margin:10px 0 4px">Stock jobs</h4><table><tr><th>job</th><th>kind</th><th>target</th><th>current</th><th>state</th><th>last run</th><th>desig.</th><th>fails</th><th>summary</th></tr>';
+    for (const r of j.stock || []) {
+      const below = typeof r.target === 'number' && typeof r.current === 'number' && r.current < r.target;
+      const st = !r.enabled ? 'off' : r.suspended ? 'suspended' : r.managed === false ? 'manual' : (r.failures || 0) >= 3 ? 'stalled' : below && (r.designations || 0) > 0 ? 'working' : below && r.last_run_hours_ago == null ? 'pending' : below ? 'below target' : 'ok';
+      const cls = st === 'ok' || st === 'working' ? 'ok' : st === 'stalled' ? 'err' : st === 'below target' ? 'warn' : '';
+      h += `<tr><td>${esc2(r.label || r.id)}</td><td>${esc2(r.kind)}</td><td>${fmtN(r.target)}</td><td>${fmtN(r.current)}</td><td><span class="badge ${cls}">${st}</span></td><td>${r.last_run_hours_ago == null ? 'never' : fmtN(r.last_run_hours_ago) + 'h ago'}</td><td>${fmtN(r.designations)}</td><td>${fmtN(r.failures)}</td><td style="white-space:normal">${esc2(r.summary || '')}${(r.notes || []).length ? ` <span class="dimmer">${esc2(r.notes.join('; '))}</span>` : ''}</td></tr>`;
+    }
+    if (!(j.stock || []).length) h += '<tr><td colspan=9 class="dimmer">no stock jobs</td></tr>';
+    h += '</table>';
+    h += '<h4 style="margin:10px 0 4px">Pawns × top work</h4><table><tr><th>pawn</th><th>managed</th><th>top work (priority · why)</th><th>all priorities</th></tr>';
+    for (const p of j.pawns || []) {
+      const top = (p.top || []).map(t => `<b>${esc2(t.work)}</b> ${esc2(t.priority)}${t.why ? ` <span class="dimmer">${esc2(t.why)}</span>` : ''}`).join('<br>');
+      const all = Object.entries(p.priorities || {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+      h += `<tr><td>${esc2(p.name)} <span class="dimmer">${esc2(p.id)}</span></td><td><span class="badge ${p.managed ? 'ok' : 'warn'}">${p.managed ? 'steward' : 'manual'}</span></td><td style="white-space:normal">${top || '<span class="dimmer">–</span>'}</td><td style="white-space:normal">${esc2(all)}</td></tr>`;
+    }
+    if (!(j.pawns || []).length) h += '<tr><td colspan=4 class="dimmer">no colonists</td></tr>';
+    h += '</table>';
+    // standing orders (pass 2): omitted entirely when the mod does not report them
+    if (Array.isArray(j.orders)) {
+      const rally = Array.isArray(j.rally) && j.rally.length >= 4 ? j.rally : null;
+      h += '<h4 style="margin:10px 0 4px">Standing orders <span class="dimmer">toggles go through steward.orders.set; a manual action on a pawn/thing pauses the matching order for it</span></h4>';
+      h += `<div style="font-size:12px;margin-bottom:4px">rally point: ${rally ? `<b>[${rally.slice(0, 4).join(', ')}]</b>` : '<span class="badge warn">none</span> <span class="dimmer">(the combat order holds pawns near the base center)</span>'} ` +
+        `<span style="margin-left:8px">x <input id="rally-x" size=3 value="${rally ? rally[0] : ''}"> z <input id="rally-z" size=3 value="${rally ? rally[1] : ''}"> w <input id="rally-w" size=2 value="${rally ? rally[2] : 6}"> h <input id="rally-h" size=2 value="${rally ? rally[3] : 6}"> ` +
+        `<button onclick="setRally(false)">set</button> <button onclick="setRally(true)" ${rally ? '' : 'disabled'}>clear</button></span></div>`;
+      h += '<table><tr><th>on</th><th>order</th><th>interval</th><th>last run</th><th>acting on</th><th>summary</th></tr>';
+      for (const o of j.orders) {
+        if (!o || !o.id) continue;
+        const on = o.enabled !== false, n = o.acting_on || 0;
+        h += `<tr><td><input type="checkbox" ${on ? 'checked' : ''} onchange="control('order', this.checked, {id: ${JSON.stringify(String(o.id))}})"></td>` +
+          `<td>${esc2(o.label || o.id)} <span class="dimmer">${esc2(o.id)}</span></td><td>${o.interval_ticks == null ? '–' : fmtN(o.interval_ticks) + ' t'}</td>` +
+          `<td>${o.last_run_hours_ago == null ? 'never' : fmtN(o.last_run_hours_ago) + 'h ago'}</td><td>${n > 0 ? `<span class="badge ok">${fmtN(n)}</span>` : '<span class="dimmer">0</span>'}</td>` +
+          `<td style="white-space:normal">${esc2(o.summary || '')}</td></tr>`;
+      }
+      if (!j.orders.length) h += '<tr><td colspan=6 class="dimmer">no standing orders reported</td></tr>';
+      h += '</table>';
+    }
+    let rq = j.research; if (rq && !Array.isArray(rq)) rq = rq.queue || rq.projects || null;
+    h += '<h4 style="margin:10px 0 4px">Research queue</h4><div style="font-size:12px">' + (Array.isArray(rq) && rq.length ? rq.map(x => esc2(typeof x === 'object' ? (x.label || x.def || JSON.stringify(x)) : x)).join(' → ') : '<span class="dimmer">empty (the director queues research)</span>') + '</div>';
+    $('steward-view').innerHTML = h; $('steward-when').textContent = new Date().toLocaleTimeString();
+  } catch (e) { $('steward-err').textContent = 'failed: ' + e; }
+}
+async function setRally(clear) {
+  const rect = clear ? null : [$('rally-x').value, $('rally-z').value, $('rally-w').value, $('rally-h').value].map(v => parseInt(v, 10));
+  if (!clear && rect.some(v => Number.isNaN(v))) { $('steward-err').textContent = 'rally: x, z, w, h must be integers'; return; }
+  await control('rally', null, {rect});
+  loadSteward();
+}
+setInterval(() => { if ($('c-steward-auto').checked && $('tab-steward').classList.contains('active')) loadSteward(); }, 20000);
+async function loadWatchdog() {
+  try {
+    const j = await (await fetch('/api/watchdog')).json();
+    const cfg = j.config || {};
+    const when = j.last_run ? new Date(j.last_run * 1000).toLocaleString() : 'never';
+    $('watchdog-when').textContent = 'last pass ' + when + ' · ' + (cfg.enabled ? `every ${cfg.every_hours}h when ≥${cfg.min_errors} errors` : 'disabled in config');
+    $('watchdog-view').innerHTML = (j.text || '').trim()
+      ? '<pre style="white-space:pre-wrap;margin:0;font-size:12px">' + esc(j.text) + '</pre>'
+      : '<div class="empty">No watchdog passes yet. It runs when enough tool calls have failed to be worth reading.</div>';
+  } catch (e) { $('watchdog-view').innerHTML = '<div class="empty">failed: ' + esc(e) + '</div>'; }
+}
 document.querySelector('#tabs button[data-tab="base"]').addEventListener('click', () => loadBase());
 async function loadOverview() {
   $('ascii-err').textContent = '';
@@ -1038,7 +1193,7 @@ function handle(ev) {
   const d = ev.data || {}, t = ev.t;
   nEvents++; lastSeq = Math.max(lastSeq, ev.seq);
   switch (ev.kind) {
-    case 'status': Object.assign(state, d); state._t = t; renderStatus(); break;
+    case 'status': Object.assign(state, d); state._t = t; renderStatus(); if (typeof d.steward === 'boolean' && $('c-steward')) $('c-steward').checked = d.steward; break;
     case 'think_start': newStep(d, t); break;
     case 'reasoning': useStream(d); ensureStep(t); liveAppend(itemReasoning(d)); break;
     case 'assistant': useStream(d); ensureStep(t); liveAppend(itemAssistant(d)); break;
@@ -1052,6 +1207,7 @@ function handle(ev) {
     case 'episode_end': { const s = curStep; curStep = null; liveAppend(sysLine('episode', t, `episode ${d.episode} ended · score ${d.score}${d.assisted ? ' (assisted)' : ''} · ${d.reason || ''}`)); curStep = s; if (scoresLoaded) loadScores(); break; }
     case 'error': { const s = curStep; curStep = null; liveAppend(sysLine('error', t, 'error: ' + (d.text || JSON.stringify(d)))); curStep = s; break; }
     case 'log': { const s = curStep; curStep = null; liveAppend(sysLine('log', t, d.text || JSON.stringify(d))); curStep = s; break; }
+    case 'watchdog': { const s = curStep; curStep = null; liveAppend(sysLine('log', t, 'watchdog pass: ' + (d.summary || '(no summary)') + (d.fixes && d.fixes.length ? ' · fixed ' + d.fixes.length : '') + (d.commits && d.commits.length ? ' · ' + d.commits.join(', ') : ''))); curStep = s; if ($('tab-watchdog').classList.contains('active')) loadWatchdog(); break; }
     case 'reply': { const s = curStep; curStep = null; const n = sysLine('log', t, '🤖 agent: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--ok)'; n.style.fontSize = '13px'; n.style.padding = '6px 8px'; n.style.background = 'rgba(80,200,120,.08)'; liveAppend(n); curStep = s; $('say-status').textContent = 'agent replied ↑'; break; }
     case 'situation': { $('sit-tracked').textContent = d.tracked || ': '; $('sit-changes').textContent = d.changes || ': '; $('sit-when').textContent = `· day ${d.day} ${d.hour}h · ${d.trigger || ''} · ${d.chars || 0} chars`; break; }
     case 'operator': { const s = curStep; curStep = null; const n = sysLine('log', t, '🧑 you: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--warn)'; liveAppend(n); curStep = s; break; }

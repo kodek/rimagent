@@ -9,11 +9,11 @@ import re
 def colony_health(ctx, day=0):
     s = ctx.bridge.call("state.summary")
     alerts = s.get("alerts") or []
-    letters = s.get("pending_letters") or []
+    letters = s.get("pending_letters") or 0   # count, not a list
     threats = s.get("threat_points")
     food = s.get("food_days")
     mood = s.get("mood_avg")
-    downed = s.get("downed") or []
+    downed = s.get("downed") or 0              # count, not a list
     research = s.get("research_current")
     rprog = s.get("research_progress")
     blueprints = s.get("blueprints")
@@ -25,10 +25,10 @@ def colony_health(ctx, day=0):
 
     # 1. downed colonists are the top emergency
     if downed:
-        triage.append({"urgency": 0, "issue": f"DOWED: {len(downed)} colonist(s) downed - rescue/doctor now"})
+        triage.append({"urgency": 0, "issue": f"DOWNED: {downed} colonist(s) downed - rescue/doctor now"})
     # 2. letters that need a choice
     if letters:
-        triage.append({"urgency": 1, "issue": f"{len(letters)} unanswered letter(s): {letters}"})
+        triage.append({"urgency": 1, "issue": f"{letters} unanswered letter(s) pending - check rw_state_letters"})
     # 3. hostiles on the map
     if hostiles:
         triage.append({"urgency": 1, "issue": f"{len(hostiles)} hostile(s) on map"})

@@ -111,9 +111,16 @@ WATCHER_DOC = (
 @tool("watcher_list", "List watchers (reflexes) and their load/runtime errors. " + WATCHER_DOC, group="brain")
 def watcher_list(ctx):
     reg = ctx.registry
-    names = [f"- {n}" for n in reg.watchers]
+    sup = getattr(reg, "watcher_superseded", {}) or {}
+    names = [f"- {n}" + (f"  (SUPERSEDED by the {sup[n]} standing order: skipped while that order is on)" if n in sup else "") for n in reg.watchers]
     errs = [f"- {f}: {e.strip().splitlines()[-1]}" for f, e in reg.watcher_errors.items()]
-    return "watchers:\n" + ("\n".join(names) or "(none)") + "\n\nerrors:\n" + ("\n".join(errs) or "(none)")
+    out = "watchers:\n" + ("\n".join(names) or "(none)") + "\n\nerrors:\n" + ("\n".join(errs) or "(none)")
+    live = [n for n in sup if n in reg.watchers]
+    if live:
+        out += ("\n\nsuperseded (the mod's standing orders do this now; a watcher that drafts, rescues, unforbids, buries, assigns beds or flips "
+                "food policy leaves manual touches that pause the order for those very pawns): " + ", ".join(f"{n} -> {sup[n]}" for n in live)
+                + ". watcher_delete each, or watcher_write it as alert-only (either lifts the mark; the watcher then runs again).")
+    return out
 
 
 @tool("watcher_read", "Read a watcher's source.", {"file": "file stem"}, group="brain")
@@ -126,6 +133,7 @@ def watcher_read(ctx, file: str):
 def watcher_write(ctx, file: str, code: str):
     p = WATCHERS / f"{_pyname(file)}.py"
     p.write_text(code, encoding="utf-8")
+    ctx.registry.release_watcher(p.stem)
     ctx.registry.reload_brain()
     err = ctx.registry.watcher_errors.get(p.name)
     ctx.emit("brain_change", {"kind": "watcher", "name": p.stem, "action": "write", "error": err})
@@ -137,6 +145,7 @@ def watcher_delete(ctx, file: str):
     p = WATCHERS / f"{_pyname(file)}.py"
     if p.exists():
         p.unlink()
+        ctx.registry.release_watcher(p.stem)
         ctx.registry.reload_brain()
         ctx.emit("brain_change", {"kind": "watcher", "name": p.stem, "action": "delete"})
         return "deleted"
@@ -169,8 +178,9 @@ def journal_read(ctx, last_n: int = 40):
     return memory.journal_read(last_n) or "(empty)"
 
 
-@tool("journal_append", "Append a lesson to the cross-game journal. Only durable, general lessons, not colony-specific details.", {"title": "short title", "text": "the lesson"}, group="brain")
-def journal_append(ctx, title: str, text: str):
+@tool("journal_append", "Append a lesson to the cross-game journal. Only durable, general lessons, not colony-specific details.", {"title": "short title (optional; derived from the text if omitted)", "text": "the lesson"}, group="brain")
+def journal_append(ctx, text: str, title: str | None = None):
+    title = title or text.strip().splitlines()[0][:80]
     memory.journal_append(title, text, ctx.episode)
     ctx.emit("brain_change", {"kind": "journal", "action": "append", "title": title})
     return "recorded"

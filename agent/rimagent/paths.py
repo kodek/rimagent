@@ -13,6 +13,7 @@ MEMORY = BRAIN / "memory"
 NOTEBOOK = MEMORY / "notebook.md"
 JOURNAL = MEMORY / "journal.md"
 OPERATOR = MEMORY / "operator.md"
+WATCHDOG_LOG = MEMORY / "watchdog_log.md"   # one entry per watchdog self-correction pass
 SCORES = BRAIN / "scores.jsonl"
 KNOWLEDGE = ROOT / "knowledge"
 WIKI = KNOWLEDGE / "wiki"
