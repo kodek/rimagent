@@ -1,9 +1,18 @@
 ---
-name: defense-basics
-description: Pull in when a raid letter arrives, rw_state_threats shows hostiles, or when planning walls, traps, turrets, chokepoints and draft positioning for a small colony.
-tags: [defense, raids, combat, killbox, turrets, cover]
 always: false
+description: Pull in when a raid letter arrives, rw_state_threats shows hostiles,
+  or when planning walls, traps, turrets, chokepoints and draft positioning for a
+  small colony.
+name: defense-basics
+tags:
+- defense
+- raids
+- combat
+- killbox
+- turrets
+- cover
 ---
+
 # Defense basics
 
 ## What a raid costs
@@ -40,5 +49,13 @@ Human raiders flee once 40-70% of their group is downed or after 10-15 hours; me
 
 ## First raid with 3 colonists
 Expect 1-2 poorly armed raiders (35-50 points). Before day 10: walled bedroom block with one door, 3-5 wood spike traps in the approach lane, a chunk or sandbag line, best gun on the best Shooting pawn. Fight from the doorway, others beside a wall corner; never fight in the open.
+
+## Field notes (verified in my own colonies)
+- **Let the steward's `combat` standing order draft and hold.** It drafts every violence-capable pawn to the rally point when hostiles have a path to the base and releases 600 ticks after the last one is gone. Do NOT draft by hand unless the rally is overrun or a pawn is mispositioned; a manual `ui.draft`/`ui.goto` pauses the combat order for that pawn ~1 h. So the correct raid move is: confirm the order is on, then only intervene on the specific pawn that is wrong.
+- **Set a rally point inside the walls, one door, near the hospital:** `rw_steward_orders_rally(rect=[x,z,w,h])`. Without one the order holds pawns around the base centre (bad: they stand in the open). This is the first thing to do once the first walls exist. In ep.1 the rally was `[122,98,5,2]` inside the barracks, next to the north door `[124,97]` — the single real chokepoint.
+- **Trap adjacency is a silent dead blueprint.** "Not placeable adjacent to another trap" also means a trap *blueprint* next to an already-built trap NEVER fills — it just sits there forever looking like a stalled build. Cancel it (`designator=cancel`) and stop re-placing it; leave the one trap, keep the lane otherwise clear.
+- **Two chokepoint lanes, only one is really used.** I built the north door `[124,97]` + barricade rows at z95-96 and a second, decoy south door. Raiders path to the *nearest colonist*, so keep only ONE clearly-open route and let barricades line the approach 1-2 tiles outside the door (leave the door tile itself free to walk through).
+- **Cheap levers before day 10:** raise steel by mining (300 target) for turret parts and components, and buy a **second ranged weapon** with silver (800+ buys a bolt-action/auto-pistol from a trader). One shooter (Shooting 4-6) plus one melee (Melee 13) held; a lone melee drifter "preparing" 100+ tiles away needs no draft — just let the combat order watch it.
+- **Non-human hostiles are not raids.** A sealed tomb of `Fleshbeast` dark entities with `LordJob_FleshbeastAssault` sits ~110 tiles out; it only matters if it breaks out. Manhunter animals (`Manhunter hare` etc.): draft both violence-capable pawns, the fight is over in seconds (rifle + melee knife killed one hare, only a minor bite) — then undraft and tend.
 
 Sources: Raid points; Raider; Pirates/Pawns; Tribes/Pawns; Defense tactics; Defense structures; Cover; Sandbags; Spike trap; Mini-turret; Drafting
