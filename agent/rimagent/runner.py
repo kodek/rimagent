@@ -517,7 +517,7 @@ class Runner:
             directive = directives.get(role)
             user = msg + "\n\n" + roles_mod.brief_for(role) + (f"\n\n## Manager directive for you this step\n{directive}" if directive else "") + ("\n\n" + extra if role == "steward" and extra else "")
             try:
-                results[role] = (ctx_r, think(ctx_r, user, hint + " " + role, trigger=f"{trigger} [{role}]", max_calls=int(self.cfg["play"].get("parallel_max_calls", 14)), tool_allow=roles_mod.allow_for(role)))
+                results[role] = (ctx_r, think(ctx_r, user, hint + " " + role, trigger=f"{trigger} [{role}]", max_calls=int(self.cfg["play"].get("parallel_max_calls", 10)), tool_allow=roles_mod.allow_for(role), thinking=bool(self.cfg["play"].get("parallel_worker_thinking", False))))
             except Exception as e:  # noqa: BLE001
                 self.bus.emit("error", {"text": f"{role} stream failed: {e}"})
 

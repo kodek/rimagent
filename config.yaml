@@ -27,8 +27,9 @@ play:
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
   # Sandbox / god mode is a manual toggle on the dashboard (free instant builds, all research, run marked assisted).
   parallel: false          # dashboard toggle: calm steps fan out to 4 specialist streams (econ, build, guard, steward)
-  parallel_max_calls: 14   # tool-call budget per stream in parallel mode
+  parallel_max_calls: 10   # tool-call budget per worker stream in parallel mode
   parallel_manager: true   # a fast no-tools manager call assigns directives and skips idle streams before the fan-out
+  parallel_worker_thinking: false   # workers execute the manager's directives without extended thinking (much faster)
   scenario: Crashlanded
   storyteller: Cassandra
   difficulty: Rough
