@@ -82,3 +82,6 @@ Mid-game improvement pass (day 1, episode 3):
 4. Updated `rescue_downed` watcher: now checks bed count before issuing the rescue order. If no beds exist, alerts the planner to place a bed blueprint first (the #1 cause of failed rescue orders).
 5. Updated `defense-basics` skill: added position_shooters reference, corrected Turret_MiniTurret defName (not Turret_Gun), added the "on the raid letter" workflow using the new tools.
 Key lesson: rw_ui_order had 11/14 errors (79% failure) — most were failed rescue orders with no beds in safe temperature. The rescue_downed watcher now checks bed count first.
+
+## 2026-09-16 14:29 (episode 3): Spawn+recruit pawns in one call (operator tip, sandbox)
+Operator tip: "spawn 20 pawns and recruit them." Verified: rw_dev_spawn_pawn(kind="Colonist", faction="Player", cell=[x,z], count=20) spawns them ALREADY as Player-faction colonists — they are recruited instantly, no separate recruit/interact step needed. They spawn clustered at the target cell and immediately start working (e.g. firefighting, hauling meals). Use this in sandbox/god-mode games to scale the colony fast. Note: spawning 20 at once jumps threat points and colonist count; in a scored game this is a dev call (assisted).

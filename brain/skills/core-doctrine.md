@@ -28,7 +28,7 @@ Two engines inside RimBridge run every tick without you: the **steward scorer** 
 **The altitude ladder (pick the highest rung that says what you mean):**
 1. **Policy: posture and targets.** `rw_steward_posture(label="build"|"defend"|"harvest"|"recover", hours=12)`, `rw_steward_stock_set(kind=, target=)`, `rw_steward_settings`. One call moves the whole colony for hours.
 2. **Orders and gizmos.** `rw_ui_order`, `rw_ui_press`, draft/goto/attack: one pawn, one thing, now.
-3. **Designators, blueprints, zones.** `rw_ui_build`, `rw_ui_zone`, `rw_ui_designate` for one-offs the steward does not cover (a tree on a blueprint, ore under a planned room, deconstruct, unforbid).
+3. **Designators, blueprints, zones.** `rw_ui_build`, `rw_ui_zone`, `rw_ui_designate` for one-offs the steward does not cover (a tree on a blueprint: `cut`, not `harvestwood`, which forestry adopts and releases when its target is met; ore under a planned room; deconstruct, unforbid).
 4. **Direct jobs.** `rw_ui_job`, last resort.
 5. **Engine.** `rw_engine_*`, reads freely, writes only when nothing above can express it.
 
@@ -40,10 +40,10 @@ Two engines inside RimBridge run every tick without you: the **steward scorer** 
 2. **Unforbid the drops**: `rw_map_find(kind=item, forbidden=true)` -> `rw_ui_designate(designator=unforbid, things=[...])`.
 3. **Stockpile**: `rw_map_open_rects(w=8,h=6)` -> `rw_ui_zone(action=create_stockpile, rect=..., label="main")`, priority Important. Nothing gets hauled without it.
 4. **Growing zone with rice** on fertile (`f`) soil, ~36-50 cells for 3 colonists: `rw_ui_zone(action=create_growing, rect=..., plant="Plant_Rice")`. Rice is the fastest first crop (see early-game-food).
-5. **Wood**: the steward's forestry job is already cutting toward 500 logs; confirm with `rw_steward_status` (`stock` row `forestry`, `designations > 0`). Designate trees yourself only where a blueprint needs the cell.
+5. **Wood**: the steward's forestry job is already cutting toward 500 logs; confirm with `rw_steward_status` (`stock` row `forestry`, `designations > 0`). Designate trees yourself only where a blueprint needs the cell, with `designator="cut"` (forestry adopts `harvestwood` designations while below target and drops them when it reaches it).
 6. **Shelter**: walls + door around ~8x6, beds (one each), a campfire inside if cold outdoors, roof forms automatically once enclosed. Use `dry_run=true` first. **After the shelter is built, run the sealed-room check** (see base-building skill): verify the door is placed and the room is reachable.
 7. **Work priorities**: the scorer sets them. `rw_steward_status` after the first hour shows each pawn's top 3 with reasons; `rw_steward_posture(label="build", hours=12)` if the shelter must go up before anything else. Do not `rw_ui_set_work` (see work-priorities for the one case where you should).
-8. **Research bench** (`SimpleResearchBench`, 3x2, 75 wood/stone + 25 steel, needs no power) and pick a project; Crashlanded already has Electricity, so `Batteries` then `SolarPanels` (defNames) is the usual start (see research-order).
+8. **Research bench** (`SimpleResearchBench`, 3x2, 75 wood/stone + 25 steel, needs no power) and queue projects: `rw_steward_research(queue=["Batteries","SolarPanels"])`; the next queued project starts by itself when one finishes. Crashlanded already has Electricity, so that pair is the usual start (see research-order).
 9. **Defenses**: equip the starting weapons (`rw_ui_order(... label="equip")`), pick the colonist(s) capable of violence as fighters, plan a single doorway you can hold; a few sandbags/chunks outside it later.
 10. **Butcher table**: build a `TableButcher` in the kitchen and set a `ButcherCorpse` bill on it. (Operator tip: "always build a butchering spot otherwise hunting is wasted!" and "you must always set a bill for the butchering spot!")
 11. **Fire safety**: as soon as steel flows, replace wood walls with steel. Keep a 2-wide steel/stone fire break between kitchen and bedrooms. Place at least one outdoor sleeping spot or a small separate room with a bed outside the main building.

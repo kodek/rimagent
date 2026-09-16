@@ -53,7 +53,7 @@ Pack points are 40% above a raid's; only fence-passing species are picked. They 
 ## Taming and training
 - Tame chance multiplier is 2 x (1 - wildness): dogs/chickens 2x, alpaca 1.5x, muffalo 0.8x, deer 0.5x, bear/cougar 0.4x, wolf 0.3x. Bear, wolf and cougar attack 30% of the time on failure. Handlers need non-meal food matching the diet.
 - Tame early: alpaca (wool, caravans, easy), muffalo (wool, pack animal), chickens (population doubles every ~5.7 days, eggs keep 15 days), labrador or husky (0% wildness, advanced trainability).
-- Animals above 10.1% wildness lose training and tameness unless penned; the scorer gives Handling to the best Animals skill once tamed animals exist (check `rw_steward_status`). Cap a breeding herd with `rw_steward_stock_add(kind="livestock", target=6, allow=["Chicken"])`.
+- Animals above 10.1% wildness lose training and tameness unless penned; the scorer gives Handling to the best Animals skill once tamed animals exist (check `rw_steward_status`). Cap a breeding herd with `rw_steward_stock_add(kind="livestock", species="Chicken", max=6)` (`allow`/`disallow` on livestock jobs name trainables, not species; `rw_steward_stock_set(id=<int>, max=N)` changes the cap).
 - Training: Guard (3 steps) follows a master; Attack (5) can be released on enemies; Rescue (2) and Haul (7) need advanced intelligence (dogs, wolves, cougars, bears). Attack-capable animals add 8% of combat power to raid points.
 - Hunger per day: muffalo/elk 0.535, husky 0.5, alpaca 0.275, chicken 0.14; 1 hay or meat = 0.05 nutrition.
 

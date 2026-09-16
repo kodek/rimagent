@@ -18,7 +18,7 @@ tags:
 # Medicine and health
 
 ## Setup (do this on day 1)
-- Doctor: the steward scorer gives Doctor to the highest Medical skill and raises it +0.5 when someone is injured (non-doctors capped at 0.6). During a plague or after a bad raid, `rw_steward_posture(label="recover", hours=24)` (Doctor +0.6). Only if the single medic must not leave the hospital: `rw_steward_pawn(pawn=, managed=false)` then `rw_ui_set_work(priorities={"Doctor":1})`, and hand back after. Pawns incapable of Caring never doctor. Enable self-tend only if nobody else can tend (x0.7 quality).
+- Doctor: the steward scorer gives Doctor to the highest Medical skill and raises it +0.5 when someone is injured (non-doctors capped at 0.6). During a plague or after a bad raid, `rw_steward_posture(label="recover", hours=24)` (Doctor +0.4). Only if the single medic must not leave the hospital: `rw_steward_pawn(pawn=, managed=false)` then `rw_ui_set_work(priorities={"Doctor":1})`, and hand back after. Pawns incapable of Caring never doctor. Enable self-tend only if nobody else can tend (x0.7 quality).
 - Medical policy (rw_ui_set_policies medical): colonists default to Best, which wastes industrial medicine on bruises. Set colonists to HerbalOrWorse early and reserve industrial medicine for surgery, infections and plague. Prisoners default to herbal; keep HerbalOrWorse for recruits, NoMeds otherwise. Switch a patient to NormalOrWorse or Best the moment infection or plague appears.
 - Grow healroot (Plant_Healroot) via rw_ui_zone once a grower has Plants 8: 7 grow days, min fertility 0.7, 1 herbal medicine per plant, survives winter. Plant 20+ tiles; one fight can cause half a dozen wounds.
 

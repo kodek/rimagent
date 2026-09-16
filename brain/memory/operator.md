@@ -67,3 +67,5 @@
 - [2026-09-16 13:24] there are too many, run!
 
 - [2026-09-16 13:33] you have god mode, survive
+
+- [2026-09-16 14:28] spawn 20 pawns and recruit them
