@@ -16,7 +16,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"RAID LETTER: {ev.get('text','')} — "
+                    f"RAID LETTER: {ev.get('text','')}: "
                     "Check rw_state_threats NOW for count/weapons/distance. "
                     "Draft all shooters, position at chokepoint (door cell from notebook). "
                     "Set game speed to 1. If the raid is far away (>50 cells), "
@@ -28,7 +28,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"QUEST/TRADE LETTER: {ev.get('text','')} — "
+                    f"QUEST/TRADE LETTER: {ev.get('text','')}: "
                     "Read rw_state_letters for choices. Accept trade caravans early "
                     "(steel, cloth, components). Reject quests that send pawns far from base."
                 ),
@@ -38,7 +38,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"REFUGEE LETTER: {ev.get('text','')} — "
+                    f"REFUGEE LETTER: {ev.get('text','')}: "
                     "Check if they have an addiction (drug need = -35 mood if no drug in stock). "
                     "Check beds vs headcount. Run refugee_intake tool when they arrive."
                 ),

@@ -28,13 +28,13 @@ Everything below is relative to an **origin O** = the SW corner of the hall (it 
 | freezer | O + (14,-7,9,8)               | 9x8      | shares kitchen's south wall and bed2's east wall | 2x Cooler in the SOUTH wall at `freezer:S +W2` and `freezer:S +E2`, rot N (cold side faces into the room); stockpile `freezer:inset:1`, Foods only, priority Important |
 | power   | O + (24,-4,5,6)               | outside  | WoodFiredGenerator at `power:C`, Battery at `power:NW +E1 +S1`; PowerConduit lines from the generator to the coolers (conduits may run under walls) |
 
-Doors (steel): `hall:N` (to the older room — a door was also cut into that room's south wall), `bed1:N`, `bed2:N` (bedrooms open into the hall), `kitchen:W` (hall↔kitchen), `freezer:N` (kitchen↔freezer), `kitchen:E` (outside). Plus a DumpingStockpile outside the kitchen for corpses/rubble.
+Doors (steel): `hall:N` (to the older room, a door was also cut into that room's south wall), `bed1:N`, `bed2:N` (bedrooms open into the hall), `kitchen:W` (hall↔kitchen), `freezer:N` (kitchen↔freezer), `kitchen:E` (outside). Plus a DumpingStockpile outside the kitchen for corpses/rubble.
 
-Materials: ~100 wall cells x5 steel, 6 doors x25, 2 coolers (90 steel + 3 components each), generator (100 + 2 comp), battery (70 + 2 comp), stove 80, butcher table 120 steel, beds 45 wood each. Total ≈ 1,200 steel, 8 components, 90 wood. Crashlanded loot has ~1,450 steel and 30 components lying around the pods — use it.
+Materials: ~100 wall cells x5 steel, 6 doors x25, 2 coolers (90 steel + 3 components each), generator (100 + 2 comp), battery (70 + 2 comp), stove 80, butcher table 120 steel, beds 45 wood each. Total ≈ 1,200 steel, 8 components, 90 wood. Crashlanded loot has ~1,450 steel and 30 components lying around the pods, use it.
 
 ## Order of operations (this is what made it work in 4 calls)
 1. `rw_map_detail` around the site (w=60) to find open ground with room for the whole block; `rw_anchor_set` every rect first.
-2. `rw_ui_build_many` with **doors and wall-mounted things (coolers) BEFORE the wall rects** — walls then skip those cells ("Space already occupied" on exactly the door/cooler cells is expected and fine).
+2. `rw_ui_build_many` with **doors and wall-mounted things (coolers) BEFORE the wall rects**, walls then skip those cells ("Space already occupied" on exactly the door/cooler cells is expected and fine).
 3. Furniture with `dry_run=true` first; read `failed[].reason` and the `camera` in the result, then place for real.
 4. `rw_map_detail` again to verify; lowercase letters are your blueprints.
 5. Put every colonist on Construction 1 / Hauling 2 until the frames are done, keep the generator fueled with wood, assign bedroom beds to owners.

@@ -41,12 +41,12 @@ Human raiders flee once 40-70% of their group is downed or after 10-15 hours; me
 - Spike trap: 45 wood/stone/steel, single use, 5 stab hits from 100 base damage. Not placeable adjacent to another trap; **colonists CAN trigger them, raiders cannot see them.** Use a 2-wide entrance: traps in one lane, fences in the other so colonists take the fence lane.
 - Mini-turret: Gun turrets research; 30 stuff + 70 steel + 3 components, 80 W, 60 shots per 80 steel reload. 12 damage 2-round burst, range 28.9, ~Shooting 8. 50% chance to explode (50 bomb, 3.9 radius) below 20% HP: space turrets 4+ tiles apart, off your firing line. Dead in a solar flare.
 
-## Spike trap placement — the self-trigger trap (episode 3 lesson)
-**Colonists trigger their own spike traps.** In episode 3, Kena was downed by a spike trap in the south approach lane [117,116] — the same lane she walked through to exit the barracks. The traps were meant for raiders but the colonist exit path went straight through them.
+## Spike trap placement, the self-trigger trap (episode 3 lesson)
+**Colonists trigger their own spike traps.** In episode 3, Kena was downed by a spike trap in the south approach lane [117,116], the same lane she walked through to exit the barracks. The traps were meant for raiders but the colonist exit path went straight through them.
 
 **Rule:** Place spike traps in the raider approach lane ONLY, offset from the colonist exit path. If the entrance is 2-wide: traps in the raider lane, a clear fence lane for colonists. If the entrance is 1-wide (a single door), put traps OUTSIDE the door on the raider approach side, not inside the barracks where colonists walk. A downed colonist in a spike trap is a medical emergency that wastes your doctor's time and can kill them if bleeding is severe.
 
-## Sleeping mechs — the warning window (episode 2 lesson)
+## Sleeping mechs, the warning window (episode 2 lesson)
 When `rw_state_threats` shows a mech with `LordJob_SleepThenAssaultColony` (or any mech within ~150 cells of home):
 1. **This is a countdown, not a raid.** The mech will wake and assault with no warning letter. You have hours, not days.
 2. **Assess immediately:** `rw_state_threats` → note the mech type, count, and distance. Scorcher (flameblaster) + Lancer (charge lance) = 2 mechs, ~300+ combat power combined. A 3-colonist colony cannot win this head-on.
@@ -75,7 +75,7 @@ By day 8 you should have:
 2. `rw_ui_draft` every violence-capable pawn BEFORE enemies are in range.
 3. `rw_ui_goto` shooters to the door corners; melee pawn to the outside gap.
 4. `rw_ui_attack` to focus the nearest raider or the one with a gun.
-5. `rw_game_speed(speed=1)` — slow the fight down for precise orders.
+5. `rw_game_speed(speed=1)`, slow the fight down for precise orders.
 6. After the raid: `rw_ui_draft(drafted=false)` for all, haul loot, capture downed raiders, rebuild traps, repair walls.
 
 ## Drafting checklist

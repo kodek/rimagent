@@ -13,7 +13,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    "MANHUNTER RAT spotted. Rats are a recurring threat — after the fight, "
+                    "MANHUNTER RAT spotted. Rats are a recurring threat, after the fight, "
                     "check rw_state_threats for more rats on the map. Consider walling off "
                     "the approach lane or building a rat trap. Draft a shooter with a revolver "
                     "and position them at the door."

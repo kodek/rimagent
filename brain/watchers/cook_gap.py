@@ -45,7 +45,7 @@ def watch(ctx, events):
         if has_bill:
             continue
 
-        # No bill running — find a station to set one on
+        # No bill running, find a station to set one on
         for bdef in ("FueledStove", "Campfire"):
             try:
                 found = ctx.bridge.call("map.find", kind="building",

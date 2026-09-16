@@ -149,7 +149,7 @@ namespace RimBridge.State
             return o;
         }
 
-        /// <summary>Haulable items lying outside any storage — the things that rot, deteriorate and get stolen.</summary>
+        /// <summary>Haulable items lying outside any storage, the things that rot, deteriorate and get stolen.</summary>
         public static JObject OutsideStorage(Map map)
         {
             int stacks = 0, food = 0, rotting = 0, corpses = 0, forbidden = 0, unroofed = 0, damaged = 0;
@@ -180,7 +180,7 @@ namespace RimBridge.State
             return free;
         }
 
-        /// <summary>Indoor rooms by role with sizes — makes "everything is a 3x3 box" visible.</summary>
+        /// <summary>Indoor rooms by role with sizes, makes "everything is a 3x3 box" visible.</summary>
         public static JArray RoomDigest(Map map)
         {
             var arr = new JArray();

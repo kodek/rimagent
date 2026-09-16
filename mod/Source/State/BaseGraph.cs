@@ -10,7 +10,7 @@ using Verse.AI;
 
 namespace RimBridge.State
 {
-    /// <summary>Object-centric view of the base: rooms, doors, contents, free space, problems — what a player sees, not a grid.</summary>
+    /// <summary>Object-centric view of the base: rooms, doors, contents, free space, problems, what a player sees, not a grid.</summary>
     public static class BaseGraph
     {
         static bool IsPlayerRoom(Room r, Map map)
@@ -125,7 +125,7 @@ namespace RimBridge.State
                 if (!pw.CanReach(home, PathEndMode.OnCell, Danger.Deadly) && !pw.CanReachMapEdge())
                 {
                     var room = pw.GetRoom();
-                    trapped.Add(new JObject { ["pawn"] = pw.LabelShort, ["id"] = pw.ThingID, ["at"] = Snapshot.Cell(pw.Position), ["room"] = room != null ? "Room:" + room.ID : null, ["note"] = "cannot reach home or the map edge — walled in?" });
+                    trapped.Add(new JObject { ["pawn"] = pw.LabelShort, ["id"] = pw.ThingID, ["at"] = Snapshot.Cell(pw.Position), ["room"] = room != null ? "Room:" + room.ID : null, ["note"] = "cannot reach home or the map edge, walled in?" });
                 }
             }
             // furniture that should be indoors but isn't (beds, benches, stoves, tables): the "your barracks is open" signal

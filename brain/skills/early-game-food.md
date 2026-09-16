@@ -23,14 +23,14 @@ tags:
 - Raw rice/potatoes/corn/meat/eggs: **Ate raw food -7 mood** and 2% food-poisoning. Berries and milk: no mood penalty, still 2%.
 
 ## Survival packs and the food policy trap (the #1 repeated starvation cause)
-Survival packs (MealSurvivalPack) are a **distinct food category** — they are NOT "simple meals" and NOT "raw food". If the food policy is set to "Simple" or "Raw", colonists will NOT eat survival packs even if they are the only food in the stockpile.
-- **Rule: when your only food is survival packs, set the food policy to "Any" (or "Survival" if available).** Check `rw_state_summary` for `food_days` — if it is 0 but survival packs are in the stockpile, the policy is wrong.
+Survival packs (MealSurvivalPack) are a **distinct food category**, they are NOT "simple meals" and NOT "raw food". If the food policy is set to "Simple" or "Raw", colonists will NOT eat survival packs even if they are the only food in the stockpile.
+- **Rule: when your only food is survival packs, set the food policy to "Any" (or "Survival" if available).** Check `rw_state_summary` for `food_days`, if it is 0 but survival packs are in the stockpile, the policy is wrong.
 - **On refugee intake:** a new colonist may arrive with a food policy that excludes survival packs. Reset it to "Any" immediately.
 - **On any food crisis:** first check `rw_state_summary` → `food_policy` (or read the pawn's policy). If the policy excludes the food you actually have, fix the policy before doing anything else.
 - **Cooking survival packs:** you cannot cook them. They are pre-cooked. The only way to make them edible is to have the policy allow them.
 - **The `food_policy_watcher` checks ALL colonists on each day tick** (the old bug: it only checked the first colonist and missed others with different policies). If it fires, fix the policy for every flagged colonist.
 
-## Cooking bills — the #2 repeated failure
+## Cooking bills, the #2 repeated failure
 The second most common food crisis cause: rice harvests but nobody cooked it because the cooking bill was never set (or got suspended/duplicate-cleaned). This happened ~8 times across episodes.
 - **`cook_bill` tool:** one call finds the best cooking station (FueledStove > Campfire) and sets a Forever CookMealSimple bill. Use it instead of 3-4 separate calls.
 - **`cook_gap` watcher:** fires on day tick; if no CookMealSimple bill is running and food_days < 6, it auto-sets a Forever bill on the best station and wakes the planner.
@@ -56,8 +56,8 @@ Per tile per day all three are within ~5% (rice slightly ahead). Grow days assum
 
 ## "It will self-correct" is only true if BOTH hold (the #1 repeated failure)
 A rice harvest "in 0.5 days" only saves you if:
-1. **A grower has Growing 1 AND PlantCutting 1** — otherwise nobody cuts the rice and it just sits at 100% while the colony starves. When a new colonist joins, the new roster's priorities often reset; re-audit Growing/PlantCutting on everyone.
-2. **A cook bill is running** (CookMealSimple on a campfire/stove) — harvested raw rice is useless until cooked, and raw food gives -7 mood. Check `food_outlook.cooking_bills`; if empty, run `cook_bill` immediately.
+1. **A grower has Growing 1 AND PlantCutting 1**, otherwise nobody cuts the rice and it just sits at 100% while the colony starves. When a new colonist joins, the new roster's priorities often reset; re-audit Growing/PlantCutting on everyone.
+2. **A cook bill is running** (CookMealSimple on a campfire/stove), harvested raw rice is useless until cooked, and raw food gives -7 mood. Check `food_outlook.cooking_bills`; if empty, run `cook_bill` immediately.
 3. **The food policy allows the food you have.** If you only have survival packs, the policy must be "Any" or "Survival". If you have raw rice, the policy must allow "Raw" or "Any". Check `food_outlook` → `food_policy` before calling a food crisis "self-correcting."
 If any of the three is missing, the harvest ETA is meaningless. Verify all three before calling a food crisis "self-correcting."
 
@@ -77,7 +77,7 @@ Wild berry bushes give berries (14 days to rot). Find them with `rw_map_find` an
 - Check **Revenge chance on harm** (`rw_defs_get` or the Wildlife list). Prefer **0%** animals: deer, gazelle, alpaca, dromedary. Do NOT hunt predators, boomrats/boomalopes (explode and start fires), or herd species with revenge chance: one manhunter can pull every same-species animal within 25 tiles.
 - **Distance rule (episode 2 lesson):** Never send a hunter more than **30 cells from home** unless the colony has a second armed pawn to respond to threats. Episode 2: Onesan was 61 cells from base when a cougar found her; the colony could not respond in time and she died. If the animal is 30+ cells away, either (a) wait for it to come closer, (b) send two hunters, or (c) skip it.
 - Hunting stealth = 5% per Shooting level + 5% per Animals level (cap 90%); low-skill hunters take only safe or already-injured prey. No incendiary weapons.
-- **Hunted herbivores cost the hunter -15 mood** ("killed innocent animal") for days — in a small fragile colony, hunt sparingly and rotate who hunts.
+- **Hunted herbivores cost the hunter -15 mood** ("killed innocent animal") for days, in a small fragile colony, hunt sparingly and rotate who hunts.
 - Hunted corpses are auto-unforbidden and hauled by the hunter.
 
 ## Butchering and cooking

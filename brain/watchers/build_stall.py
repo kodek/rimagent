@@ -1,6 +1,6 @@
 def watch(ctx, events):
     """On day tick (day >= 1): if blueprints are queued but no frame is being
-    built, construction is stalled — usually starved of materials, a forbidden
+    built, construction is stalled, usually starved of materials, a forbidden
     material, or no builder with Construction enabled.
 
     This is the recurring 'blueprints stalling for wood' pattern. The blueprint_check

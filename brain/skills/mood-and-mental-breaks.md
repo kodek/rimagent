@@ -44,21 +44,21 @@ One call: `mood_triage()` returns for every colonist below their major threshold
 - `top_negatives`: top 4 negative thoughts sorted by value
 
 Fix the biggest negative first. The usual hierarchy:
-1. **Alcohol/drug withdrawal (-35)** — finish Brewing research, build FermentingBarrel, make beer. No other fix.
-2. **Malnutrition (-26)** — food crisis; fix food before mood. **Check the food policy first** (see early-game-food skill).
-3. **Killed innocent animal (-15)** — hunt sparingly, rotate hunters.
-4. **Confined interior (-10)** — expand bedroom to ≥5×5 interior.
-5. **Rotting/observed corpse (-6)** — haul to dump; desiccated corpses can't be hauled, move them far from base.
-6. **Darkness (-5), Unsightly (-5), Tattered apparel (-5)** — light, clean, tailor.
+1. **Alcohol/drug withdrawal (-35)**, finish Brewing research, build FermentingBarrel, make beer. No other fix.
+2. **Malnutrition (-26)**, food crisis; fix food before mood. **Check the food policy first** (see early-game-food skill).
+3. **Killed innocent animal (-15)**, hunt sparingly, rotate hunters.
+4. **Confined interior (-10)**, expand bedroom to ≥5×5 interior.
+5. **Rotting/observed corpse (-6)**, haul to dump; desiccated corpses can't be hauled, move them far from base.
+6. **Darkness (-5), Unsightly (-5), Tattered apparel (-5)**, light, clean, tailor.
 
 ## Crisis debuffs that recur (the ones that actually broke colonists in play)
 | Debuff | Mood | Source / fix |
 |---|---|---|
 | **Alcohol/drug withdrawal** | **-35** | A colonist with an addiction who has NO drug in the colony. The single largest early mood killer. If a refugee arrives with an addiction, you MUST bank that drug (or accept the break). Check each new colonist's `needs` for a drug need; set drug policy to allow it. |
-| **Malnutrition** | **-26** | Food crisis. **Check the food policy first** — if the policy excludes the food you have (e.g. "Simple" when only survival packs are in stock), fix the policy before anything else. |
+| **Malnutrition** | **-26** | Food crisis. **Check the food policy first**, if the policy excludes the food you have (e.g. "Simple" when only survival packs are in stock), fix the policy before anything else. |
 | Ate corpse meat | -12 | During a food crisis pawns eat corpses; each is -12 and a rot-stink source. Avoid by keeping ANY food above 0. |
 | Ate raw food | -7 | Set food policy to cooked/simple once a stove exists. |
-| Killed innocent animal | -15 | Hunting herbivores — the hunter eats -15 for days. Hunt sparingly, rotate hunters, only when food is critical. |
+| Killed innocent animal | -15 | Hunting herbivores, the hunter eats -15 for days. Hunt sparingly, rotate hunters, only when food is critical. |
 | Observed/rotting corpse | -4 / -6 | Corpses near the base cause -6 to ALL colonists. Haul to dump; desiccated corpses may not be hauled. |
 | No shepherd role (mod) | -5 | Some mods add a "Shepherd" ideo role; unfilled it is -5 to everyone. |
 
@@ -74,16 +74,16 @@ Fix the biggest negative first. The usual hierarchy:
 | Ratty apparel (20-50% HP) / Tattered (<20%) | -3 / -5 | Tailor replacements |
 | Confined interior (room < ~25 tiles) | -10 | Bedroom must be >= 5x5 interior; a 2-cell room is a -10 trap |
 | Unsightly/ugly environment | -3.5 to -4 | Clean filth, smooth floors/walls |
-| Badly malnourished | -26 | Food crisis; a starving colonist breaks fast — fix food before mood |
+| Badly malnourished | -26 | Food crisis; a starving colonist breaks fast, fix food before mood |
 
-## Confined interior — the small-bedroom trap (verified day 10)
+## Confined interior, the small-bedroom trap (verified day 10)
 A bedroom smaller than ~25 interior tiles gives "Confined interior" (-10). A 2-cell room is the worst case and is a real break trigger on its own. Always build bedrooms at least 5×5 interior (>= 25 tiles). Check room size with `rw_state_rooms`; if a colonist's bedroom is small, expand it rather than leaving the -10.
 
 ## Common buffs
 - Beauty need >65% gives Pretty environment (+2.5 to +4.5).
 - Comfort >60% gives Comfortable; a normal bed is 0.75.
 - Recreation 70-85% = satisfied, below 30% = unfulfilled, 0 = starved.
-- Catharsis after a break: +40 (major/extreme) or +30 (minor), fades in ~2 days — plan for the drop.
+- Catharsis after a break: +40 (major/extreme) or +30 (minor), fades in ~2 days, plan for the drop.
 
 ## Recreation
 - Falls 2.5%/hour, gains 36%/hour times activity power. Provide 2 recreation types under 15,000 wealth, 3 from 15,000-81,000.

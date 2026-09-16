@@ -47,7 +47,7 @@ def end_episode(ctx, reason: str):
     return "episode will end after this step"
 
 
-@tool("reply_to_operator", "Reply to the human operator watching the dashboard. Use this whenever you receive an operator message — even a greeting — before continuing your work. Short and direct.", {"text": "your reply"}, group="meta")
+@tool("reply_to_operator", "Reply to the human operator watching the dashboard. Use this whenever you receive an operator message, even a greeting, before continuing your work. Short and direct.", {"text": "your reply"}, group="meta")
 def reply_to_operator(ctx, text: str):
     ctx.emit("reply", {"text": text})
     return "delivered to the operator"
@@ -81,7 +81,7 @@ def run_python(ctx, code: str):
     REPL_NS["result"] = None
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        exec(code, REPL_NS)  # noqa: S102 — the agent owns this machine
+        exec(code, REPL_NS)  # noqa: S102, the agent owns this machine
     out = buf.getvalue()
     res = REPL_NS.get("result")
     keys = [k for k, v in REPL_NS.items() if not k.startswith("_") and k not in ("ctx", "json", "math", "wiki", "source", "result", "rpc", "find", "summary", "base", "detail", "build") and not callable(v)]

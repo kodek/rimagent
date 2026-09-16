@@ -74,7 +74,7 @@ def build_system(ctx: Context, situation_hint: str) -> str:
         skills_index=skills.index_text(all_skills),
         always_skills="\n\n".join(f"### {s.name}\n{s.body}" for s in always) or "(none)",
         selected_skills="\n\n".join(f"### {s.name}\n{s.body}" for s in selected) or "(none)",
-        notebook=memory.notebook_read() or "(empty — start one)",
+        notebook=memory.notebook_read() or "(empty, start one)",
         journal=memory.journal_read(12) or "(empty)",
         operator="",
         scores=scorecard.history_text(8),
@@ -155,7 +155,7 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
                 ctx.emit("error", {"text": f"interrupt check failed: {e}"})
             if urgent:
                 ctx.emit("log", {"text": "urgent events delivered mid-step: " + "; ".join(u[:60] for u in urgent)})
-                messages.append({"role": "user", "content": "## URGENT — happened while you were thinking (the game is now paused)\n" + "\n".join(f"- {u}" for u in urgent) + "\nDeal with these first (dialogs: rw_ui_dialog; threats: draft/position; downed: rescue), then continue."})
+                messages.append({"role": "user", "content": "## URGENT, happened while you were thinking (the game is now paused)\n" + "\n".join(f"- {u}" for u in urgent) + "\nDeal with these first (dialogs: rw_ui_dialog; threats: draft/position; downed: rescue), then continue."})
         inbox = ctx.extra.get("operator_inbox")
         if inbox:
             msgs, inbox[:] = list(inbox), []
@@ -202,7 +202,7 @@ def situation_packet(ctx: Context, trigger: str, events: list[dict[str, Any]], a
     try:
         dialogs = ctx.bridge.call("state.dialogs")
         if dialogs:
-            parts.append("## OPEN DIALOGS — the game is paused until you answer with rw_ui_dialog(choice=...)\n" + json.dumps(dialogs, ensure_ascii=False)[:6000])
+            parts.append("## OPEN DIALOGS, the game is paused until you answer with rw_ui_dialog(choice=...)\n" + json.dumps(dialogs, ensure_ascii=False)[:6000])
             hint += " dialog choice " + " ".join(str(d.get("text", ""))[:100] for d in dialogs)
     except Exception:  # noqa: BLE001
         pass

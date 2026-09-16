@@ -1,4 +1,4 @@
-# rimagent — developer notes (agent-readable)
+# rimagent, developer notes (agent-readable)
 
 Two halves in one repo:
 - `mod/` **RimBridge** (C#, RimWorld 1.6, Harmony): loopback HTTP bridge exposing the engine. Symlinked into the
@@ -12,7 +12,7 @@ Two halves in one repo:
 
 ## Bridge
 `POST 127.0.0.1:8765/rpc {"method":"state.summary","params":{}}`; `GET /health /methods /events?since= /screenshot?x=&z=&w=`.
-Method groups: game.* state.* map.* ui.* engine.* defs.* dev.* — see `[Rpc(name, doc)]` attributes in `mod/Source`.
+Method groups: game.* state.* map.* ui.* engine.* defs.* dev.*, see `[Rpc(name, doc)]` attributes in `mod/Source`.
 All Verse work runs on the main thread via `MainThreadQueue` (drained in a `Root.Update` postfix); request threads
 only parse/serialize. Never throw into Unity: every RPC error becomes `{ok:false,error}`. Namespaces `GameCtl`/`MapView`
 avoid clashes with `Verse.Game`/`Verse.Map`.

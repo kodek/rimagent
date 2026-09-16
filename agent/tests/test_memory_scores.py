@@ -41,8 +41,8 @@ def test_journal_append_writes_header_once_and_entries():
     memory.journal_append("Third lesson", "Research batteries.", episode=3)
 
     raw = paths.JOURNAL.read_text(encoding="utf-8")
-    assert raw.count("# Journal — lessons that survive between games") == 1
-    assert raw.startswith("# Journal — lessons that survive between games\n")
+    assert raw.count("# Journal, lessons that survive between games") == 1
+    assert raw.startswith("# Journal, lessons that survive between games\n")
     assert raw.count("\n## ") == 3
     assert "(episode 1): First lesson\nDon't build with wood.\n" in raw
     assert ": Second lesson\nStockpile food.\n" in raw

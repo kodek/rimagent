@@ -3,7 +3,7 @@ def watch(ctx, events):
 
     Picks a healthy, non-drafted colonist (not the downed one), preferring the
     highest Medical skill, and issues a rescue order. Wakes the planner for
-    medical setup. top_skills is a STRING like "Medicine 8!!" — parse it, don't
+    medical setup. top_skills is a STRING like "Medicine 8!!", parse it, don't
     iterate it as a list.
 
     If the rescue order fails (no bed in safe temperature, sealed room), the

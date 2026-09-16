@@ -32,7 +32,7 @@ def food_outlook(ctx, radius=60):
         if pl not in ("any", "survival", ""):
             policy_mismatch = True
             policy_warning = (f"Food policy is '{policy}' but {survival} survival packs in stock "
-                             f"— colonists will NOT eat them. Set policy to 'Any' or 'Survival'.")
+                             f", colonists will NOT eat them. Set policy to 'Any' or 'Survival'.")
 
     # rice harvest ETA
     plants = []
@@ -73,7 +73,7 @@ def food_outlook(ctx, radius=60):
     # Verdict
     if policy_mismatch:
         verdict = (f"POLICY MISMATCH: {policy_warning} "
-                   f"Fix the policy BEFORE anything else — this is why food_days is {food_days}.")
+                   f"Fix the policy BEFORE anything else, this is why food_days is {food_days}.")
     elif food_days is None:
         verdict = "unknown"
     elif food_days >= 6:

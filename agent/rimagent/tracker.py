@@ -115,4 +115,4 @@ def sample(bridge: Any, summary: dict[str, Any] | None) -> str:
             arrow = " ↑" if nums[-1] > nums[-2] else " ↓" if nums[-1] < nums[-2] else " ="
         lines.append(f"- {label}: {'→'.join(_fmt(x) for x in hist[-5:])}{arrow}")
     _save(d)
-    return "\n".join(lines) or "(nothing tracked — use watch_add)"
+    return "\n".join(lines) or "(nothing tracked, use watch_add)"

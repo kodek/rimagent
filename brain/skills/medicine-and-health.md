@@ -41,7 +41,7 @@ Tend quality = base (Medicine skill 0: 20%, 6: 80%, 8: 100%, 20: 155%) x potency
 - **Burns + heatstroke compound:** a pawn in a 1000C room gets both. Heatstroke alone kills in ~1 hour at extreme severity. Burns prevent the pawn from leaving the hot room (they're downed). This is the "death trap" pattern: downed in a hot room, no one can rescue them because all beds are in the fire zone.
 - **Prevention beats treatment:** the best burn treatment is not being in the fire zone. Replace wood walls with steel/stone, keep a fire break between kitchen and bedrooms, and ensure at least one bed is OUTSIDE the main building (outdoor sleeping spot or a separate small room).
 - **If a fire starts:** undraft all colonists immediately (drafted pawns cannot fight fires). If a colonist is downed in the fire zone, the rescue order will fail if no bed exists in safe temperature. Place a bed blueprint in safe ground and have a builder construct it while the fire burns out.
-- **After the fire:** check all colonists for burns + heatstroke + bleeding. Burns have 30% infection chance. If you have no medicine, the best you can do is keep the patient warm, fed, and rested — immunity will fight it, but severe burns will likely kill.
+- **After the fire:** check all colonists for burns + heatstroke + bleeding. Burns have 30% infection chance. If you have no medicine, the best you can do is keep the patient warm, fed, and rested, immunity will fight it, but severe burns will likely kill.
 
 ## Other diseases (tend, feed, bed rest)
 | Disease | Severity/day | Immunity/day | Max treatment slowdown | Kills untreated | Notes |

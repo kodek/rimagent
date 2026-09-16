@@ -28,7 +28,7 @@ def watch(ctx, events):
         out.append({
             "type": "alert",
             "text": (
-                f"New colonist joined: {ev.get('text','')} — "
+                f"New colonist joined: {ev.get('text','')}: "
                 f"{len(ids)} forbidden item(s) unforbidden. "
                 "Set work priorities (rw_ui_set_work) and check beds/food for the new headcount."
             ),

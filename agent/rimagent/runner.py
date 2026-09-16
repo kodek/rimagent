@@ -183,7 +183,7 @@ class Runner:
         self.last_improve_day = self.start_day
         self.ctx.last_seq = 0
         self.ctx.episode, self.ctx.seed = self.episode, self.seed
-        memory.notebook_reset(f"# Colony notebook — episode {self.episode}, seed {self.seed}\n\n(new game; nothing decided yet)")
+        memory.notebook_reset(f"# Colony notebook, episode {self.episode}, seed {self.seed}\n\n(new game; nothing decided yet)")
         from . import tracker, worlddiff
         from .tools import meta as meta_tools_mod
         tracker.reset(); worlddiff.reset(); meta_tools_mod.reset_repl()
@@ -327,7 +327,7 @@ class Runner:
         for e in new_events:
             k = e.get("kind")
             if k in self.critical_kinds or (k in kinds and not recently):
-                return f"event: {k} — {e.get('text', '')}"
+                return f"event: {k}: {e.get('text', '')}"
         alert = self.game_alert_trigger(tick)
         if alert:
             return alert
@@ -387,7 +387,7 @@ class Runner:
             fn()
         finally:
             self.thinking = False
-            # Restore play speed — unless the model chose one during the step (e.g. 1x for a raid). Never leave it paused.
+            # Restore play speed, unless the model chose one during the step (e.g. 1x for a raid). Never leave it paused.
             chosen = self.ctx.extra.get("model_speed")
             speed = int(play.get("speed", 3)) if chosen is None else max(1, int(chosen))
             try:

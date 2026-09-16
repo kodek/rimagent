@@ -33,7 +33,7 @@ def base_text(base: dict[str, Any], max_rooms: int = 14) -> str:
     if anchors:
         out.append("Anchors: " + ", ".join(f"{a['name']} ({a['size']}, {a['from_home']})" for a in anchors[:16]))
     else:
-        out.append("Anchors: none yet — name your rooms/sites with rw_anchor_set so you can refer to them.")
+        out.append("Anchors: none yet, name your rooms/sites with rw_anchor_set so you can refer to them.")
     tr = base.get("trapped_colonists") or []
     if tr:
         out.append("TRAPPED: " + "; ".join(f"{t['pawn']} at {t['at']} ({t.get('room')})" for t in tr))
@@ -59,7 +59,7 @@ def diff_text(summary: dict[str, Any], base: dict[str, Any]) -> str:
     cur = snapshot(summary, base)
     prev, _last = _last, cur
     if prev is None:
-        return "(first step of this session — no diff yet)"
+        return "(first step of this session, no diff yet)"
     out: list[str] = []
     dt = (cur["day"] or 0) - (prev["day"] or 0)
     out.append(f"time passed: {dt} days ({prev.get('hour')}h → {cur.get('hour')}h)")

@@ -54,7 +54,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"FOOD POLICY MISMATCH: {names} — these colonists will NOT eat "
+                    f"FOOD POLICY MISMATCH: {names}, these colonists will NOT eat "
                     f"survival packs. Set their policy to 'Any' or 'Lavish' immediately. "
                     f"food_days={s.get('food_days', '?')}."
                 ),

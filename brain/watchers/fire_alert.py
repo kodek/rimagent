@@ -34,7 +34,7 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"FIRE: all {len(drafted)} colonists are drafted — "
+                    f"FIRE: all {len(drafted)} colonists are drafted: "
                     "undraft at least one to fight the fire. "
                     "Check for trapped colonists and blueprint loss in the fire zone."
                 ),
@@ -43,7 +43,7 @@ def watch(ctx, events):
         out.append({
             "type": "alert",
             "text": (
-                f"FIRE: {ev.get('text','')} — "
+                f"FIRE: {ev.get('text','')}: "
                 "Check: (1) are any colonists trapped in the fire zone? "
                 "(2) are beds in safe temperature for rescue? "
                 "(3) are blueprints in the fire zone being destroyed? "

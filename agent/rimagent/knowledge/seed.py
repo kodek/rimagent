@@ -1,7 +1,7 @@
 """Seed strategy skills from the offline wiki.
 
 `distill_skills(llm, log)` reads a handful of wiki pages per skill, asks the LLM to distil them into a skill
-body in the same format as the hand-written skills in brain/skills, and writes it — only if no skill of that
+body in the same format as the hand-written skills in brain/skills, and writes it, only if no skill of that
 name exists yet, so re-running never clobbers what the agent has since improved.
 
     cd agent && uv run python -c "from rimagent.knowledge import seed; from rimagent.llm import LLM; seed.distill_skills(LLM())"
@@ -14,7 +14,7 @@ from typing import Callable
 from .. import skills
 from . import wiki
 
-# (skill name, wiki page titles, focus) — the focus tells the LLM what an agent needs from those pages.
+# (skill name, wiki page titles, focus), the focus tells the LLM what an agent needs from those pages.
 SEED_SKILLS: list[tuple[str, list[str], str]] = [
     (
         "early-game-food",

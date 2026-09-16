@@ -13,7 +13,7 @@ def watch(ctx, events):
         out.append({
             "type": "alert",
             "text": (
-                f"Mental break: {text} — check break type (rw_state_pawn), "
+                f"Mental break: {text}, check break type (rw_state_pawn), "
                 "if berserk draft others and keep clear; if minor wait it out but fix the mood cause."
             ),
             "wake": True,

@@ -1,6 +1,6 @@
 ---
 always: true
-description: How rimagent plays and how it improves itself — priorities, the first-day
+description: How rimagent plays and how it improves itself, priorities, the first-day
   checklist, the per-step routine, and the rules for editing skills, tools, watchers,
   notebook and journal.
 name: core-doctrine
@@ -18,17 +18,17 @@ You are running a Crashlanded colony (3 colonists, Cassandra, Rough) and you are
 
 ## Priorities (in this order, always)
 
-1. **Food** — `food_days` in `rw_state_summary` below 3 is an emergency; below 6 is the top task. Starvation causes mental breaks, then deaths.
-2. **Shelter** — a roofed, walled, doored room with a bed per colonist and a heat source before the first cold night; keeps mood up and hypothermia away. **Fire safety is part of shelter:** replace wood walls with steel/stone as soon as material flows (wood is 100% flammable; a single fire destroys the base in 2-4h). Keep a 2-wide non-flammable fire break between kitchen and bedrooms. Ensure at least one bed is outside the main building so downed pawns have a rescue target in safe temperature.
-3. **Defense** — the first raid comes in the first ~10 days on Rough. Weapons equipped, a single entrance to hold, everyone drafted at the door when `hostile_group` fires.
-4. **Mood** — below 35% a colonist can break; below 20% badly. Table, individual bedrooms, cooked meals, light, a recreation item.
-5. **Wealth and research** — last. Wealth raises raid points; only build wealth that defends itself (turrets, walls, weapons, food buffer).
+1. **Food**: `food_days` in `rw_state_summary` below 3 is an emergency; below 6 is the top task. Starvation causes mental breaks, then deaths.
+2. **Shelter**, a roofed, walled, doored room with a bed per colonist and a heat source before the first cold night; keeps mood up and hypothermia away. **Fire safety is part of shelter:** replace wood walls with steel/stone as soon as material flows (wood is 100% flammable; a single fire destroys the base in 2-4h). Keep a 2-wide non-flammable fire break between kitchen and bedrooms. Ensure at least one bed is outside the main building so downed pawns have a rescue target in safe temperature.
+3. **Defense**, the first raid comes in the first ~10 days on Rough. Weapons equipped, a single entrance to hold, everyone drafted at the door when `hostile_group` fires.
+4. **Mood**, below 35% a colonist can break; below 20% badly. Table, individual bedrooms, cooked meals, light, a recreation item.
+5. **Wealth and research**, last. Wealth raises raid points; only build wealth that defends itself (turrets, walls, weapons, food buffer).
 
 When two things compete, the one higher on this list wins. When nothing is urgent, invest in the next tier down.
 
 ## First-day checklist (day 0, do all of it before the first end_turn or two)
 
-1. `rw_state_summary` — note colonist ids, top skills, `home_center`, biome, season, `growing_now`.
+1. `rw_state_summary`, note colonist ids, top skills, `home_center`, biome, season, `growing_now`.
 2. **Unforbid the drops**: `rw_map_find(kind=item, forbidden=true)` -> `rw_ui_designate(designator=unforbid, things=[...])`.
 3. **Stockpile**: `rw_map_open_rects(w=8,h=6)` -> `rw_ui_zone(action=create_stockpile, rect=..., label="main")`, priority Important. Nothing gets hauled without it.
 4. **Growing zone with rice** on fertile (`f`) soil, ~36-50 cells for 3 colonists: `rw_ui_zone(action=create_growing, rect=..., plant="Plant_Rice")`. Rice is the fastest first crop (see early-game-food).
@@ -56,7 +56,7 @@ Never end a step without `end_turn`. Never spend the whole tool budget reading; 
 - **Daily reflection tightens skills with concrete numbers.** "Build defenses early" is not a lesson; "on Rough the first raid was day 8 and 9 with 1-2 raiders; have 2 ranged weapons equipped and a doorway by day 6" is. Edit the existing skill (`skill_read` -> `skill_write` with the same name) rather than adding a near-duplicate. Keep `always: true` to the manual and this doctrine.
 - **Watchers for reflexes.** Anything you find yourself doing reactively on the same event every time becomes a watcher (`watcher_write`): draft the fighters and send them to the doorway on `hostile_group`; unforbid newly dropped items on the `message` for drop pods; alert on `*` fire near home; wake the planner when `colonist_downed`. Watchers run every ~0.5 s without the LLM: react to `events`, avoid polling, return `{'type':'action', ...}` or `{'type':'alert', 'wake': True}`; a raising watcher is disabled until fixed (`watcher_list` shows errors).
 - **Tools for repeated multi-call computations.** If a step routinely does the same 3+ calls plus arithmetic (find drops + unforbid; free rect + build room + door + beds; count food days from stocks), prototype with `run_python` then `tool_write` it. Tools take `(ctx, ...)`, call `ctx.bridge.call("ui.build", def=..., rect=...)`, and hot-load next step; `tool_list` shows load errors.
-- **Journal only durable lessons** (`journal_append`): things true in every game — mechanics you verified, tool quirks, orderings that worked. Not "steel was at [126,115]".
+- **Journal only durable lessons** (`journal_append`): things true in every game, mechanics you verified, tool quirks, orderings that worked. Not "steel was at [126,115]".
 - **Check `score_history` before changing core skills**, and note in the journal what you changed and why. After a change, if the next honest episodes score lower, `brain_log` -> `brain_diff` -> `brain_revert(sha)`.
 - Read `journal_read` and `skill_list` at the start of each game; pull in a strategy skill (`skill_read`) when its trigger applies rather than guessing.
 

@@ -169,7 +169,7 @@ def journal_read(ctx, last_n: int = 40):
     return memory.journal_read(last_n) or "(empty)"
 
 
-@tool("journal_append", "Append a lesson to the cross-game journal. Only durable, general lessons — not colony-specific details.", {"title": "short title", "text": "the lesson"}, group="brain")
+@tool("journal_append", "Append a lesson to the cross-game journal. Only durable, general lessons, not colony-specific details.", {"title": "short title", "text": "the lesson"}, group="brain")
 def journal_append(ctx, title: str, text: str):
     memory.journal_append(title, text, ctx.episode)
     ctx.emit("brain_change", {"kind": "journal", "action": "append", "title": title})
@@ -183,7 +183,7 @@ def score_history(ctx, last: int = 12):
     return scorecard.history_text(last)
 
 
-@tool("brain_log", "git log of brain/ (skills, tools, watchers, memory) — one commit per episode.", group="brain")
+@tool("brain_log", "git log of brain/ (skills, tools, watchers, memory), one commit per episode.", group="brain")
 def brain_log(ctx, n: int = 15):
     return braingit.log(n)
 

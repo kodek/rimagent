@@ -10,7 +10,7 @@ using Verse;
 
 namespace RimBridge.Ui
 {
-    /// <summary>Open modal windows (choice dialogs, message boxes) — the player sees them, so the agent must too.</summary>
+    /// <summary>Open modal windows (choice dialogs, message boxes), the player sees them, so the agent must too.</summary>
     public static class DialogRpc
     {
         static readonly AccessTools.FieldRef<Dialog_NodeTree, DiaNode> CurNode = AccessTools.FieldRefAccess<Dialog_NodeTree, DiaNode>("curNode");

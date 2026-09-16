@@ -38,7 +38,7 @@ def journal_append(title: str, text: str, episode: int | None = None) -> None:
     ep = f" (episode {episode})" if episode is not None else ""
     with JOURNAL.open("a", encoding="utf-8") as fh:
         if fh.tell() == 0:
-            fh.write("# Journal — lessons that survive between games\n\n")
+            fh.write("# Journal, lessons that survive between games\n\n")
         fh.write(f"\n## {stamp}{ep}: {title}\n{text.strip()}\n")
 
 

@@ -367,7 +367,7 @@ namespace RimBridge.Engine
             return o;
         }
 
-        [Rpc("engine.new", "{type, args?: [...]} construct an object (e.g. IncidentParms) — or pass {type, fields:{...}} to construct and fill")]
+        [Rpc("engine.new", "{type, args?: [...]} construct an object (e.g. IncidentParms), or pass {type, fields:{...}} to construct and fill")]
         public static JToken New(JObject p)
         {
             var t = Lookup.TypeOrNull(P.Str(p, "type")) ?? throw new RpcError("unknown type");

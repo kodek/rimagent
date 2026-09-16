@@ -37,7 +37,7 @@ namespace RimBridge.MapView
             return (JObject)Detail(p);
         }
 
-        [Rpc("map.detail", "{x?, z?, around?: thingId|pawn (centre on it), w?: 24, h?: 24 (max 60 — enough for a whole base), roof?: false} the BUILDING CAMERA: zoomed ASCII where every column is numbered, each building type gets its own letter (UPPER = built, lower = blueprint/frame), '*' marks interaction spots that must stay clear, '+' doors, '_' stockpile, ',' growing zone, 'i' items, '@' colonists, '!' hostiles, '^' rock, '~' water, '.' open ground. Returns legend + list of things in view with id/rot/size. Use before and after placing anything.")]
+        [Rpc("map.detail", "{x?, z?, around?: thingId|pawn (centre on it), w?: 24, h?: 24 (max 60, enough for a whole base), roof?: false} the BUILDING CAMERA: zoomed ASCII where every column is numbered, each building type gets its own letter (UPPER = built, lower = blueprint/frame), '*' marks interaction spots that must stay clear, '+' doors, '_' stockpile, ',' growing zone, 'i' items, '@' colonists, '!' hostiles, '^' rock, '~' water, '.' open ground. Returns legend + list of things in view with id/rot/size. Use before and after placing anything.")]
         public static JToken Detail(JObject p)
         {
             var map = Map();
@@ -136,7 +136,7 @@ namespace RimBridge.MapView
             }
             var legend = new JObject();
             foreach (var kv in letters) legend[kv.Value.ToString()] = kv.Key + " x" + (counts.TryGetValue(kv.Key, out var n) ? n : 0) + " (lowercase = blueprint/frame)";
-            legend["*"] = "interaction spot — keep clear"; legend["+"] = "door"; legend["_"] = "stockpile"; legend[","] = "growing zone"; legend["i"] = "item"; legend["@"] = "colonist"; legend["!"] = "hostile"; legend["^"] = "rock"; legend["o"] = "ore"; legend["~"] = "water"; legend["T"] = "tree"; legend["."] = "open";
+            legend["*"] = "interaction spot, keep clear"; legend["+"] = "door"; legend["_"] = "stockpile"; legend[","] = "growing zone"; legend["i"] = "item"; legend["@"] = "colonist"; legend["!"] = "hostile"; legend["^"] = "rock"; legend["o"] = "ore"; legend["~"] = "water"; legend["T"] = "tree"; legend["."] = "open";
             if (roofLayer) { legend["r"] = "roofed (constructed)"; legend["R"] = "thick rock roof"; }
             if (marks.Count > 0) legend["X"] = "marked cell";
             var anchorsInView = new JObject();

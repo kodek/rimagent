@@ -483,15 +483,15 @@ footer .r{margin-left:auto}
       <button style="margin-left:auto" onclick="clearLive()">Clear</button>
     </div>
     <div class="toolbar" style="gap:6px">
-      <input type="text" id="say-text" placeholder="Say something to the agent — it wakes and reads this at the start of its next step" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')sayToAgent()">
+      <input type="text" id="say-text" placeholder="Say something to the agent, it wakes and reads this at the start of its next step" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')sayToAgent()">
       <button class="primary" onclick="sayToAgent()">Send</button>
       <span class="dimmer" id="say-status"></span>
     </div>
     <details id="situation" open style="margin:0 8px 6px;border:1px solid var(--line, #333);border-radius:6px;padding:4px 8px;background:rgba(255,255,255,.03)">
       <summary class="dim">Situation the model was last shown <span id="sit-when" class="dimmer"></span></summary>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:260px"><div class="dimmer">tracked (oldest→newest)</div><pre id="sit-tracked" style="margin:2px 0;white-space:pre-wrap;font-size:12px">—</pre></div>
-        <div style="flex:2;min-width:300px"><div class="dimmer">what changed since the previous step</div><pre id="sit-changes" style="margin:2px 0;white-space:pre-wrap;font-size:12px">—</pre></div>
+        <div style="flex:1;min-width:260px"><div class="dimmer">tracked (oldest→newest)</div><pre id="sit-tracked" style="margin:2px 0;white-space:pre-wrap;font-size:12px">: </pre></div>
+        <div style="flex:2;min-width:300px"><div class="dimmer">what changed since the previous step</div><pre id="sit-changes" style="margin:2px 0;white-space:pre-wrap;font-size:12px">: </pre></div>
       </div>
     </details>
     <div class="scroll" id="live"><div class="empty">Waiting for the agent…</div></div>
@@ -499,7 +499,7 @@ footer .r{margin-left:auto}
 
   <section class="tab col" id="tab-base">
     <div class="toolbar">
-      <span class="dim">The base as objects (state.base) — what the model reasons over</span>
+      <span class="dim">The base as objects (state.base), what the model reasons over</span>
       <label class="dim"><input type="checkbox" id="base-verbose"> verbose contents</label>
       <button class="primary" onclick="loadBase()">Refresh</button>
       <label class="dim"><input type="checkbox" id="c-base-auto"> auto every 20s</label>
@@ -520,7 +520,7 @@ footer .r{margin-left:auto}
 
   <section class="tab col" id="tab-watchers">
     <div class="toolbar">
-      <span class="dim">Registered: <span id="watch-registered">…</span> — actions, alerts and errors below</span>
+      <span class="dim">Registered: <span id="watch-registered">…</span>, actions, alerts and errors below</span>
       <select id="watch-filter" onchange="applyWatchFilter()"><option value="">all</option><option value="action">actions</option><option value="alert">alerts</option><option value="error">errors</option></select>
     </div>
     <div class="scroll rows" id="watchers"><div class="empty">No watcher events yet.</div></div>
@@ -691,7 +691,7 @@ async function sayToAgent() {
   $('say-status').textContent = 'sending…';
   try {
     const r = await fetch('/api/say', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-    const j = await r.json(); $('say-status').textContent = j.ok ? 'queued — the agent will read it next step' : ('failed: ' + (j.error || '')); if (j.ok) inp.value = '';
+    const j = await r.json(); $('say-status').textContent = j.ok ? 'queued, the agent will read it next step' : ('failed: ' + (j.error || '')); if (j.ok) inp.value = '';
   } catch (e) { $('say-status').textContent = 'failed: ' + e; }
   setTimeout(() => { $('say-status').textContent = ''; }, 6000);
 }
@@ -1043,7 +1043,7 @@ function handle(ev) {
     case 'error': { const s = curStep; curStep = null; liveAppend(sysLine('error', t, 'error: ' + (d.text || JSON.stringify(d)))); curStep = s; break; }
     case 'log': { const s = curStep; curStep = null; liveAppend(sysLine('log', t, d.text || JSON.stringify(d))); curStep = s; break; }
     case 'reply': { const s = curStep; curStep = null; const n = sysLine('log', t, '🤖 agent: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--ok)'; n.style.fontSize = '13px'; n.style.padding = '6px 8px'; n.style.background = 'rgba(80,200,120,.08)'; liveAppend(n); curStep = s; $('say-status').textContent = 'agent replied ↑'; break; }
-    case 'situation': { $('sit-tracked').textContent = d.tracked || '—'; $('sit-changes').textContent = d.changes || '—'; $('sit-when').textContent = `· day ${d.day} ${d.hour}h · ${d.trigger || ''} · ${d.chars || 0} chars`; break; }
+    case 'situation': { $('sit-tracked').textContent = d.tracked || ': '; $('sit-changes').textContent = d.changes || ': '; $('sit-when').textContent = `· day ${d.day} ${d.hour}h · ${d.trigger || ''} · ${d.chars || 0} chars`; break; }
     case 'operator': { const s = curStep; curStep = null; const n = sysLine('log', t, '🧑 you: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--warn)'; liveAppend(n); curStep = s; break; }
     default: break;
   }

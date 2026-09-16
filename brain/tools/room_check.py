@@ -36,14 +36,14 @@ def room_check(ctx):
         # Check for sealed room (no doors)
         if doors == 0 and size > 0:
             entry["sealed"] = True
-            problems.append(f"Room {room_id} ({size} cells) has NO doors — sealed room")
+            problems.append(f"Room {room_id} ({size} cells) has NO doors, sealed room")
         else:
             entry["sealed"] = False
         
         # Check for small bedroom (confined interior)
         if size < 25 and size > 0:
             entry["small"] = True
-            problems.append(f"Room {room_id} is only {size} cells (< 25) — 'Confined interior' -10 mood")
+            problems.append(f"Room {room_id} is only {size} cells (< 25): 'Confined interior' -10 mood")
         else:
             entry["small"] = False
         
