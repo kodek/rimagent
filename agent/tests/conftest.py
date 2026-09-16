@@ -8,6 +8,7 @@ pytest_configure repeats it defensively.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -24,6 +25,10 @@ assert not any(m == "rimagent" or m.startswith("rimagent.") for m in sys.modules
 
 def pytest_configure(config):  # noqa: ARG001
     os.environ["RIMAGENT_ROOT"] = str(_TMP_ROOT)
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    shutil.rmtree(_TMP_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(scope="session", autouse=True)

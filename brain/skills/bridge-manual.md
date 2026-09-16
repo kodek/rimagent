@@ -117,4 +117,4 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 **H. Engine read you cannot get elsewhere**
 1. `rw_engine_members(path="Pawn:Sparky.health.hediffSet")` -> find `hediffs`.
 2. `rw_engine_get(path="Pawn:Sparky.health.hediffSet.hediffs", depth=2)` -> each hediff with `def`, `Severity`, `Part`.
-3. `rw_engine_get(path="Find.Storyteller.difficulty.threatScale")`.
+3. `rw_engine_get(path="Find.Storyteller.difficulty.threatScale")` -> `1.0` on Rough.

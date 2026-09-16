@@ -223,6 +223,7 @@ PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>rimagent</title>
+<link rel="icon" href="data:,">
 <style>
 :root{
   --bg:#0e1116;--bg1:#151a21;--bg2:#1c222b;--bg3:#242c37;--line:#2b3340;
@@ -274,8 +275,8 @@ code{font-family:var(--mono);background:var(--bg3);padding:0 3px;border-radius:3
 #tabs button.active{background:var(--bg);color:#fff;border-color:var(--line)}
 #tabs button .cnt{font:10px var(--mono);color:var(--fg2);margin-left:4px}
 main{flex:1;min-height:0;display:flex}
-.tab{display:none;flex:1;min-height:0;min-width:0}
-.tab.active{display:flex}
+main>.tab{flex:1;min-height:0;min-width:0;display:flex}
+main>.tab:not(.active){display:none}
 .toolbar{display:flex;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--bg1);flex-wrap:wrap}
 .scroll{flex:1;min-height:0;overflow:auto;padding:8px 12px}
 .col{display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -284,7 +285,7 @@ main{flex:1;min-height:0;display:flex}
 #live .step{border:1px solid var(--line);border-radius:6px;margin:0 0 10px;background:var(--bg1)}
 #live .step-head{display:flex;gap:10px;align-items:center;padding:5px 10px;background:var(--bg2);border-radius:6px 6px 0 0;cursor:pointer;font-family:var(--mono);font-size:11.5px}
 #live .step-head .trig{color:var(--acc)}
-#live .step-head .sum{color:var(--fg2);margin-left:auto}
+#live .step-head .sum{color:var(--fg2);margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #live .step.collapsed .step-body{display:none}
 #live .step.collapsed .step-head{border-radius:6px}
 #live .step-body{padding:6px 10px}
@@ -357,7 +358,8 @@ tr:hover td{background:var(--bg1)}
 #scores-chart circle.honest{fill:var(--ok)}#scores-chart circle.assisted{fill:var(--warn)}
 
 /* map */
-#map-img{max-width:100%;border:1px solid var(--line);border-radius:6px;background:#000;display:block}
+#map-img{max-width:100%;border:1px solid var(--line);border-radius:6px;background:#000;display:none}
+#map-img.shown{display:block}
 #map-err{color:var(--err);font-family:var(--mono)}
 
 footer{display:flex;gap:14px;padding:3px 12px;border-top:1px solid var(--line);background:var(--bg1);color:var(--fg2);font:10.5px var(--mono)}
@@ -778,10 +780,11 @@ function drawChart(rows) {
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(0, ...ys), y1 = Math.max(...ys);
   if (x1 === x0) { x0 -= 1; x1 += 1; } if (y1 === y0) y1 = y0 + 1;
-  y1 += (y1 - y0) * 0.08;
+  const raw = (y1 - y0) / 5, mag = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw);
+  y0 = Math.floor(y0 / step) * step; y1 = Math.ceil((y1 + step * 0.3) / step) * step;
   const sx = x => L + (x - x0) / (x1 - x0) * (W - L - R), sy = y => T + (y1 - y) / (y1 - y0) * (H - T - B);
   let g = '';
-  const yt = 5; for (let i = 0; i <= yt; i++) { const y = y0 + (y1 - y0) * i / yt; g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${sy(y)}" y2="${sy(y)}"/><text x="${L - 6}" y="${sy(y) + 3}" text-anchor="end">${Math.round(y)}</text>`; }
+  for (let y = y0; y <= y1 + 1e-9; y += step) { g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${sy(y)}" y2="${sy(y)}"/><text x="${L - 6}" y="${sy(y) + 3}" text-anchor="end">${Math.round(y)}</text>`; }
   const xt = Math.min(12, x1 - x0); for (let i = 0; i <= xt; i++) { const x = Math.round(x0 + (x1 - x0) * i / xt); g += `<text x="${sx(x)}" y="${H - B + 14}" text-anchor="middle">${x}</text>`; }
   g += `<text x="${W - R}" y="${H - 4}" text-anchor="end">episode</text><text x="${L}" y="10">score</text>`;
   for (const [cls, sel] of [['honest', p => !p.a], ['assisted', p => p.a]]) {
@@ -799,8 +802,8 @@ function loadMap() {
   mapLoaded = true;
   const q = new URLSearchParams(); if (mx.value !== '') q.set('x', mx.value); if (mz.value !== '') q.set('z', mz.value); q.set('w', $('m-w').value || 80); q.set('t', Date.now());
   const img = $('map-img'); $('map-err').textContent = ''; img.style.opacity = .5;
-  img.onload = () => { img.style.opacity = 1; $('map-when').textContent = 'captured ' + new Date().toLocaleTimeString(); };
-  img.onerror = async () => { img.style.opacity = 1; try { const j = await (await fetch('/screenshot.png?' + q)).json(); $('map-err').textContent = j.error || 'screenshot failed'; } catch (_) { $('map-err').textContent = 'screenshot failed'; } };
+  img.onload = () => { img.classList.add('shown'); img.style.opacity = 1; $('map-when').textContent = 'captured ' + new Date().toLocaleTimeString(); };
+  img.onerror = async () => { img.classList.remove('shown'); img.style.opacity = 1; try { const j = await (await fetch('/screenshot.png?' + q)).json(); $('map-err').textContent = j.error || 'screenshot failed'; } catch (_) { $('map-err').textContent = 'screenshot failed'; } };
   img.src = '/screenshot.png?' + q;
 }
 setInterval(() => { if ($('c-map-auto').checked && $('tab-map').classList.contains('active')) loadMap(); }, 30000);
