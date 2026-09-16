@@ -1,8 +1,8 @@
 ---
 always: false
 description: Pull in before changing the steward's hunting target or hunt_predators,
-  before designating tame on any wild animal, when a predator or manhunter pack is on
-  the map, or when deciding which animals to keep, pen, train or butcher.
+  before designating tame on any wild animal, when a predator or manhunter pack is
+  on the map, or when deciding which animals to keep, pen, train or butcher.
 name: animals-and-hunting
 tags:
 - animals
@@ -49,6 +49,18 @@ Wolves, cougars and bears hunt anything smaller than themselves, pets and coloni
 Pack points are 40% above a raid's; only fence-passing species are picked. They cannot open doors but bash one they saw you use, and linger 24-54 hours.
 - Response: everyone indoors, doors closed, pets restricted inside. Fight only through a held-open door or 1-wide gap with melee blockers. Scaria may rot corpses.
 - A mad animal charges the nearest human: draft 2-3 pawns and shoot it.
+
+## Manhunter response: the single biggest early-game killer (episode 1 lesson)
+**A manhunter (rat, wolf, etc.) chasing a colonist far from base is the #1 cause of early colony loss.** The pattern: a colonist is 50-120 cells from base when a manhunter spawns. The agent sends a second colonist to intercept. Both get downed 70+ cells from base. The last able colonist walks 80+ cells to rescue them, gets bitten/bleeding, and the whole colony collapses.
+
+**The correct response, in order of priority:**
+1. **Order the chased colonist to run TO BASE immediately.** `rw_ui_order(pawn=<chased>, at="home", label="goto")` or `rw_ui_goto(pawn=<chased>, cell=<base_center>)`. A colonist running from a manhunter at full speed will usually outrun it (manhunters are slower than pawns). The manhunter will lose interest after ~30-50 cells of failed chase.
+2. **Do NOT send a second colonist to intercept the manhunter far from base.** This is the #1 mistake. The second colonist gets downed too, and now you have 2 downed colonists 70+ cells from base with no one to rescue them. The manhunter is a small threat; the colony is the asset.
+3. **If the manhunter is within 20 cells of base:** the combat order will draft shooters at the rally point. Let it handle it. If the manhunter is 50+ cells from base, it is not an immediate base threat — it is a threat to the specific colonist it is chasing.
+4. **If a colonist is already downed far from base:** assess whether rescue is survivable. If the rescuer is bleeding or below 50% health, the rescue will likely kill the rescuer too. Accept the loss and keep the last able colonist alive. (See defense-basics: "Never send your last able colonist far from base.")
+5. **After the manhunter is gone:** the `rescue` order will carry any downed colonist to a bed. Check `rw_steward_orders` for the rescue summary.
+
+**Numbers from episode 1:** Manhunter rat spawned day 3, 111 cells from base, chasing Allison. Agent drafted Ophelia to intercept at [225,22] (110 cells from base). Ophelia died (blood loss). Allison died (downed, 31%, 70 cells from base). Velasquez (last colonist) was bleeding and 73% health when she went to rescue Allison. All 3 colonists dead by day 4. The correct play: order Allison to run to base immediately, let the manhunter lose interest, no one dies.
 
 ## Taming and training
 - Tame chance multiplier is 2 x (1 - wildness): dogs/chickens 2x, alpaca 1.5x, muffalo 0.8x, deer 0.5x, bear/cougar 0.4x, wolf 0.3x. Bear, wolf and cougar attack 30% of the time on failure. Handlers need non-meal food matching the diet.

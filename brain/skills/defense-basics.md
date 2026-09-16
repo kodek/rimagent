@@ -1,18 +1,11 @@
 ---
 always: false
 description: Pull in when a raid letter arrives, rw_state_threats shows hostiles,
-  or when planning walls, traps, turrets, chokepoints, the rally point and draft
-  positioning for a small colony. Also pull in when a mech (Scyther, Centipede, Scorcher, Lancer) is
-  on the map or sleeping nearby.
+  or when planning walls, traps, turrets, chokepoints, the rally point and draft positioning
+  for a small colony. Also pull in when a mech (Scyther, Centipede, Scorcher, Lancer)
+  is on the map or sleeping nearby.
 name: defense-basics
-tags:
-- defense
-- raid
-- traps
-- turrets
-- drafting
-- rally
-- mechs
+tags: []
 ---
 
 # Defense basics
@@ -47,6 +40,18 @@ The `combat` standing order (`rw_steward_orders`) is the colony's draft reflex. 
 **Never send your last able colonist far from base to rescue someone while the thing that downed them is still loose and could reach the base.** Check `rw_state_threats` before committing to a rescue: if the hostile that caused this is still alive and has a path home, defending the base comes first, undrafting your only defender to walk 80+ cells away leaves nobody to fight if it arrives while they're gone, and if the rescuer goes down too you have converted one casualty into a colony-ending one. With a single healthy colonist left, a distant multi-cell rescue is usually the wrong call entirely: shelter behind a door, hold position near home, or accept the loss and keep your last colonist alive, rather than gambling the whole colony on a long walk through open ground.
 
 **When to intervene** (and only then): breachers and sappers coming through a wall the rally does not cover; drop pods inside the walls; a mech cluster (sleeping mechs are not a raid until they wake, see below); a siege you want to sortie against; a fire during the fight (drafted pawns cannot fight fire: undraft two). `rw_ui_draft`/`rw_ui_goto`/`rw_ui_attack` on a pawn makes the order leave that pawn alone for ~2500 ticks (an hour), so an override sticks; `position_shooters(cell=)` does the same for several. Do not draft pawns yourself otherwise: a hand-drafted pawn is a pawn the order will not undraft when the raid ends, and a pawn you drafted for a chore keeps standing there. `rw_steward_orders_explain(id="combat")` lists who is hands-off and for how long.
+
+## Turrets: the day-1-2 priority (episode 1 lesson)
+**No turrets = no defense against anything beyond 2-3 raiders.** In episode 1, the colony had 762 steel and 28 components on day 2 but did not build turrets. By day 3 a manhunter rat killed 2 colonists and the last one was downed by day 4 with no automated defense.
+
+**Day-1-2 turret checklist (do this BEFORE the first raid, ~day 5-10 on Rough):**
+1. Build `WoodFiredGenerator` (100 steel + 2 components) — already in the first-day checklist.
+2. Build `Battery` (70 steel + 2 components) — requires Batteries research.
+3. Build 2x `Turret_MiniTurret` (30 stuff + 70 steel + 3 components each = 140 steel + 6 components total) at the approach lane, 4+ tiles apart, off the firing line.
+4. Wire: `rw_ui_wire(from=generator, to=turret)` for each turret.
+5. Total cost: ~400 steel + 8 components. Crashlanded loot has ~1,450 steel. **If you do not have turrets by day 3, you are in danger.**
+
+**Turret defName:** `Turret_MiniTurret` (NOT `Turret_Gun`). Use `rw_defs_search(query="turret")` to verify.
 
 ## Structures
 - Walls: 75% cover, block line of fire, pawns lean out at corners. Raiders take the quickest unobstructed route, so a perimeter with exactly ONE 1-wide entrance (bent so they cannot shoot in) turns every raid into a chokepoint fight. Stone is best; wood and steel burn. rw_ui_build def Wall.
