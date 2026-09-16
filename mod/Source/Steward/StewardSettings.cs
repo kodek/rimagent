@@ -145,8 +145,11 @@ namespace RimBridge.Steward
         public int BudgetMsWarn = 20;
         public bool HuntPredators = false;
         public bool MineThickRoofs = true;
-        /// <summary>Stock jobs only target things within this many cells of home (0 = whole map).</summary>
-        public int MaxWorkRadius = 70;
+        /// <summary>Distance cap from home for stock-job targets, in cells. 0 = no cap: the whole map is fair game.
+        /// Default 0 on purpose — a colony that refuses to hunt, log or mine something because it is "too far"
+        /// stalls its own stock jobs while the resource sits there in plain sight. Distance is a pathing cost,
+        /// not a rule. Set it non-zero only to deliberately keep pawns close to home.</summary>
+        public int MaxWorkRadius = 0;
         /// <summary>Never target things this close to hostiles, hives, or other known dangers.</summary>
         public int DangerAvoidRadius = 30;
 
@@ -165,7 +168,7 @@ namespace RimBridge.Steward
             Scribe_Values.Look(ref BudgetMsWarn, "budgetMsWarn", 20);
             Scribe_Values.Look(ref HuntPredators, "huntPredators", false);
             Scribe_Values.Look(ref MineThickRoofs, "mineThickRoofs", true);
-            Scribe_Values.Look(ref MaxWorkRadius, "maxWorkRadius", 70);
+            Scribe_Values.Look(ref MaxWorkRadius, "maxWorkRadius", 0);
             Scribe_Values.Look(ref DangerAvoidRadius, "dangerAvoidRadius", 30);
         }
     }

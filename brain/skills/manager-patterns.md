@@ -15,14 +15,14 @@ Two engines run in C# every tick, no LLM: the **stock keeper** (Colony Manager R
 ## Defaults (created on the first tick of a new colony, scaled by colonist count n)
 | kind | counts | target | interval | notes |
 |---|---|---|---|---|
-| forestry | WoodLog | 500 + 100 x max(0, n-3) | ~1 h (2500 ticks) | no saplings, home radius 70 |
+| forestry | WoodLog | 500 + 100 x max(0, n-3) | ~1 h (2500 ticks) | no saplings; the whole map is in range |
 | foraging | berries and other wild edibles | 150 + 25 n | ~1 h | harvest designations on wild plants |
 | hunting (meat) | raw meat, any kind | 300 + 75 n | ~2 h (5000 ticks) | `hunt_predators=false`; 0% revenge species first |
 | hunting (leather) | leather | 100 | ~2 h | |
 | mining | Steel | 300 + 50 x max(0, n-3) | ~1 h | hauls chunks, checks roof support and room division |
 | production | products of one RecipeDef | CookMealSimple: 10 + 4n, added by itself once a stove/campfire exists; other recipes: you set it | ~1 h | one job per recipe; binds one do-until-X bill and removes duplicate bills of that recipe |
 | livestock | one species (opt-in) | you set `max` (`target` = max) | | tame wild ones, slaughter above max, keep breeding pairs |
-Auto-scaled targets are rescaled when colonists join or die (`ScaleTargetsWithColonists`); a target you set by hand is no longer rescaled (`auto_scaled: false` in `rw_steward_stock_list`; `rw_steward_status.stock` rows do not show it). `managed=false` is something else: the steward stops running that job entirely and drops it from `problems` (you designate by hand); use `suspended=true` to pause a job and keep it visible. Each run designates at most 40 things (`MaxDesignationsPerJob`) within `MaxWorkRadius` 70 of home and never within `DangerAvoidRadius` 30 of hostiles, hives or insects.
+Auto-scaled targets are rescaled when colonists join or die (`ScaleTargetsWithColonists`); a target you set by hand is no longer rescaled (`auto_scaled: false` in `rw_steward_stock_list`; `rw_steward_status.stock` rows do not show it). `managed=false` is something else: the steward stops running that job entirely and drops it from `problems` (you designate by hand); use `suspended=true` to pause a job and keep it visible. Each run designates at most 40 things (`MaxDesignationsPerJob`). **There is no distance limit: `MaxWorkRadius` is 0 (the whole map) by default**, so nothing is ever skipped for being far from home — trees, animals and ore anywhere on the map are fair game. The only spatial rule left is safety: never within `DangerAvoidRadius` 30 of hostiles, hives or insects.
 
 ## When to change targets
 - **Day 1**: leave the defaults. 500 wood is right for a wooden shelter plus campfire fuel; check `rw_steward_status.stock` once at the end of the day to see `current` moving.
@@ -47,7 +47,7 @@ Only after you tame something: `rw_steward_stock_add(kind="livestock", species="
 
 ## Reading problems
 `rw_steward_status.problems` and the ledger `steward` events tell you what the steward could not do; each is a decision for you, not a chore:
-- `stock_stalled` (3 failed runs in a row or no targets for a day): forestry -> no trees within radius 70 (raise `max_radius`, or plant trees, or accept), hunting -> no safe animals (`hunt_predators=true` only with 2 shooters and a rifle, else lower the target), mining -> no exposed ore (mine into the mountain: `rw_ui_designate mine` on the rock over an ore vein once, the job continues from there), foraging -> season over (suspend).
+- `stock_stalled` (3 failed runs in a row or no targets for a day) never means "out of range" — there is no range cap: forestry -> the map is genuinely logged out (plant trees, or accept), hunting -> no safe animals left (`hunt_predators=true` only with 2 shooters and a rifle, else lower the target), mining -> no exposed ore (mine into the mountain: `rw_ui_designate mine` on the rock over an ore vein once, the job continues from there), foraging -> season over (suspend).
 - `stock_reached`: informational; if it keeps flipping, the target is at the noise floor (raise it 20%).
 - "unmanaged pawn with everything disabled": `rw_steward_pawn(managed=true)` or set their priorities yourself.
 - "no hunter with a ranged weapon": equip one (`rw_ui_order label="equip"`) or lower the meat target and grow more.
