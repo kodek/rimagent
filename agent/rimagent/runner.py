@@ -11,7 +11,7 @@ from .bridge import Bridge, BridgeError
 from .bus import BUS, Bus
 from .context import Context
 from .llm import LLM
-from .loop import situation_packet, think
+from .loop import ORDER_IDS, situation_packet, think
 from .paths import ROOT, RUNS
 
 EPISODE_FILE = RUNS / "episode.json"
@@ -36,6 +36,7 @@ from .tools import brain as brain_tools
 from .tools import knowledge as knowledge_tools
 from .tools import meta as meta_tools
 from .watchers import run_all as run_watchers
+from .watchers import superseded_mapping, superseded_now
 
 TICKS_PER_HOUR = 2500
 TICKS_PER_DAY = 60000
@@ -95,6 +96,18 @@ class Controls:
     def steward(self) -> bool:
         return bool(self.r.steward)
 
+    def set_order(self, order_id: str, value: bool):
+        """Dashboard toggle: one standing order (or "all") on/off via steward.orders.set; remembered for the next new_game/recover."""
+        return self.r.apply_order(str(order_id), bool(value), announce=True)
+
+    def set_rally(self, rect: list[int] | None):
+        """Dashboard: set the combat order's rally rect [x, z, w, h] (steward.orders.rally), or clear it with None."""
+        return self.r.apply_rally(rect)
+
+    @property
+    def orders_off(self) -> list[str]:
+        return sorted(self.r.orders_off)
+
     def say(self, text: str, remember: bool = True):
         """Operator message: shown in the feed, handed to the model (mid-step or next step), and wakes it.
         Also logged to brain/memory/operator.md so the episode reflection can fold missed tips into skills."""
@@ -139,6 +152,12 @@ class Runner:
         self.sandbox = False
         self.parallel = bool(cfg["play"].get("parallel", False))
         self.steward = bool((cfg.get("steward") or {}).get("enabled", True))   # desired state; apply_steward pushes it to the mod
+        ocfg = (cfg.get("steward") or {}).get("orders")
+        ocfg = ocfg if isinstance(ocfg, dict) else {}
+        self.orders_enabled = bool(ocfg.get("enabled", True))                  # config steward.orders.enabled; false = every standing order off
+        self.orders_off: set[str] = {str(x) for x in (ocfg.get("off") or ocfg.get(False) or []) if x}   # order ids kept off (config + dashboard toggles); a bare `off:` key parses as False in YAML 1.1
+        self.superseded_watchers = superseded_mapping(ocfg.get("superseded_watchers"))   # watcher stem -> order id that replaced it
+        self.orders_supported: bool | None = None                              # None until the first steward.orders.set probe answers
         self._status_at = 0.0
         self._last_alive = time.time()
         self._alerts_at = 0.0
@@ -146,6 +165,7 @@ class Runner:
         self._last_step_end_tick = 0
         self.critical_kinds = set(cfg["play"].get("critical_kinds", ["dialog", "danger", "manhunter", "hostile_group", "colonist_downed", "colonist_died", "mental_break", "building_lost"]))
         self.critical_kinds.discard("steward")   # steward ledger events (stock stalled/reached, posture expired) are ordinary wakes, never interrupts
+        self.critical_kinds.discard("orders")    # standing-order events (combat engaged/released, rescue, corpses, fire) too: the runner already wakes on danger
 
     # ---------- lifecycle ----------
     def run(self) -> None:
@@ -442,6 +462,7 @@ class Runner:
 
     def play_step(self, trigger: str, tick: int) -> None:
         urgent = self.is_urgent(trigger)
+        self.ctx.extra["tick"] = tick
         events, self.pending_events = self.pending_events, []
         alerts, self.pending_alerts = self.pending_alerts, []
         self.ctx.watcher_alerts = alerts
@@ -463,6 +484,7 @@ class Runner:
         except BridgeError:
             pass
         self._last_step_end_tick = tick
+        self.ctx.extra["last_step_end_tick"] = tick
         self.next_wake_tick = tick + int(hours * TICKS_PER_HOUR)
 
     def apply_sandbox(self, on: bool) -> None:
@@ -494,7 +516,86 @@ class Runner:
         self.bus.emit("status", {"steward": self.steward})
         if announce:
             self.force_think = "steward switched " + ("on: direct it through rw_steward_* (targets, posture); stop setting priorities by hand" if on else "off: you set work priorities and designations yourself again")
+        self.apply_orders()
         return result
+
+    def apply_orders(self) -> dict[str, bool] | None:
+        """Push config steward.orders to the mod (new_game / recover / steward toggle): steward.orders.set id=all enabled=true, then
+        each id in `off` (and dashboard-disabled ids) off. Steward off or orders.enabled false = all orders off. Best effort:
+        an older mod without steward.orders.set is logged once and ignored. Returns {id: enabled} as applied, or None."""
+        all_on = bool(self.steward and self.orders_enabled)
+        want: dict[str, bool] = {"all": all_on}
+        if all_on:
+            want.update({oid: False for oid in sorted(self.orders_off)})
+        applied: dict[str, bool] = {}
+        try:
+            for oid, on in want.items():
+                self.bridge.call("steward.orders.set", id=oid, enabled=on)
+                applied[oid] = on
+        except Exception as e:  # noqa: BLE001  (BridgeError for unknown method / unknown id, anything else if the bridge is down)
+            self.bus.emit("error", {"text": f"steward.orders.set failed ({e}); the mod keeps its own order defaults"})
+            self.orders_supported = False
+            self.sync_superseded_watchers()
+            return None
+        self.orders_supported = True
+        self.sync_superseded_watchers()
+        off = sorted(k for k, v in applied.items() if not v and k != "all")
+        self.bus.emit("log", {"text": "standing orders: " + ("all off" if not all_on else ("all on" if not off else "on except " + ", ".join(off)))})
+        self.bus.emit("status", {"orders_off": sorted(self.orders_off), "orders_enabled": all_on})
+        return applied
+
+    def sync_superseded_watchers(self) -> dict[str, str]:
+        """Skip the brain watchers a standing order replaced (registry.watcher_superseded) while that order is on and the mod
+        answered steward.orders.set; an order switched off (or orders/steward off, or an older mod) hands its watcher back."""
+        want = superseded_now(self.superseded_watchers, orders_supported=bool(self.orders_supported),
+                              orders_on=bool(self.steward and self.orders_enabled), orders_off=self.orders_off)
+        before = dict(self.registry.watcher_superseded)
+        now = self.registry.set_superseded(want)
+        if now != before:
+            self.bus.emit("log", {"text": "superseded watchers (skipped while their order is on): " + (", ".join(f"{k}->{v}" for k, v in sorted(now.items())) or "none")})
+        return now
+
+    def apply_order(self, order_id: str, on: bool, announce: bool = False) -> dict[str, Any] | None:
+        """One standing order (or "all") on/off now, remembered in orders_off for the next new_game/recover."""
+        order_id = str(order_id or "").strip()
+        if not order_id:
+            raise ValueError("order id required")
+        if order_id == "all":
+            self.orders_off = set() if on else set(self.orders_off) | set(ORDER_IDS)
+        elif on:
+            self.orders_off.discard(order_id)
+        else:
+            self.orders_off.add(order_id)
+        result: dict[str, Any] | None = None
+        try:
+            got = self.bridge.call("steward.orders.set", id=order_id, enabled=bool(on))
+            result = got if isinstance(got, dict) else {"id": order_id, "enabled": bool(on)}
+            self.bus.emit("log", {"text": f"standing order {order_id} {'ON' if on else 'off'}" + (f": {result['summary']}" if result.get("summary") else "")})
+        except Exception as e:  # noqa: BLE001
+            self.bus.emit("error", {"text": f"steward.orders.set {order_id} failed ({e})"})
+        self.bus.emit("status", {"orders_off": sorted(self.orders_off)})
+        if result is not None:
+            self.orders_supported = True
+        self.sync_superseded_watchers()
+        if announce:
+            self.force_think = f"standing order {order_id} switched " + ("on: the mod handles it again" if on else "off by the operator: you cover what it did yourself (rw_steward_orders_explain)")
+        return result
+
+    def apply_rally(self, rect: list[int] | None) -> dict[str, Any] | None:
+        """steward.orders.rally {rect:[x,z,w,h]} or {clear:true}; returns the mod's answer ({rect} or null) or None on failure."""
+        try:
+            if rect is None:
+                got = self.bridge.call("steward.orders.rally", clear=True)
+            else:
+                rect = [int(v) for v in list(rect)[:4]]
+                if len(rect) != 4 or rect[2] <= 0 or rect[3] <= 0:
+                    raise ValueError("rect must be [x, z, w, h] with w, h > 0")
+                got = self.bridge.call("steward.orders.rally", rect=rect)
+            self.bus.emit("log", {"text": "rally point " + ("cleared" if rect is None else f"set to {rect}")})
+            return got if isinstance(got, dict) else ({"rect": rect} if rect is not None else None)
+        except Exception as e:  # noqa: BLE001
+            self.bus.emit("error", {"text": f"steward.orders.rally failed ({e})"})
+            return None
 
     def queue_default_research(self) -> None:
         """config steward.research_queue_default -> steward.research {queue: [...]} on a new game (best effort)."""
@@ -536,6 +637,7 @@ class Runner:
     def play_step_parallel(self, trigger: str, tick: int) -> None:
         """Fan a calm step out to the four specialist streams; merge notes and wake plans."""
         from . import roles as roles_mod
+        self.ctx.extra["tick"] = tick
         events, self.pending_events = self.pending_events, []
         alerts, self.pending_alerts = self.pending_alerts, []
         self.ctx.watcher_alerts = alerts
@@ -596,6 +698,7 @@ class Runner:
         except BridgeError:
             pass
         self._last_step_end_tick = tick
+        self.ctx.extra["last_step_end_tick"] = tick
         self.next_wake_tick = tick + int(h * TICKS_PER_HOUR)
 
     def manager_plan(self, packet: str, extra: str = "") -> dict[str, Any]:

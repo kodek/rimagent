@@ -23,6 +23,8 @@
     <Compile Include="../Source/Steward/Stock/Triggers/ThresholdMath.cs" />
     <Compile Include="../Source/Steward/Stock/Util/PlantMath.cs" />
     <Compile Include="../Source/Steward/StewardRules.cs" />
+    <Compile Include="../Source/Steward/Orders/OrderLogic.cs" />
+    <Compile Include="../Source/Steward/Orders/OrderRules.cs" />
   </ItemGroup>
 
 </Project>

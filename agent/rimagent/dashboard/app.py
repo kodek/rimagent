@@ -25,13 +25,15 @@ from .. import braingit, scorecard, skills
 from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHERS
 
 _KIND_DIRS: dict[str, Path] = {"skill": SKILLS, "tool": TOOLS, "watcher": WATCHERS}
-_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "steward": "set_steward", "kill": "kill"}
+_CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "steward": "set_steward", "order": "set_order", "rally": "set_rally", "kill": "kill"}
 _BOOL_ACTIONS = {"no_pause", "sandbox", "parallel", "steward"}
 
 
 class ControlRequest(BaseModel):
     action: str
     value: bool | None = None
+    id: str | None = None                 # action "order": the standing order id (or "all"); value = enabled
+    rect: list[int] | None = None         # action "rally": [x, z, w, h]; None/absent clears the rally point
 
 
 def _brain_file(kind: str, name: str | None) -> Path:
@@ -125,7 +127,7 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
             game = await _call_with_timeout(bridge.status, timeout=5.0)
         except Exception:  # noqa: BLE001
             game = None
-        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False)), "parallel": bool(getattr(controls, "parallel", False)), "steward": getattr(controls, "steward", None)}
+        ctl = {"paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None), "sandbox": bool(getattr(controls, "sandbox", False)), "parallel": bool(getattr(controls, "parallel", False)), "steward": getattr(controls, "steward", None), "orders_off": getattr(controls, "orders_off", None)}
         return {"bus": bus.state, "last_seq": bus.last_seq, "game": game, "controls": ctl}
 
     @app.get("/api/brain/tree")
@@ -222,6 +224,15 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
                 status["research"] = await _call_with_timeout(lambda: bridge.call("steward.research"), timeout=10.0)
             except Exception:  # noqa: BLE001
                 status["research"] = None
+        # steward.status keeps its order rows compact ({id, enabled, summary, acting_on}); the Orders table also shows
+        # label / interval / last run, which only steward.orders carries. Keep the compact rows if that call fails.
+        if isinstance(status.get("orders"), list):
+            try:
+                rows = await _call_with_timeout(lambda: bridge.call("steward.orders"), timeout=10.0)
+                if isinstance(rows, list) and rows:
+                    status["orders"] = rows
+            except Exception:  # noqa: BLE001
+                pass
         return status
 
     @app.get("/api/anchors")
@@ -285,7 +296,16 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
         if not callable(fn):
             return {"ok": False, "error": f"controls has no {method}()", "paused": bool(getattr(controls, "paused", False))}
         try:
-            result = fn(bool(req.value)) if req.action in _BOOL_ACTIONS else fn()
+            if req.action == "order":
+                if not req.id:
+                    raise HTTPException(400, "order needs an id")
+                result = fn(req.id, bool(req.value))
+            elif req.action == "rally":
+                result = fn(list(req.rect) if req.rect else None)
+            else:
+                result = fn(bool(req.value)) if req.action in _BOOL_ACTIONS else fn()
+        except HTTPException:
+            raise
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e), "paused": bool(getattr(controls, "paused", False))}
         return {"ok": True, "result": result if isinstance(result, (str, int, float, bool, dict, list)) or result is None else str(result), "paused": bool(getattr(controls, "paused", False)), "no_pause": getattr(controls, "no_pause", None)}
@@ -532,7 +552,7 @@ footer .r{margin-left:auto}
 
   <section class="tab col" id="tab-steward">
     <div class="toolbar">
-      <span class="dim">The steward (in the mod): work-priority scorer + stock jobs; the model directs it through rw_steward_*</span>
+      <span class="dim">The steward (in the mod): work-priority scorer + stock jobs + standing orders; the model directs it through rw_steward_*</span>
       <label title="Runner control: steward.enable per config (scorer, stock). Off = the model sets priorities and designations by hand again" style="color:var(--teal)"><input type="checkbox" id="c-steward" onchange="control('steward',this.checked)"> steward on</label>
       <button class="primary" onclick="loadSteward()">Refresh</button>
       <label class="dim"><input type="checkbox" id="c-steward-auto" checked> auto every 20s</label>
@@ -692,9 +712,9 @@ function setControls(c) {
   $('b-pause').disabled = !!c.paused; $('b-resume').disabled = !c.paused;
   if (c.no_pause != null) $('c-nopause').checked = !!c.no_pause; if ($('c-sandbox') && typeof c.sandbox === 'boolean') $('c-sandbox').checked = c.sandbox; if ($('c-parallel') && typeof c.parallel === 'boolean') $('c-parallel').checked = c.parallel; if ($('c-steward') && typeof c.steward === 'boolean') $('c-steward').checked = c.steward;
 }
-async function control(action, value) {
+async function control(action, value, extra) {
   try {
-    const r = await fetch('/api/control', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({action, value})});
+    const r = await fetch('/api/control', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(Object.assign({action, value}, extra || {}))});
     const j = await r.json();
     $('f-ctl').textContent = j.ok ? `${action} ok` : `${action}: ${j.error || j.detail || 'failed'}`;
     setControls(j);
@@ -1087,10 +1107,35 @@ async function loadSteward() {
     }
     if (!(j.pawns || []).length) h += '<tr><td colspan=4 class="dimmer">no colonists</td></tr>';
     h += '</table>';
+    // standing orders (pass 2): omitted entirely when the mod does not report them
+    if (Array.isArray(j.orders)) {
+      const rally = Array.isArray(j.rally) && j.rally.length >= 4 ? j.rally : null;
+      h += '<h4 style="margin:10px 0 4px">Standing orders <span class="dimmer">toggles go through steward.orders.set; a manual action on a pawn/thing pauses the matching order for it</span></h4>';
+      h += `<div style="font-size:12px;margin-bottom:4px">rally point: ${rally ? `<b>[${rally.slice(0, 4).join(', ')}]</b>` : '<span class="badge warn">none</span> <span class="dimmer">(the combat order holds pawns near the base center)</span>'} ` +
+        `<span style="margin-left:8px">x <input id="rally-x" size=3 value="${rally ? rally[0] : ''}"> z <input id="rally-z" size=3 value="${rally ? rally[1] : ''}"> w <input id="rally-w" size=2 value="${rally ? rally[2] : 6}"> h <input id="rally-h" size=2 value="${rally ? rally[3] : 6}"> ` +
+        `<button onclick="setRally(false)">set</button> <button onclick="setRally(true)" ${rally ? '' : 'disabled'}>clear</button></span></div>`;
+      h += '<table><tr><th>on</th><th>order</th><th>interval</th><th>last run</th><th>acting on</th><th>summary</th></tr>';
+      for (const o of j.orders) {
+        if (!o || !o.id) continue;
+        const on = o.enabled !== false, n = o.acting_on || 0;
+        h += `<tr><td><input type="checkbox" ${on ? 'checked' : ''} onchange="control('order', this.checked, {id: ${JSON.stringify(String(o.id))}})"></td>` +
+          `<td>${esc2(o.label || o.id)} <span class="dimmer">${esc2(o.id)}</span></td><td>${o.interval_ticks == null ? '–' : fmtN(o.interval_ticks) + ' t'}</td>` +
+          `<td>${o.last_run_hours_ago == null ? 'never' : fmtN(o.last_run_hours_ago) + 'h ago'}</td><td>${n > 0 ? `<span class="badge ok">${fmtN(n)}</span>` : '<span class="dimmer">0</span>'}</td>` +
+          `<td style="white-space:normal">${esc2(o.summary || '')}</td></tr>`;
+      }
+      if (!j.orders.length) h += '<tr><td colspan=6 class="dimmer">no standing orders reported</td></tr>';
+      h += '</table>';
+    }
     let rq = j.research; if (rq && !Array.isArray(rq)) rq = rq.queue || rq.projects || null;
     h += '<h4 style="margin:10px 0 4px">Research queue</h4><div style="font-size:12px">' + (Array.isArray(rq) && rq.length ? rq.map(x => esc2(typeof x === 'object' ? (x.label || x.def || JSON.stringify(x)) : x)).join(' → ') : '<span class="dimmer">empty (the director queues research)</span>') + '</div>';
     $('steward-view').innerHTML = h; $('steward-when').textContent = new Date().toLocaleTimeString();
   } catch (e) { $('steward-err').textContent = 'failed: ' + e; }
+}
+async function setRally(clear) {
+  const rect = clear ? null : [$('rally-x').value, $('rally-z').value, $('rally-w').value, $('rally-h').value].map(v => parseInt(v, 10));
+  if (!clear && rect.some(v => Number.isNaN(v))) { $('steward-err').textContent = 'rally: x, z, w, h must be integers'; return; }
+  await control('rally', null, {rect});
+  loadSteward();
 }
 setInterval(() => { if ($('c-steward-auto').checked && $('tab-steward').classList.contains('active')) loadSteward(); }, 20000);
 document.querySelector('#tabs button[data-tab="base"]').addEventListener('click', () => loadBase());

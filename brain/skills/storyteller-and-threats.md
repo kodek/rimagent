@@ -30,8 +30,8 @@ Raid points = (Wealth points + Pawn points) x Threat scale x Starting factor x A
 ## First-year incident playbook
 | Incident | Numbers | Response |
 |---|---|---|
-| Raid | see defense-basics | Draft behind cover at the chokepoint |
-| Mad animal | one animal, charges nearest human | Draft 2-3 pawns, shoot it together |
+| Raid | see defense-basics | The combat order drafts to the rally point; intervene for breachers, drop pods inside, sieges |
+| Mad animal | one animal, charges nearest human | The combat order treats a manhunter as hostile and drafts; add focus fire if it is at the door |
 | Manhunter pack | 40% more points than a raid; lingers 24-54 h; cannot open doors | Everyone indoors, doors closed, shoot through a held-open door; scaria may rot corpses |
 | Disease (flu/plague/malaria) | plague kills in ~1.5 days untreated | Bed rest immediately, medicine, rw_ui_set_policies medical NormalOrWorse or better |
 | Cold snap / heat wave | 1.5-3.5 days, 30-day refire | Heaters/campfires or coolers, keep pawns indoors, harvest crops early |
@@ -41,6 +41,6 @@ Raid points = (Wealth points + Pawn points) x Threat scale x Starting factor x A
 | Psychic drone | -12 to -40 mood on one gender, 0.75-1.75 days; Low level under 800 points | Reduce other stressors; keep the affected gender off risky work |
 | Infestation | needs overhead mountain within 30 tiles of a building, warm (>-8 C), dark | Avoid bedrooms under mountain early; if it spawns, kite insects (they guard 10 tiles) and burn hives |
 
-Pitfall: a downed colonist lowers adaption (easier next raid); a dead one adds corpse wealth and mood debuffs. Rescue first, then destroy loot you will not use.
+Pitfall: a downed colonist lowers adaption (easier next raid); a dead one adds corpse wealth and mood debuffs. The `rescue` and `corpses` orders handle the bodies; you destroy or gift the loot you will not use.
 
 Sources: Cassandra Classic; AI Storytellers; Raid points; Wealth; Wealth management; Events; Disease; Infestation

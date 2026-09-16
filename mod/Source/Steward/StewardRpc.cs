@@ -65,7 +65,7 @@ namespace RimBridge.Steward
 
         // ───────────────────────────── status ─────────────────────────────
 
-        [Rpc("steward.status", "steward overview: {enabled: {scorer, stock}, posture: null|{label, expires_in_hours, work, weights, targets}, pawns: [{id, name, managed, priorities: {WorkTypeDef: 1-4}, top: [{work, priority, why}]}], stock: [{id, kind, label, target, current, enabled, suspended, managed, last_run_hours_ago, designations (created by the job), adopted? (external designations counted toward the target, never removed by the job), failures, summary, notes}], problems: [string]}")]
+        [Rpc("steward.status", "steward overview: {enabled: {scorer, stock}, posture: null|{label, expires_in_hours, work, weights, targets}, pawns: [{id, name, managed, priorities: {WorkTypeDef: 1-4}, top: [{work, priority, why}]}], stock: [{id, kind, label, target, current, enabled, suspended, managed, last_run_hours_ago, designations (created by the job), adopted? (external designations counted toward the target, never removed by the job), failures, summary, notes}], problems: [string], orders: [{id, enabled, summary, acting_on}] (standing orders, see steward.orders), rally: [x,z,w,h]|null}")]
         public static JToken Status(JObject p)
         {
             var map = Map();
@@ -76,10 +76,12 @@ namespace RimBridge.Steward
                 ["pawns"] = PawnRows(map),
                 ["stock"] = StockRows(map, false),
                 ["problems"] = new JArray(Problems(map)),
+                ["orders"] = Orders.OrdersRpc.StatusRows(),
+                ["rally"] = Orders.OrdersRpc.RallyJson(map),
             };
         }
 
-        /// <summary>The compact block state.summary carries: {scorer, stock, posture, stock_brief, problems}.</summary>
+        /// <summary>The compact block state.summary carries: {scorer, stock, posture, stock_brief, problems, orders_active, rally}.</summary>
         public static JObject SummaryBlock(Map map)
         {
             var brief = new JArray();
@@ -103,6 +105,8 @@ namespace RimBridge.Steward
                 ["posture"] = StewardTuning.PostureActive() ? (JToken)StewardTuning.PostureLabel : JValue.CreateNull(),
                 ["stock_brief"] = brief,
                 ["problems"] = new JArray(Problems(map)),
+                ["orders_active"] = Orders.OrdersRpc.ActiveIds(),
+                ["rally"] = StewardGame.Current?.HasRally(map) ?? false,
             };
         }
 

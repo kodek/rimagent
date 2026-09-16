@@ -63,4 +63,4 @@ Priorities 1..4 (1 first, 0 off) come from the scorer (see work-priorities for t
 - **Manual pawns** (`rw_steward_pawn managed=false` + `rw_ui_set_work`) are the exception for one pawn with one fixed role; hand them back when the reason is gone.
 
 # What a watcher is still for
-Reflexes the steward does not own: draft on `hostile_group`, unforbid drop pods, resume suspended jobs on `hostile_group_gone`, call `rw_steward_posture(label="defend")` the moment a raid lands. A watcher that designates trees or sets priorities duplicates the steward and fights it; delete it.
+Reflexes the steward does not own: resume suspended jobs on `hostile_group_gone`, call `rw_steward_posture(label="defend")` the moment a raid lands, wake the planner on a letter you care about. Drafting, rescue, unforbidding, corpses, beds, food policy and fire belong to the standing orders (`rw_steward_orders`), stock and priorities to the scorer and stock keeper. A watcher that repeats any of those duplicates the steward and fights it (its manual touches even pause the order for the pawns it moves); delete it.

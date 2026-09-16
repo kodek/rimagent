@@ -33,7 +33,7 @@ play:
   scenario: Crashlanded
   storyteller: Cassandra
   difficulty: Rough
-  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost, steward]   # steward = stock stalled/reached, posture expired (non-critical: waits out event_cooldown_hours)
+  wake_on_kinds: [dialog, danger, manhunter, letter, incident, colonist_died, colonist_downed, mental_break, hostile_group, quest, building_lost, steward, orders]   # steward = stock stalled/reached, posture expired; orders = combat engaged/released, rescue, corpses, blueprints cancelled, fire (both non-critical: they wait out event_cooldown_hours)
 steward:
   # The steward runs inside the mod every tick: the scorer sets work priorities for managed colonists, stock jobs
   # designate trees/plants/animals/ore toward their targets. The model directs it (targets, posture) instead of micromanaging.
@@ -41,5 +41,15 @@ steward:
   scorer: true             # work-priority scorer (Free Will) for every managed colonist; steward.pawn managed=false takes one out
   stock: true              # stock jobs (forestry, foraging, hunting, mining, livestock) keep counted stock at their targets
   research_queue_default: []   # research defNames queued via steward.research on a new game (empty = the director chooses)
+  orders:                  # standing orders: deterministic reflexes the mod runs every few hundred ticks (combat rally + draft, rescue,
+                           # unforbid, corpses, beds, policies, blueprints, fire). The director toggles them (rw_steward_orders_set) and
+                           # sets the rally rect (rw_steward_orders_rally); a pawn/thing it touched by hand is left alone for a cooldown.
+    enabled: true          # runner calls steward.orders.set (all on, then each `off` id off) at new_game / recover_game; false = all orders off
+    "off": []              # order ids to start disabled, e.g. [corpses, policies] (quoted: a bare `off` is YAML for false)
+    # Brain watchers the orders replaced (stem: order id). While that order is on and the mod answers steward.orders.set, the
+    # runner skips the watcher: its ui.draft/goto/order/designate calls would record manual touches that make the order leave
+    # those pawns alone. Omit for the built-in table (agent/rimagent/watchers.py SUPERSEDED_WATCHERS), {} to disable, or your own map.
+    # superseded_watchers: {hostile_draft: combat, undraft_after_fight: combat, fire_alert: fire, rescue_downed: rescue,
+    #                       unforbid_drops_watcher: unforbid, rotting_corpses: corpses, food_policy_watcher: policies, build_stall: blueprints}
 dashboard:
   port: 8770

@@ -106,7 +106,7 @@ Rules: Firefighter, Patient and PatientBedRest stay at 1 for everyone. Only the 
 
 ## Audit triggers
 - Raw food but no meals -> the stove lacks a bill (rw_ui_add_bill) or a `production` stock job for meals is missing (see manager-patterns); the scorer only gives Cooking to a pawn when there is a bill to work.
-- Blueprints untouched for a day -> materials forbidden (rw_ui_designate unforbid), unreachable, or `rw_steward_explain(work="Construction")` shows every builder at 0 (incapable). Posture `build` for 12 h if it is simply outscored.
+- Blueprints untouched for a day -> the `blueprints` order already cancels unreachable ones and reports starved ones in `rw_steward_orders`; what is left is materials outside the home area (the `unforbid` order clears only within it: `rw_ui_designate unforbid` farther out) or `rw_steward_explain(work="Construction")` showing every builder at 0 (incapable). Posture `build` for 12 h if it is simply outscored.
 - Items rotting outside or filth spreading -> the scorer already raises Hauling for deteriorating items; if not, check the pawn's allowed area and `ConsiderMovementSpeed`.
 - New recruit -> managed by default; `rw_steward_status` after ~1 in-game hour shows their top 3. Only intervene if they land on something dangerous (Hunting with a knife is impossible; the scorer handles it).
 - `problems` lists "unmanaged pawn with everything disabled" -> `rw_steward_pawn(managed=true)` or set priorities yourself.

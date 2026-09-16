@@ -203,7 +203,7 @@ namespace RimBridge.Steward
     /// Per-game steward state, auto-instantiated by RimWorld: unmanaged pawn ids, runtime enable overrides, and the
     /// current posture (mirrored into StewardTuning's statics on load).
     /// </summary>
-    public class StewardGame : GameComponent
+    public partial class StewardGame : GameComponent
     {
         public static StewardGame? Current { get; private set; }
 
@@ -271,6 +271,7 @@ namespace RimBridge.Steward
             Scribe_Collections.Look(ref _postureWork, "postureWork", LookMode.Value, LookMode.Value);
             Scribe_Collections.Look(ref _postureWeights, "postureWeights", LookMode.Value, LookMode.Value);
             Scribe_Collections.Look(ref _postureTargets, "postureTargets", LookMode.Value, LookMode.Value);
+            ExposeOrdersData();
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {

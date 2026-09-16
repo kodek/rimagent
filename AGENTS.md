@@ -25,6 +25,19 @@ avoid clashes with `Verse.Game`/`Verse.Map`.
   unmanaged before applying and returns `steward_managed: false` (otherwise the scorer would clobber the change);
   `steward.pawn managed=true` hands the pawn back. Nothing in steward.* marks the game assisted. Origins in
   `THIRD_PARTY_NOTICES.md`; keep vendored headers, add "modified for RimBridge" lines.
+- **Orders** (`steward.orders*`, `mod/Source/Steward/Orders/`): standing orders are deterministic reflexes that run from a
+  MapComponentTick, staggered by id, never throw, budget-logged over 20 ms: `combat` (draft capable fighters to the rally
+  rect, hold, release, then rescue), `rescue`, `unforbid`, `corpses`, `beds`, `policies`, `blueprints`, `fire`. One class per
+  order (`Order_*.cs`, base `Order { Id, Label, Doc, IntervalTicks, Enabled, Run(Map) -> OrderReport, Explain() }`), registry
+  and persisted state (enabled flags, rally rect, manual-touch cooldowns, last summary) in `StandingOrders.cs`, RPCs in
+  `OrdersRpc.cs` (`steward.orders`, `.set`, `.rally`, `.explain`, `.run`). Manual-touch rule: `ui.draft/goto/attack`,
+  forbid/unforbid, `ui.set_policies`, `ui.press` on a bed and `ui.job Rescue/TendPatient` record (id, tick) so the matching
+  order skips that pawn/thing for a cooldown. Ledger kind `orders` (`combat_engaged`, `combat_released`, `rescue`, `corpses`,
+  `blueprints_cancelled`, `fire`). The brain watchers that did the same from Python stay, but the runner marks them *superseded* (`registry.watcher_superseded`,
+  table `watchers.SUPERSEDED_WATCHERS`, config `steward.orders.superseded_watchers`) and `watchers.run_all` skips them while
+  their order is on and the mod answered `steward.orders.set`: their `ui.draft/goto/order/designate` calls would record manual
+  touches that pause the order for the very pawns they move. `watcher_write`/`watcher_delete` lift the mark; the seeded
+  doctrine tells the director to delete them.
 
 ## Agent
 - `rimagent play [--max-days N] [--seeds a,b] [--no-pause] -v`, `rimagent think` (one step), `rimagent tools`, `rimagent llm "hi"`, `rimagent seed [--distill]`.
@@ -39,5 +52,6 @@ avoid clashes with `Verse.Game`/`Verse.Map`.
 - Log from C# via `BridgeLog` (`[RimBridge]` prefix). Watch `~/Library/Logs/Ludeon Studios/RimWorld by Ludeon Studios/Player.log`.
 - Tool results are truncated (~8k chars); prefer narrow queries in tools and docs.
 - Config: `config.yaml` (generic) + `config.local.yaml` (gitignored: your LLM endpoint). Seeds, cadence, speeds live there.
-  `steward: {enabled, scorer, stock}` (all default true): the runner calls `steward.enable` at new_game/recover_game and
-  when the dashboard toggles it; the situation packet gets a "Steward" block from `steward.status`.
+  `steward: {enabled, scorer, stock, orders: {enabled, off: [], superseded_watchers?: {stem: order id}}}` (all default true): the runner calls `steward.enable` and
+  `steward.orders.set` at new_game/recover_game and when the dashboard toggles it; the situation packet gets a "Steward"
+  block from `steward.status` (posture, stock rows, problems, orders line, `rally: none` when unset).

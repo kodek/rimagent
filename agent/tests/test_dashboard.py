@@ -40,10 +40,20 @@ class FakeControls:
         self.calls.append(("set_no_pause", v))
 
     steward = True
+    orders_off: list[str] = []
 
     def set_steward(self, v: bool):
         self.steward = v
         self.calls.append(("set_steward", v))
+
+    def set_order(self, order_id: str, v: bool):
+        self.orders_off = sorted((set(self.orders_off) | {order_id}) if not v else (set(self.orders_off) - {order_id}))
+        self.calls.append(("set_order", order_id, v))
+        return {"id": order_id, "enabled": v}
+
+    def set_rally(self, rect):
+        self.calls.append(("set_rally", rect))
+        return {"rect": rect} if rect else None
 
 
 def _client():
@@ -132,3 +142,39 @@ def test_steward_endpoint_returns_status_with_research():
     c = TestClient(create_app(bus, Bridge(), FakeControls()))
     j = c.get("/api/steward").json()
     assert j["enabled"] == {"scorer": True, "stock": True} and j["research"] is None
+
+
+def test_steward_orders_controls_and_table():
+    c, _, controls = _client()
+    html = c.get("/").text
+    assert "Standing orders" in html and "control('order'" in html and "setRally" in html and "rally-x" in html
+    r = c.post("/api/control", json={"action": "order", "id": "corpses", "value": False})
+    assert r.json()["ok"] and r.json()["result"] == {"id": "corpses", "enabled": False}
+    assert controls.calls[-1] == ("set_order", "corpses", False)
+    assert c.get("/api/state").json()["controls"]["orders_off"] == ["corpses"]
+    assert c.post("/api/control", json={"action": "order", "value": True}).status_code == 400
+    r = c.post("/api/control", json={"action": "rally", "rect": [40, 40, 6, 6]})
+    assert r.json()["ok"] and r.json()["result"] == {"rect": [40, 40, 6, 6]} and controls.calls[-1] == ("set_rally", [40, 40, 6, 6])
+    r = c.post("/api/control", json={"action": "rally"})
+    assert r.json()["ok"] and r.json()["result"] is None and controls.calls[-1] == ("set_rally", None)
+
+    class Bridge(FakeBridge):
+        rich = True
+
+        def call(self, method, **params):
+            if method == "steward.status":
+                return {"enabled": {"scorer": True, "stock": True}, "posture": None, "pawns": [], "stock": [], "problems": [],
+                        "orders": [{"id": "combat", "enabled": True, "summary": "no hostiles", "acting_on": 0}], "rally": [40, 40, 6, 6]}
+            if method == "steward.orders" and self.rich:
+                # the full rows (label, interval, last run) only steward.orders carries; the Orders table renders them
+                return [{"id": "combat", "label": "Combat", "enabled": True, "interval_ticks": 60, "last_run_hours_ago": 0.25, "summary": "no hostiles", "acting_on": 0},
+                        {"id": "rescue", "label": "Rescue", "enabled": True, "interval_ticks": 300, "last_run_hours_ago": 0.1, "summary": None, "acting_on": 0}]
+            raise RuntimeError("no such method")
+
+    j = TestClient(create_app(Bus(log_file=False), Bridge(), FakeControls())).get("/api/steward").json()
+    assert j["rally"] == [40, 40, 6, 6] and [o["id"] for o in j["orders"]] == ["combat", "rescue"]
+    assert j["orders"][0]["label"] == "Combat" and j["orders"][0]["interval_ticks"] == 60 and j["orders"][0]["last_run_hours_ago"] == 0.25
+    # an older mod without steward.orders: the compact steward.status rows stay
+    b = Bridge(); b.rich = False
+    j2 = TestClient(create_app(Bus(log_file=False), b, FakeControls())).get("/api/steward").json()
+    assert j2["orders"] == [{"id": "combat", "enabled": True, "summary": "no hostiles", "acting_on": 0}]

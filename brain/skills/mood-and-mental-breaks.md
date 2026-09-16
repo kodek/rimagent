@@ -39,7 +39,7 @@ After any mental break, the colonist gets **catharsis +40** (or +30 for minor). 
 When **two or more colonists are simultaneously below their major threshold** (or one is at extreme and the other's catharsis is fading below major), the colony is in a death spiral:
 1. **No one can tend the other.** If both are in breaks, no one is tending the downed one, no one is building, no one is cooking.
 2. **Check the root cause first.** In episode 2: both colonists were starving (food policy excluded survival packs) → malnutrition -26 → mood collapse → breaks. Fix the food policy BEFORE trying to fix mood.
-3. **If the root cause is food:** set food policy to "Any" immediately. Survival packs are the only food. The malnutrition debuff clears within ~12h of eating.
+3. **If the root cause is food:** the `policies` order already switches everyone to a raw-allowing policy (`steward-raw`: raw food and meals, no corpses/insect meat/kibble) when meals drop under 2 per colonist and restores the old policy at 4 per colonist. Intervene when the food in stock is one that policy still blocks: survival packs only -> `food_policy_set(policy="Lavish")` (a hand-set policy is left alone by the order for 2 days). The malnutrition debuff clears within ~12h of eating.
 4. **If the root cause is drug withdrawal:** you cannot fix it without the drug. Accept the break or trade for the drug.
 5. **If both will break and there is no recovery path** (no food, no medicine, no recovery path): note it in the notebook and consider ending the episode honestly. Do not waste steps on a lost cause.
 6. **Wake in 1-2 hours** when both are at extreme risk. Check: did they eat? Did the catharsis fade? Is the mood still below threshold?
@@ -55,18 +55,18 @@ Fix the biggest negative first. The usual hierarchy:
 2. **Malnutrition (-26)**, food crisis; fix food before mood. **Check the food policy first** (see early-game-food skill).
 3. **Killed innocent animal (-15)**, keep the steward's meat target low (150) so it hunts sparingly; the scorer rotates hunters.
 4. **Confined interior (-10)**, expand bedroom to ≥5×5 interior.
-5. **Rotting/observed corpse (-6)**, haul to dump. **Desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox mode) or move the dump zone far from base.
+5. **Rotting/observed corpse (-6)**, the `corpses` order buries, hauls or burns them within the hour (never mid-raid); if the debuff persists there is no grave, no `corpses` stockpile and no fire to burn with: build a grave. **Desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox mode) or move the dump zone far from base.
 6. **Darkness (-5), Unsightly (-5), Tattered apparel (-5)**, light, clean, tailor.
 
 ## Crisis debuffs that recur (the ones that actually broke colonists in play)
 | Debuff | Mood | Source / fix |
 |---|---|---|
 | **Alcohol/drug withdrawal** | **-35** | A colonist with an addiction who has NO drug in the colony. The single largest early mood killer. If a refugee arrives with an addiction, you MUST bank that drug (or accept the break). Check each new colonist's `needs` for a drug need; set drug policy to allow it. |
-| **Malnutrition** | **-26** | Food crisis. **Check the food policy first**, if the policy excludes the food you have (e.g. "Simple" when only survival packs are in stock), fix the policy before anything else. |
+| **Malnutrition** | **-26** | Food crisis. The `policies` order switches to `steward-raw` when meals run short; **check the food policy** only when the stock is something it still blocks (survival packs under "Simple"), then `food_policy_set(policy="Lavish")` before anything else. |
 | Ate corpse meat | -12 | During a food crisis pawns eat corpses; each is -12 and a rot-stink source. Avoid by keeping ANY food above 0. |
-| Ate raw food | -7 | Set food policy to cooked/simple once a stove exists. |
+| Ate raw food | -7 | Expected while the `policies` order has everyone on `steward-raw` (meals < 2 per colonist); it restores the cooked policy at 4 per colonist. Fix the meal supply (bill, cook, ingredients), not the policy. |
 | Killed innocent animal | -15 | Hunting herbivores, the hunter eats -15 for days. Hunt sparingly, rotate hunters, only when food is critical. |
-| Observed/rotting corpse | -4 / -6 | Corpses near the base cause -6 to ALL colonists. Haul to dump; **desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox) or relocate dump zone. |
+| Observed/rotting corpse | -4 / -6 | Corpses near the base cause -6 to ALL colonists. The `corpses` order buries/hauls/burns; give it a grave or a `corpses` stockpile. **Desiccated corpses cannot be hauled** — use `destroy_corpses` tool (sandbox) or relocate dump zone. |
 | No shepherd role (mod) | -5 | Some mods add a "Shepherd" ideo role; unfilled it is -5 to everyone. |
 
 ## Common early debuffs (exact values)
@@ -105,7 +105,7 @@ A bedroom smaller than ~25 interior tiles gives "Confined interior" (-10). A 2-c
 ## Responding to a break
 - Minor: sad wander, hide in room, food binge. Wait it out.
 - Major: daze, social drug binge, tantrum, targeted tantrum. Move them; draft others clear.
-- Extreme: berserk and worse. Draft the others and keep them clear; a berserker is only stopped by downing with blunt melee.
+- Extreme: berserk and worse. Draft the others and keep them clear (the combat order ignores colonists, so this one is yours); a berserker is only stopped by downing with blunt melee. Undraft afterwards, the order will not.
 - Two pawns in a social fight (one holding a gun) will shoot each other: draft both and `rw_ui_goto` them far apart.
 - Thoughts do not reset after a break: fix the largest negatives shown by `mood_triage`.
 

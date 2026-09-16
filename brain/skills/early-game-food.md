@@ -42,7 +42,7 @@ Survival packs are a distinct category. If the only food is survival packs and a
 - **Fix: `food_policy_set(policy="Lavish")`** (or "Fine"). One call, all colonists.
 - **On refugee intake:** a new colonist may carry a restrictive policy. Reset everyone to Lavish with one `food_policy_set` call.
 - **On any food crisis:** first run `food_policy_check`. If it reports a mismatch, `food_policy_set` to the recommended policy before doing anything else.
-- **The `food_policy_watcher` checks ALL colonists on each day tick** and fires when a policy excludes the food in stock. If it fires, run `food_policy_set` for the flagged colonists.
+- **The `policies` standing order handles the common case:** when unforbidden meals drop under 2 per colonist it puts everyone on `steward-raw` (raw food + every meal, no corpses/insect meat/kibble) and restores each pawn's previous policy once meals reach 4 per colonist; a policy you set by hand is left alone for 2 days. Intervene only when `food_policy_check` reports a mismatch it cannot fix (a policy that blocks survival packs, or a refugee's exotic restriction): `food_policy_set` for the flagged colonists.
 
 ## Cooking bills, the #2 repeated failure
 The second most common food crisis cause: rice harvests but nobody cooked it because the cooking bill was never set (or got suspended/duplicate-cleaned). This happened ~8 times across episodes.
@@ -93,8 +93,7 @@ Wild berry bushes give berries (14 days to rot). The steward's `foraging` job ha
 - **Hunted herbivores cost the hunter -15 mood** ("killed innocent animal") for days; in a small fragile colony keep the steward's meat target low (`rw_steward_stock_set(kind="hunting", target=150)`) rather than hunting aggressively. Hunting is designated by the steward toward the meat target; you set the target and `hunt_predators`, not the animals.
 
 ## Butchering and cooking
-- **ALWAYS build a butcher spot (ButcherSpot) as soon as you plan to hunt** (operator tip). Without it, hunted animals are wasted — the meat never gets processed.
-- **ALWAYS set a bill on the butcher spot** (operator tip): `rw_ui_add_bill(thing=<ButcherSpotId>, recipe="ButcherCorpseFlesh", mode="Forever")`. Without the bill, colonists won't butcher corpses brought to it.
+- **Build a butcher table as soon as you plan to hunt** (operator tip: without one, hunted animals are wasted). The `corpses` standing order keeps a standing butcher bill on the table or spot and, if none exists when a fresh animal corpse appears, drops a ButcherSpot near the kitchen/stockpile once (70% yield). Intervene when `rw_state_bills` on the table shows no butcher bill and `rw_steward_orders` shows `corpses` disabled: `rw_ui_add_bill(thing=<table id>, recipe="ButcherCorpseFlesh", mode="Forever")`.
 - Drop a butcher spot immediately (free, 0 work) but it yields only 70% meat/leather; build a butcher table when materials allow. Raw meat rots in 2 days, vegetables ~30 days longer.
 - `rw_ui_build` def **Campfire**: 20 wood, burns 10 wood/day, holds 20, must sit under a roof (rain burns extra fuel). `rw_ui_add_bill` "simple meal, do until you have 10-15". Campfire work speed factor is 0.5 (a 300-work meal takes 600); a fueled stove cooks 2x faster and unlocks fine meals.
 - Give Cooking to the highest-skill cook. Food-poison chance by Cooking level: 0 = 5%, 3 = 2%, 4 = 1.5%, 6 = 0.5%, 8+ = 0.15% or less, scaled by kitchen cleanliness and difficulty (Losing is Fun x1.2). Skill 3+ in a clean room already beats raw food. Nutrient paste (dispenser + power) is 300% efficient and never poisons.

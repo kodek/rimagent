@@ -79,6 +79,20 @@ namespace RimBridge.Steward
             Add("posture_expired", label, new JObject { ["label"] = label });
         }
 
+        /// <summary>Kind "orders": combat_engaged {hostiles, drafted}, combat_released, rescue {pawn}, fire {cells}, … (wake-worthy, not critical).</summary>
+        public const string OrdersKind = "orders";
+
+        public static void Orders(string ev, string detail, JObject data, IntVec3? cell = null)
+        {
+            try
+            {
+                data ??= new JObject();
+                data["event"] = ev;
+                EventLedger.Add(OrdersKind, $"{ev} {detail}", data, cell);
+            }
+            catch (Exception ex) { StewardLog.Warning($"ledger add orders/{ev} threw: {ex.Message}"); }
+        }
+
         private static JObject JobData(StockJob job, int current, int target) => new JObject
         {
             ["id"] = job.Id,

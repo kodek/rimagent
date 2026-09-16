@@ -84,6 +84,11 @@ class Registry:
     _mtimes: dict[str, float] = field(default_factory=dict)
     watchers: dict[str, Callable] = field(default_factory=dict)
     watcher_errors: dict[str, str] = field(default_factory=dict)
+    # watcher stem -> standing order id that replaced it; run_all skips these while the runner keeps the mapping
+    # (separate from watcher_errors: those render as load errors and are cleared on every successful reload)
+    watcher_superseded: dict[str, str] = field(default_factory=dict)
+    # stems the director rewrote or deleted through watcher_write/watcher_delete: never superseded again this process
+    watcher_kept: set[str] = field(default_factory=set)
 
     # ---- registration ----
     def add(self, fn: Callable, source: str = "builtin") -> Tool:
@@ -152,6 +157,9 @@ class Registry:
         for name in list(self.watchers):
             if name not in live_w:
                 del self.watchers[name]
+        for name in list(self.watcher_superseded):
+            if name not in live_w:
+                del self.watcher_superseded[name]
 
     def _load_file(self, path: Path, kind: str) -> None:
         key = f"{kind}:{path.name}"
@@ -185,6 +193,17 @@ class Registry:
                 self.watchers[path.stem] = fn
             else:
                 self.watcher_errors[path.name] = "no watch(ctx, events) function"
+
+    def set_superseded(self, mapping: dict[str, str]) -> dict[str, str]:
+        """Replace the superseded-watcher mapping (stem -> order id). Stems the director rewrote/deleted (`watcher_kept`)
+        are never re-superseded; the mapping is not limited to loaded watchers (a file written later is covered too)."""
+        self.watcher_superseded = {str(k): str(v) for k, v in (mapping or {}).items() if k and k not in self.watcher_kept}
+        return self.watcher_superseded
+
+    def release_watcher(self, stem: str) -> None:
+        """The director edited or deleted this watcher: it runs again (if it still exists) and stays out of the superseded set."""
+        self.watcher_kept.add(stem)
+        self.watcher_superseded.pop(stem, None)
 
     # ---- execution ----
     def specs(self, groups: set[str] | None = None, exclude: set[str] | None = None, allow: Callable[[Tool], bool] | None = None) -> list[dict[str, Any]]:
@@ -226,6 +245,9 @@ BRIDGE_DOC_NOTES: dict[str, str] = {
     "ui.set_work": "NOTE: takes the pawn out of steward management (the steward stops setting its priorities until rw_steward_pawn managed=true); prefer rw_steward_posture for a temporary bias.",
     "ui.set_work_many": "NOTE: takes every listed pawn out of steward management (rw_steward_pawn managed=true hands one back); prefer rw_steward_posture for a temporary bias.",
     "ui.designate": "NOTE: the steward's stock jobs already designate trees/plants/animals/ore toward their targets; prefer rw_steward_stock_set (raise the target) over hand designation while that job is enabled. For a one-off tree use designator=cut (forestry adopts harvestwood designations and releases them when its target is met).",
+    "ui.draft": "NOTE: the combat standing order drafts and positions colonists at the rally point by itself; a pawn you draft/move by hand is hands-off for that order for a while (rw_steward_orders_explain combat lists them). Prefer rw_steward_orders_rally to move everyone.",
+    "ui.goto": "NOTE: a pawn you move by hand is hands-off for the combat standing order for a while; to move the whole defense set the rally rect with rw_steward_orders_rally.",
+    "ui.attack": "NOTE: a pawn you order to attack by hand is hands-off for the combat standing order for a while; use it to override (breachers, sappers, drop pods inside), not for every fight.",
     "steward.settings": "NOTE: writes the RimBridge mod settings file, which persists across games and episodes (the notebook does not); prefer rw_steward_posture for a per-colony bias. A JSON null removes a globalWorkAdjustments key.",
 }
 

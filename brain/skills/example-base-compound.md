@@ -37,10 +37,10 @@ Materials: ~100 wall cells x5 steel, 6 doors x25, 2 coolers (90 steel + 3 compon
 2. `rw_ui_build_many` with **doors and wall-mounted things (coolers) BEFORE the wall rects**, walls then skip those cells ("Space already occupied" on exactly the door/cooler cells is expected and fine).
 3. Furniture with `dry_run=true` first; read `failed[].reason` and the `camera` in the result, then place for real.
 4. `rw_map_detail` again to verify; lowercase letters are your blueprints.
-5. Put every colonist on Construction 1 / Hauling 2 until the frames are done, keep the generator fueled with wood, assign bedroom beds to owners.
+5. Posture `build` until the frames are done, keep the generator fueled with wood; the `beds` order assigns bedroom beds to owners once they stand.
 6. **After the build:** run the sealed-room check on every new room (see base-building skill). Verify doors are placed and rooms are reachable.
 7. **Cooler setup:** after the freezer is built, press each cooler's gizmo `-10C` three times to get from the default 21C target to 11C. Check with `rw_ui_gizmos` on the cooler; verify via `rw_state_base` room temperature.
-8. **Butcher bill:** set a `ButcherCorpse` bill on the TableButcher (operator tip: "you must always set a bill for the butchering spot!"). Without a bill, hunted animals are never butchered and the meat is lost.
+8. **Butcher bill:** the `corpses` order keeps a standing `ButcherCorpseFlesh` bill on the TableButcher; confirm with `rw_state_bills` and add one by hand only if the order is disabled (operator tip: "you must always set a bill for the butchering spot!").
 9. **Check for existing bills before placing new ones** (operator tip: "check for existing bills before placing them as campfire has many dupes"). Use `rw_state_bills(thing=...)` to see what's already running.
 
 ## Pitfalls hit (and the fix)

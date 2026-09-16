@@ -29,14 +29,14 @@ The roof layer uses `R` thick rock (unminable-overhead, no drop pods), `r` thin 
 
 ## 2. Control altitudes (pick the lowest that works)
 
-0. **Policy: the Steward (`rw_steward_*`, section 2b).** Stock targets and work priorities are kept by the mod every tick. Before you designate trees/ore/animals or type priorities, ask whether a target, a posture or a manual pawn says the same thing once.
+0. **Policy: the Steward (`rw_steward_*`, section 2b).** Stock targets, work priorities and the standing orders (draft, rescue, unforbid, corpses, beds, policies, blueprints, fire) are kept by the mod every tick. Before you designate trees/ore/animals, type priorities, draft everyone or unforbid a pile, ask whether a target, a posture, a rally point or an order toggle says the same thing once.
 1. **Right-click menu: `rw_ui_orders_at` / `rw_ui_order`.** Exactly what a player gets by right-clicking with a pawn selected: pick up, equip, eat, rescue, tend, prioritize hauling, prioritize construction, attack, capture. `rw_ui_orders_at(pawn="Manu", at="Steel2851")` lists `[{label, disabled, priority}]`; `rw_ui_order(pawn="Manu", at="Steel2851", label="haul")` runs one (label is a substring match; `i` picks by index). A `disabled` entry tells you why ("incapable of violence", "forbidden", "no path"). Works on cells (`at=[x,z]`) and thing ids.
 2. **Buttons: `rw_ui_gizmos` / `rw_ui_press`.** The gizmo bar of a selected thing: Draft, Fire at will, Hold fire, Rest until healed, Copy/Paste bills, Toggle power, Rearm, Rename, Prioritise. `rw_ui_gizmos(thing="Human102")` then `rw_ui_press(thing="Human102", label="draft")`. Targeted gizmos (throw, cast, fire mortar) take `target`.
 3. **Designators: `rw_ui_designate`.** `designator=mine|cut|harvest|harvestwood|hunt|haul|deconstruct|cancel|uninstall|tame|slaughter|strip|open|smooth|removefloor|claim|forbid|unforbid|plan|unplan` (or any `Designator_ClassName`), applied to `cells=[[x,z],...]`, `rect=[x,z,w,h]`, or `things=[ids]`. This is how you queue work for the whole colony rather than one pawn. Wood, berries, meat and steel are queued by the steward's stock jobs; designate them yourself only for a one-off (a tree blocking a blueprint, ore under a planned room, a specific animal). For a one-off tree use `cut`, not `harvestwood`: while forestry is below target it adopts every `harvestwood` designation on the map and releases them all when the target is met; `cut` (CutPlant) is never adopted. Ore and animals have no non-adopted designator: place the one-off when the matching job is at target, or `rw_steward_stock_set(kind=, suspended=true)` for the duration.
 4. **Blueprints: `rw_ui_build`.** `def` (ThingDef or TerrainDef), then one of `at=[x,z]`, `line=[[x1,z1],[x2,z2]]`, `rect=[x,z,w,h]` (+`fill=true` for a filled area, default outline). `rot=N|E|S|W` for beds/tables/doors when orientation matters. `stuff` is chosen automatically (most plentiful allowed material) unless you pass e.g. `stuff="BlocksGranite"`. Pass `dry_run=true` first for big placements: it returns `placed`, `failed` (cell + reason), `cost_each` and `work`. Floors are TerrainDefs (e.g. `WoodPlankFloor`), placed the same way.
 5. **Zones: `rw_ui_zone`.** `action=create_stockpile|create_growing|delete|add_cells|remove_cells|set_plant|rename|set_priority`, with `rect`/`cells`, `label`, `plant="Plant_Rice"`, `priority=Low|Normal|Preferred|Important|Critical`, `preset=DefaultStockpile|DumpingStockpile`. Storage filters: `rw_ui_storage(zone="main", allow=[...], disallow=[...], priority=...)`. Home area: `rw_ui_area(action=home_add, rect=...)`.
 6. **Colony management.** `rw_ui_set_work(pawn, priorities={"Cooking":1,"Growing":2,"Hauling":3})` (1 = highest, 4 = lowest, 0 = off; switches on manual priorities **and takes the pawn out of steward management**: the result says `steward_managed: false`; `rw_steward_pawn(pawn, managed=true)` hands it back). `rw_ui_set_schedule(pawn, hours="SSSSSSWWWWWWWWWWWWJJJJSS")` (24 chars, hour 0 first, A/S/W/J/M). `rw_ui_set_policies(pawn, food=, apparel=, drug=, area=, medical=NoCare|NoMeds|HerbalOrWorse|NormalOrWorse|Best, hostility=Flee|Attack|Ignore, self_tend=)`. `rw_ui_set_research(def="Electricity")`. `rw_ui_add_bill(thing=<table id>, recipe="CookMealSimple", mode=TargetCount, count=10)` then `rw_ui_bill(thing, index, action=set|suspend|resume|delete|top, count=, radius=)`. `rw_ui_prisoner`, `rw_ui_animal`.
-7. **Combat: `rw_ui_draft` / `rw_ui_goto` / `rw_ui_attack`.** `rw_ui_draft(pawn, drafted=true)`; `rw_ui_goto(pawn, cell=[x,z])` drafts automatically (pass `draft=false` for an undrafted walk); `rw_ui_attack(pawn, target=<hostile id>, melee=false)`. Drafted pawns do not eat, sleep or work: undraft when the fight ends. `rw_ui_cancel_job(pawn)` interrupts.
+7. **Combat: `rw_ui_draft` / `rw_ui_goto` / `rw_ui_attack`.** `rw_ui_draft(pawn, drafted=true)`; `rw_ui_goto(pawn, cell=[x,z])` drafts automatically (pass `draft=false` for an undrafted walk); `rw_ui_attack(pawn, target=<hostile id>, melee=false)`. Drafted pawns do not eat, sleep or work: undraft when the fight ends. Each of these makes the `combat` order leave that pawn alone for ~2500 ticks, so it will not undraft a pawn you drafted. `rw_ui_cancel_job(pawn)` interrupts.
 8. **Letters and quests: `rw_ui_letter`.** `rw_state_letters` gives `id` and `choices`; `rw_ui_letter(id, action=choose, choice="Accept")` or `action=dismiss`. Unanswered letters pile up and some expire.
 9. **Direct jobs: `rw_ui_job` (last resort).** `rw_ui_job(pawn, job="Ingest", target="MealSimple1234")`, `job="Equip"`, `"Wear"`, `"Rescue"`, `"TendPatient"`, `"HaulToCell"` (`target` = thing, `target_b` = cell), `"Research"`. Use it only when no order/gizmo/designator does the thing; it bypasses the game's own checks and often fails silently if the pawn cannot reach or is incapable.
 
@@ -61,7 +61,17 @@ Two engines inside RimBridge run every tick without you: the **scorer** (Free Wi
 | `rw_steward_settings` | `rw_steward_settings()` to read; `rw_steward_settings(scorer={"ConsiderBestAtDoing":1.0, "globalWorkAdjustments":{"Research":0.3}}, stock={"MaxWorkRadius":90, "HuntPredators":false})` | `{scorer:{...all fields}, stock:{...}}`. Writes the RimBridge **mod settings file**: it survives new games, episodes and restarts (the notebook does not); prefer a posture for anything per-colony, and reset a work adjustment with `rw_steward_settings(scorer={"globalWorkAdjustments":{"Research":null}})` (scalar fields must be set back to their default value explicitly) |
 | `rw_steward_research` | `rw_steward_research()` reads; `rw_steward_research(queue=["Electricity","Batteries"])` replaces the queue; `append=true` adds to the end; `clear=true` empties it | `{queue:[defName], queue_detail:[{def,label,available,progress}], current, current_progress, started?, skipped?}`. An ordered research queue the steward advances itself: when nothing is being researched the first startable queued project is set as current right away, otherwise it starts when the current project finishes (`clear` does not cancel the current project; `rw_ui_set_research(def=)` picks one project immediately and does not touch the queue). Caretaker stream only in parallel mode |
 
-Rules: read `rw_steward_status` before touching work or stock; `rw_steward_explain` before any override; posture for the next 6-48 h, `rw_steward_settings` for the colony's standing shape, `rw_steward_pawn managed=false` for one pawn with one fixed role (hand back when done). Never set priorities on a managed pawn, the next pass overwrites them. Never designate what a stock job already covers. Nothing in `steward.*` marks the game assisted. Numbers and defaults: manager-patterns and work-priorities.
+**Standing orders** (`rw_steward_orders`): eight reflexes in the mod, each toggleable and explainable, ids `combat`, `rescue`, `unforbid`, `corpses`, `beds`, `policies`, `blueprints`, `fire`. A manual action on a pawn or thing (draft/goto/attack, forbid/unforbid, set_policies, a press on a bed, a Rescue/TendPatient job) pauses the matching order for that target for ~2500 ticks (beds, food policy and heater targets: 2 days; medical care set by hand or changed outside the order: never touched again by the order, set it back yourself). The Steward block shows `orders: combat(rally set) rescue ...` with ✗ on disabled ones and a summary for any order that acted since the last step.
+
+| Tool | Example | Returns |
+|---|---|---|
+| `rw_steward_orders` | `rw_steward_orders()` | `[{id, label, enabled, interval_ticks, last_run_hours_ago, summary, acting_on}]`, one row per order |
+| `rw_steward_orders_set` | `rw_steward_orders_set(id="corpses", enabled=false)`; `rw_steward_orders_set(id="all", enabled=true)` | the row (`id="all"` -> every row) |
+| `rw_steward_orders_rally` | `rw_steward_orders_rally(rect=[108,112,4,2])` sets; `rw_steward_orders_rally()` reads; `rw_steward_orders_rally(clear=true)` | `{rect}` or `null`; without a rect the combat order holds fighters at the base centre |
+| `rw_steward_orders_explain` | `rw_steward_orders_explain(id="combat")` | `{id, doc, rules:[...], hands_off:[{thing/pawn, until_hours}]}`: what it does and which pawns/things it is currently leaving to you |
+| `rw_steward_orders_run` | `rw_steward_orders_run(id="rescue")` | `{ran, summary}`; forces a pass now |
+
+Rules: read `rw_steward_status` before touching work or stock; `rw_steward_explain` before any override; posture for the next 6-48 h, `rw_steward_settings` for the colony's standing shape, `rw_steward_pawn managed=false` for one pawn with one fixed role (hand back when done). Never set priorities on a managed pawn, the next pass overwrites them. Never designate what a stock job already covers. Nothing in `steward.*` marks the game assisted. Set the rally point on day 1-2 (defense-basics); toggle an order off only for a stated reason and turn it back on. Numbers and defaults: manager-patterns and work-priorities.
 
 ## 3. The escape hatch: engine access
 
@@ -83,7 +93,7 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 
 ## 7. Pitfalls
 
-- **Crash-landed items start forbidden.** `rw_map_find(kind=item, forbidden=true)` lists them; `rw_ui_designate(designator=unforbid, things=[ids])` or a `rect` over the drop site. Nobody hauls forbidden things.
+- **Crash-landed items start forbidden.** The `unforbid` order clears items in the home area or within 20 cells of the base centre and drop-pod contents within 40 (never colonist corpses, hostile-camp loot, trade goods, or a thing you forbade in the last hour). `rw_map_find(kind=item, forbidden=true)` lists what is left; `rw_ui_designate(designator=unforbid, things=[ids])` or a `rect` for loot that fell farther out. Nobody hauls forbidden things.
 - **`rw_state_stocks` counts unforbidden things on the map, `key_stocks` in the summary only stored ones.** Loose logs in the forest are invisible to both until they lie in a stockpile; use `rw_map_find(def="WoodLog")`.
 - **You need a stockpile before hauling works** (`rw_ui_zone(action=create_stockpile, rect=..., label="main")`). Put it under a roof; steel and food in the rain is fine, but corpses and rot are not.
 - **Walls need a door** or the room is sealed and pawns path around; **roofs need walls** (a roof grows automatically over an enclosed room; unsupported roof further than 6 cells from a wall collapses). A room is only "indoors" (temperature, mood) when enclosed and roofed.
@@ -93,17 +103,16 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 - **Thing ids** look like `Steel2851`, `Human102`, `WoodLog2861`; pawns are accepted by name (`"Sparky"`) or id. Ids change between games, never hardcode them into skills.
 - **Blueprints need materials on the map and a builder with Construction enabled.** `rw_state_summary.blueprints` staying constant across steps means nobody is building: check materials (`failed` reasons, stocks), priorities, forbids and reachability.
 - **Growing zones only accept fertile terrain** (`f` in the view, fertility > 0); soil under trees must be cleared with `cut` first. `set_plant` requires the plant's research.
-- **Drafted pawns freeze colony work.** Undraft after combat; check `drafted: true` in the summary at the start of each calm step.
+- **Drafted pawns freeze colony work.** The combat order undrafts what it drafted 600 ticks after the last hostile leaves; pawns you drafted by hand are yours to undraft. Check `drafted: true` in the summary at the start of each calm step.
 - Bills need a work table id from `rw_map_find(kind=building, def="Campfire")` or `rw_state_summary`; `rw_defs_get(def="Campfire")` lists the recipe defNames.
 
 ## 8. Worked examples
 
-**A. Day-1 unforbid and stockpile**
-1. `rw_map_find(kind="item", forbidden=true, limit=40)` -> ids and positions of the crash-pod loot.
-2. `rw_ui_designate(designator="unforbid", things=["Steel2851","Steel2848","WoodLog2861", ...])`.
-3. `rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)` -> `[{at:[98,114]}...]`.
-4. `rw_ui_zone(action="create_stockpile", rect=[98,114,8,6], label="main")`.
-5. `rw_ui_storage(zone="main", priority="Important")`.
+**A. Day-1 stockpile (the loot unforbids itself)**
+1. `rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)` -> `[{at:[98,114]}...]`.
+2. `rw_ui_zone(action="create_stockpile", rect=[98,114,8,6], label="main")`.
+3. `rw_ui_storage(zone="main", priority="Important")`.
+4. `rw_map_find(kind="item", forbidden=true, limit=40)` an hour later: the `unforbid` order has cleared the crash-pod loot near the base; `rw_ui_designate(designator="unforbid", things=[...])` only for pods that landed farther than 40 cells out.
 
 **B. Rice field**
 1. `rw_map_view(x=90, z=118, w=30, h=15, layer="terrain")` -> pick a block of `f` cells.
@@ -123,10 +132,11 @@ A step is one LLM conversation with a tool budget (~30 calls). Every step **must
 4. Verify: `rw_state_designations` shows `HarvestPlant`/`Mine` counts; `problems` in the status names a stalled job.
 
 **E. First raid**
-1. Woken by `hostile_group`. `rw_state_threats` -> ids, weapons, distance.
-2. `rw_ui_draft(pawn="Manu", drafted=true)`; `rw_ui_goto(pawn="Manu", cell=[109,113])` (inside the doorway, behind wall corners); same for the other shooter. Keep the pawn incapable of violence indoors.
-3. `rw_ui_attack(pawn="Manu", target="Human2331")` when within range; `end_turn(notes="raid: 2 drafted at door", wake_in_hours=1, wake_on=["colonist_downed","hostile_group_gone"])`.
-4. On `hostile_group_gone`: `rw_ui_draft(drafted=false)` for all; `rw_map_find(kind="corpse")`; rescue the downed with `rw_ui_order(pawn=, at=<downed id>, label="rescue")`.
+0. Days earlier: `rw_steward_orders_rally(rect=[108,112,4,2])`, the cells inside the doorway behind the wall corners.
+1. Woken by `hostile_group`. `rw_state_threats` -> ids, weapons, distance. `rw_steward_orders()` -> `combat` `acting_on: 2`, summary `drafted Manu, Jen to rally`; the pawn incapable of violence is restricted to Home.
+2. `rw_steward_posture(label="defend", hours=6)`. Nothing else unless the raid is a breach or drop pods inside; then `rw_ui_goto`/`rw_ui_attack` the shooters you need (those pawns are hands-off to the order for an hour).
+3. `rw_ui_attack(pawn="Manu", target="Human2331")` only for focus fire on the raider with a gun; `end_turn(notes="raid: combat order holding rally", wake_in_hours=1, wake_on=["colonist_downed","hostile_group_gone"])`.
+4. On `hostile_group_gone`: the order undrafts and runs `rescue`; `rw_ui_draft(drafted=false)` only for the pawn you attacked with. `rw_steward_orders()` shows `rescue`/`corpses`/`unforbid` summaries; `rw_map_find(kind="corpse")` to decide what to smelt or gift.
 
 **F. Cooking**
 1. `rw_map_find(kind="building", def="Campfire")` -> `Campfire2977`.
