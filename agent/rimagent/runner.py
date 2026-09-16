@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from . import braingit, memory, reflect, scorecard
+from . import watchdog as watchdog_mod
 from .bridge import Bridge, BridgeError
 from .bus import BUS, Bus
 from .context import Context
@@ -35,6 +36,7 @@ from .registry import Registry
 from .tools import brain as brain_tools
 from .tools import knowledge as knowledge_tools
 from .tools import meta as meta_tools
+from .tools import watchdog as watchdog_tools
 from .watchers import run_all as run_watchers
 from .watchers import superseded_mapping, superseded_now
 
@@ -124,7 +126,7 @@ class Runner:
         self.bridge = Bridge(cfg["bridge"]["url"])
         self.llm = LLM()
         self.registry = Registry()
-        for mod in (knowledge_tools, brain_tools, meta_tools):
+        for mod in (knowledge_tools, brain_tools, meta_tools, watchdog_tools):
             self.registry.add_module(mod)
         self.ctx = Context(bridge=self.bridge, llm=self.llm, registry=self.registry, config=cfg, emit=self.bus.emit)
         self.controls = Controls(self)
@@ -148,6 +150,11 @@ class Runner:
         self.last_day = -1
         self.last_improve_day = 0
         self.start_day = 0
+        # watchdog stream: wall-clock cadence + an error-count gate, tracked against the bus sequence
+        self._watchdog_at = time.time()
+        self._watchdog_seq = 0
+        self._watchdog_thread: threading.Thread | None = None
+        self._watchdog_lock = threading.Lock()
         self.thinking = False
         self.sandbox = False
         self.parallel = bool(cfg["play"].get("parallel", False))
@@ -319,6 +326,7 @@ class Runner:
                 if due:
                     self.last_improve_day = day
                     self.start_improve_thread(day)
+                self.maybe_start_watchdog(day)
             if self.controls.paused:
                 time.sleep(1)
                 continue
@@ -749,6 +757,53 @@ class Runner:
         self._improve_thread = threading.Thread(target=run, name="improve", daemon=True)
         self._improve_thread.start()
         self.bus.emit("log", {"text": f"improvement pass started on a second stream (day {day})"})
+
+    # ---------- watchdog ----------
+    def watchdog_errors(self) -> list[dict[str, Any]]:
+        """Failed tool calls recorded on the bus since the last watchdog pass (the pass's whole input)."""
+        return watchdog_mod.recent_errors(self.bus, self._watchdog_seq)
+
+    def maybe_start_watchdog(self, day: int) -> None:
+        """Start a watchdog pass if the cadence AND the error threshold are both met (config `watchdog`).
+
+        Called on every in-game day rollover, which is just a cheap regular tick: the real gate is
+        `watchdog.due()`, which needs `every_hours` of wall clock AND `min_errors` failures since the last pass.
+        A clean error stream never triggers one."""
+        if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
+            return
+        improving = getattr(self, "_improve_thread", None)
+        if improving is not None and improving.is_alive():
+            return   # one brain-level pass at a time; they share the LLM and the repo's git index
+        errors = self.watchdog_errors()
+        ok, why = watchdog_mod.due(self.cfg, self._watchdog_at, len(errors))
+        if not ok:
+            return
+        self.start_watchdog_thread(day, errors, why)
+
+    def start_watchdog_thread(self, day: int, errors: list[dict[str, Any]] | None = None, why: str = "") -> None:
+        """Run the watchdog on its own stream, concurrent with play. It touches mod/Source and agent/rimagent only,
+        so it cannot collide with the improvement pass (brain/) or with the running game: nothing it writes is loaded
+        until a human restarts."""
+        with self._watchdog_lock:
+            if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
+                return
+            errors = self.watchdog_errors() if errors is None else errors
+            self._watchdog_at = time.time()
+            self._watchdog_seq = self.bus.last_seq
+            wcfg = self.cfg.get("watchdog") or {}
+            max_calls = int(wcfg.get("max_tool_calls", 40))
+            ctx2 = self.ctx.fork("watchdog")
+            ctx2.extra["watchdog_state"] = watchdog_mod.PassState()
+
+            def run():
+                try:
+                    watchdog_mod.run_pass(ctx2, errors, max_calls=max_calls)
+                except Exception as e:  # noqa: BLE001
+                    self.bus.emit("error", {"text": f"watchdog pass failed: {e}"})
+
+            self._watchdog_thread = threading.Thread(target=run, name="watchdog", daemon=True)
+            self._watchdog_thread.start()
+            self.bus.emit("log", {"text": f"watchdog pass started on its own stream (day {day}, {len(errors)} errors; {why})"})
 
     # ---------- episode end ----------
     def end_episode(self, reason: str) -> None:

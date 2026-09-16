@@ -82,15 +82,17 @@ def build_system(ctx: Context, situation_hint: str) -> str:
     )
 
 
-def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_calls: int | None = None, tool_groups: set[str] | None = None, thinking: bool | None = None, trigger: str = "scheduled", tool_allow=None) -> StepResult:
-    """Run a bounded tool-use loop. Returns when the model calls end_turn/end_episode, stops calling tools, or hits max_calls."""
+def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_calls: int | None = None, tool_groups: set[str] | None = None, thinking: bool | None = None, trigger: str = "scheduled", tool_allow=None, system: str | None = None, end_tools: tuple[str, ...] = ("end_turn", "end_episode")) -> StepResult:
+    """Run a bounded tool-use loop. Returns when the model calls a terminal tool (end_turn/end_episode by default),
+    stops calling tools, or hits max_calls. `system` overrides the play system prompt (streams that are not playing
+    the colony, e.g. the watchdog, pass their own); `end_tools` are the only tools still offered once the cap is hit."""
     cfg = ctx.config
     max_calls = max_calls or int(cfg["play"].get("max_tool_calls", 30))
     ctx.reset_turn()
     ctx.registry.reload_brain()
     t0 = time.time()
     res = StepResult()
-    system = build_system(ctx, situation_hint or user_message[:2000])
+    system = system or build_system(ctx, situation_hint or user_message[:2000])
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}, {"role": "user", "content": user_message}]
     tools = ctx.registry.specs(groups=tool_groups, allow=tool_allow)
     st = ctx.stream
@@ -98,8 +100,8 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
     step = 0
     while True:
         if res.calls >= max_calls:
-            messages.append({"role": "user", "content": f"You have used {res.calls} tool calls, the limit for this step. Call end_turn now with your notes and wake plan."})
-            tools_now = [t for t in tools if t["function"]["name"] in ("end_turn", "end_episode")]
+            messages.append({"role": "user", "content": f"You have used {res.calls} tool calls, the limit for this step. Call {end_tools[0]} now to finish."})
+            tools_now = [t for t in tools if t["function"]["name"] in end_tools]
         else:
             tools_now = tools
         reply = None

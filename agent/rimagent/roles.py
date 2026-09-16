@@ -54,3 +54,31 @@ def brief_for(role: str) -> str:
     r = ROLES[role]
     others = ", ".join(v["title"] for k, v in ROLES.items() if k != role)
     return f"## Your role this step: {r['title']} (parallel mode)\n{r['brief']}\nThree other streams ({others}) are acting on the same colony right now; stay in your lane, read state before precise actions, and keep your notes short. End with end_turn."
+
+
+# ---------------------------------------------------------------- watchdog (not a play stream)
+
+# The watchdog is a role in the same sense — a named scope over the tool registry — but it is deliberately NOT in
+# ROLES: ROLES is what `play_step_parallel` fans a calm step out to, and the watchdog never plays the colony.
+# Its allowlist is exact, not a prefix match, and it ignores `Tool.source`: brain-authored tools are shared with every
+# play role, but they are written by the model at runtime and carry a live bridge handle, so the watchdog does not get
+# them. `run_python` and `rpc` are excluded for the same reason — an unsandboxed exec would make the path guards in
+# rimagent.watchdog decorative. What is left: its own scoped repo tools, and the read-only RimWorld knowledge tools,
+# which are genuinely useful for deciding whether a C# call was used correctly.
+WATCHDOG = "watchdog"
+_WATCHDOG_TOOLS = frozenset({
+    "repo_read", "repo_list", "repo_grep", "repo_patch", "repo_revert",
+    "watchdog_verify_python", "watchdog_verify_mod", "watchdog_commit", "end_watchdog",
+    "search_source", "find_source_files", "read_source", "search_wiki", "read_wiki",
+})
+
+WATCHDOG_BRIEF = (
+    "## Your role: Watchdog\n"
+    "You are not playing the colony this pass. You are the agent's own code reviewer: read the tool-call errors below, "
+    "separate model noise from real defects, and fix the defects in the project's source with a verified, committed patch. "
+    "You cannot restart the game or deploy anything; a human does that later."
+)
+
+
+def allow_watchdog(t: Tool) -> bool:
+    return t.name in _WATCHDOG_TOOLS

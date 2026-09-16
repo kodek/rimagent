@@ -22,7 +22,8 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .. import braingit, scorecard, skills
-from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHERS
+from .. import watchdog as watchdog_mod
+from ..paths import JOURNAL, MEMORY, NOTEBOOK, SKILLS, TOOLS, WATCHDOG_LOG, WATCHERS
 
 _KIND_DIRS: dict[str, Path] = {"skill": SKILLS, "tool": TOOLS, "watcher": WATCHERS}
 _CONTROL_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause", "sandbox": "set_sandbox", "parallel": "set_parallel", "steward": "set_steward", "order": "set_order", "rally": "set_rally", "kill": "kill"}
@@ -169,6 +170,20 @@ def create_app(bus: Any, bridge: Any, controls: Any) -> FastAPI:
             return await _call_with_timeout(braingit.diff, sha, timeout=20.0)
         except Exception as e:  # noqa: BLE001
             return f"(error: {e})"
+
+    @app.get("/api/watchdog")
+    def api_watchdog() -> dict[str, Any]:
+        """The watchdog's own log: brain/memory/watchdog_log.md, newest entry last, plus when it last ran."""
+        try:
+            text = watchdog_mod.read_log()
+        except OSError as e:
+            return {"text": "", "error": str(e), "last_run": None}
+        try:
+            mtime = WATCHDOG_LOG.stat().st_mtime if WATCHDOG_LOG.exists() else None
+        except OSError:
+            mtime = None
+        cfg = (getattr(controls, "r", None).cfg if hasattr(controls, "r") else {}) or {}
+        return {"text": text, "last_run": mtime, "config": (cfg.get("watchdog") or {})}
 
     @app.get("/api/scores")
     def api_scores() -> list[dict[str, Any]]:
@@ -512,6 +527,7 @@ footer .r{margin-left:auto}
   <button data-tab="scores">Scores</button>
   <button data-tab="base">Base</button>
   <button data-tab="steward">Steward</button>
+  <button data-tab="watchdog">Watchdog</button>
   <button data-tab="map">Map</button>
   <button data-tab="ascii">ASCII</button>
 </nav>
@@ -611,6 +627,15 @@ footer .r{margin-left:auto}
     </div>
   </section>
 
+  <section class="tab col" id="tab-watchdog">
+    <div class="toolbar">
+      <span class="dim">Self-correction passes over the project's own source (mod/Source, agent/rimagent). Verified and committed locally; never deployed — restart the game to pick the fixes up.</span>
+      <button class="primary" onclick="loadWatchdog()" style="margin-left:auto">Refresh</button>
+      <span class="dimmer" id="watchdog-when"></span>
+    </div>
+    <div class="scroll" id="watchdog-view" style="padding:8px"><div class="empty">No watchdog passes yet.</div></div>
+  </section>
+
   <section class="tab col" id="tab-map">
     <div class="toolbar">
       <label class="dim">x <input type="number" id="m-x" placeholder="home"></label>
@@ -678,6 +703,7 @@ tabsEl.addEventListener('click', e => {
   if (b.dataset.tab === 'scores' && !scoresLoaded) loadScores();
   if (b.dataset.tab === 'map' && !mapLoaded) loadMap();
   if (b.dataset.tab === 'steward') loadSteward();
+  if (b.dataset.tab === 'watchdog') loadWatchdog();
   if (b.dataset.tab === 'live') scrollBottom($('live'), true);
   if (b.dataset.tab === 'ledger') scrollBottom($('ledger'), true);
 });
@@ -1138,6 +1164,17 @@ async function setRally(clear) {
   loadSteward();
 }
 setInterval(() => { if ($('c-steward-auto').checked && $('tab-steward').classList.contains('active')) loadSteward(); }, 20000);
+async function loadWatchdog() {
+  try {
+    const j = await (await fetch('/api/watchdog')).json();
+    const cfg = j.config || {};
+    const when = j.last_run ? new Date(j.last_run * 1000).toLocaleString() : 'never';
+    $('watchdog-when').textContent = 'last pass ' + when + ' · ' + (cfg.enabled ? `every ${cfg.every_hours}h when ≥${cfg.min_errors} errors` : 'disabled in config');
+    $('watchdog-view').innerHTML = (j.text || '').trim()
+      ? '<pre style="white-space:pre-wrap;margin:0;font-size:12px">' + esc(j.text) + '</pre>'
+      : '<div class="empty">No watchdog passes yet. It runs when enough tool calls have failed to be worth reading.</div>';
+  } catch (e) { $('watchdog-view').innerHTML = '<div class="empty">failed: ' + esc(e) + '</div>'; }
+}
 document.querySelector('#tabs button[data-tab="base"]').addEventListener('click', () => loadBase());
 async function loadOverview() {
   $('ascii-err').textContent = '';
@@ -1170,6 +1207,7 @@ function handle(ev) {
     case 'episode_end': { const s = curStep; curStep = null; liveAppend(sysLine('episode', t, `episode ${d.episode} ended · score ${d.score}${d.assisted ? ' (assisted)' : ''} · ${d.reason || ''}`)); curStep = s; if (scoresLoaded) loadScores(); break; }
     case 'error': { const s = curStep; curStep = null; liveAppend(sysLine('error', t, 'error: ' + (d.text || JSON.stringify(d)))); curStep = s; break; }
     case 'log': { const s = curStep; curStep = null; liveAppend(sysLine('log', t, d.text || JSON.stringify(d))); curStep = s; break; }
+    case 'watchdog': { const s = curStep; curStep = null; liveAppend(sysLine('log', t, 'watchdog pass: ' + (d.summary || '(no summary)') + (d.fixes && d.fixes.length ? ' · fixed ' + d.fixes.length : '') + (d.commits && d.commits.length ? ' · ' + d.commits.join(', ') : ''))); curStep = s; if ($('tab-watchdog').classList.contains('active')) loadWatchdog(); break; }
     case 'reply': { const s = curStep; curStep = null; const n = sysLine('log', t, '🤖 agent: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--ok)'; n.style.fontSize = '13px'; n.style.padding = '6px 8px'; n.style.background = 'rgba(80,200,120,.08)'; liveAppend(n); curStep = s; $('say-status').textContent = 'agent replied ↑'; break; }
     case 'situation': { $('sit-tracked').textContent = d.tracked || ': '; $('sit-changes').textContent = d.changes || ': '; $('sit-when').textContent = `· day ${d.day} ${d.hour}h · ${d.trigger || ''} · ${d.chars || 0} chars`; break; }
     case 'operator': { const s = curStep; curStep = null; const n = sysLine('log', t, '🧑 you: ' + (d.text || '')); n.style.borderLeft = '3px solid var(--warn)'; liveAppend(n); curStep = s; break; }

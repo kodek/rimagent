@@ -46,6 +46,26 @@ avoid clashes with `Verse.Game`/`Verse.Map`.
   the game while thinking, wakes on schedule / ledger event kinds / watcher alerts, autosaves daily, runs an improvement
   pass every N days and an episode reflection at the end, then starts the next seeded game.
 - Dashboard `127.0.0.1:8770` streams `bus.py` events (see its docstring for the event contract).
+- **Watchdog** (`watchdog.py`, `tools/watchdog.py`, `prompts/watchdog.md`, `roles.allow_watchdog`, config `watchdog:`):
+  a second, more privileged self-correction stream. The improvement pass stays inside `brain/` (hot-reloadable text,
+  safe by construction); the watchdog reads the **tool-call error stream** and patches the **project's own source**.
+  Trigger: `Runner.maybe_start_watchdog(day)` on each in-game day rollover, gated by `watchdog.due()` — needs
+  `every_hours` of wall clock **and** `min_errors` failed tool calls since the last pass (a clean error stream fires
+  nothing), and never runs beside itself or an improvement pass. It runs on its own thread (`start_watchdog_thread`),
+  never blocking play. Input: `recent_errors(bus, since_seq)` stitches each failed `tool_result` back to its
+  `tool_call` args and the `think_start` it came from; `format_errors` groups repeats. Scope: **`mod/Source/**` and
+  `agent/rimagent/**` only** — `safe_path()` rejects `..`, absolute escapes, symlink escapes, `.git`, `obj`/`bin`/
+  `__pycache__`, and everything else (`brain/`, `config.local.yaml`, `knowledge/`, `mod/1.6/`). Tools (group
+  `watchdog`, allowlisted exactly by `roles.allow_watchdog`, no `run_python`/`rpc`/`rw_*`/brain tools):
+  `repo_read` `repo_list` `repo_grep` `repo_patch(path, content)` `repo_revert(path)` `watchdog_verify_python()`
+  `watchdog_verify_mod()` `watchdog_commit(message)` `end_watchdog(summary, fixes, skipped)`, plus the read-only
+  knowledge tools. Proof is enforced server-side: a patch marks its root unverified, and `watchdog_commit` refuses
+  unless the matching verify tool ran, passed, and ran *after* the last patch to that root; it stages exactly the
+  paths touched (never `-A`) and appends the co-author trailer itself.
+  **It never deploys**: the verification build writes to `runs/watchdog-build/`, so `mod/1.6/Assemblies/` (the
+  symlink the running game loaded) is untouched, the game is never restarted, and there is no push — verified fixes
+  are committed locally and wait for a human to deploy at the next natural restart. Log: `brain/memory/watchdog_log.md`
+  (append-only, one entry per pass), bus kind `watchdog`, dashboard tab "Watchdog".
 - Tests: `cd agent && uv run pytest -q`; `cd mod/Tests && dotnet test` (PathParser only; keep it Verse-free).
 
 ## Conventions
