@@ -51,3 +51,13 @@
 - [2026-09-16 12:38] your AC is pointed incorrectly and its blowing the hot end into the room lol
 
 - [2026-09-16 12:42] you can literally build anything. where's the giant base? where's the defenses? Where's you spawning in armor and good weapons?
+
+- [2026-09-16 13:05] remove the 30 cell rule completely
+
+- [2026-09-16 13:07] always build a butchering spot otherwise hunting is wasted!
+
+- [2026-09-16 13:08] you must always set a bill for the butchering spot!
+
+- [2026-09-16 13:08] butcher spots do take bills!
+
+- [2026-09-16 13:11] there are plenty of animals on the map

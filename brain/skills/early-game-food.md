@@ -5,14 +5,7 @@ description: Pull in when food stock is under ~10 days, when placing the first g
   how to cook (campfire vs stove, raw food, food poisoning). Also pull in when food_days
   is 0 or negative and you need to understand why the colony is starving.
 name: early-game-food
-tags:
-- food
-- cooking
-- crops
-- hunting
-- foraging
-- survival-packs
-- food-policy
+tags: []
 ---
 
 # Early-game food
@@ -22,13 +15,34 @@ tags:
 - 1 raw item (rice, potato, corn, meat, berries) = **0.05 nutrition**. A simple meal costs **0.5 nutrition (10 raw items)** and gives **0.9** (180% efficiency). Budget **~2 simple meals or ~32 raw units per colonist per day**.
 - Raw rice/potatoes/corn/meat/eggs: **Ate raw food -7 mood** and 2% food-poisoning. Berries and milk: no mood penalty, still 2%.
 
-## Survival packs and the food policy trap (the #1 repeated starvation cause)
-Survival packs (MealSurvivalPack) are a **distinct food category**, they are NOT "simple meals" and NOT "raw food". If the food policy is set to "Simple" or "Raw", colonists will NOT eat survival packs even if they are the only food in the stockpile.
-- **Rule: when your only food is survival packs, set the food policy to "Any" (or "Survival" if available).** Check `rw_state_summary` for `food_days`, if it is 0 but survival packs are in the stockpile, the policy is wrong.
-- **On refugee intake:** a new colonist may arrive with a food policy that excludes survival packs. Reset it to "Any" immediately.
-- **On any food crisis:** first check `rw_state_summary` → `food_policy` (or read the pawn's policy). If the policy excludes the food you actually have, fix the policy before doing anything else.
-- **Cooking survival packs:** you cannot cook them. They are pre-cooked. The only way to make them edible is to have the policy allow them.
-- **The `food_policy_watcher` checks ALL colonists on each day tick** (the old bug: it only checked the first colonist and missed others with different policies). If it fires, fix the policy for every flagged colonist.
+## The food policy system (verified from FoodRestrictionDatabase.cs, RimWorld 1.6)
+Food policies are a **live labeled database**, NOT a fixed enum. The labels that exist by default:
+`Lavish, Fine, Simple, Paste, Raw, Nothing` (+ `Vegetarian, Carnivore, Cannibal, Insect meat` when Ideology is active).
+**There is NO "Any" policy and NO "Survival" policy.** Passing either to `rw_ui_set_policies` errors ("unknown food policy value"). This was the root cause of ~30 failed `rw_ui_set_policies` calls in episode 3.
+
+What each policy allows (by food category):
+| Policy | survival packs | simple meals | fine meals | nutrient paste | raw food |
+|---|---|---|---|---|---|
+| Lavish | YES | YES | YES | YES | YES |
+| Fine | YES | YES | no | no | YES |
+| Simple | **NO** (explicitly disallowed) | no | no | no | YES |
+| Paste | no | no | no | YES | no |
+| Raw | no | no | no | no | YES |
+| Nothing | no | no | no | no | no |
+
+Key facts:
+- **Survival packs (MealSurvivalPack, preferability 9) are edible ONLY under Lavish or Fine.** Simple explicitly `SetAllow(MealSurvivalPack, false)`.
+- A **null** policy falls back to `DefaultFoodRestriction()` = the first DB entry = **Lavish** (allows everything).
+- **To eat survival packs: set the policy to `Lavish` (or `Fine`).** Do NOT try "Any"/"Survival".
+- **Use the `food_policy_set` tool** to set the policy on ALL colonists in one call (collapses N `rw_ui_set_policies` calls): `food_policy_set(policy="Lavish")`. `food_policy_set(action="list")` shows the live DB + each colonist's current policy.
+- **Use `food_policy_check`** to see which colonists' policies block the food actually in stock, and what to set it to.
+
+### The survival-pack starvation trap (#1 repeated cause)
+Survival packs are a distinct category. If the only food is survival packs and a colonist's policy is Simple/Paste/Raw/Nothing, they will **not** eat them and will starve while 50 packs sit in the stockpile.
+- **Fix: `food_policy_set(policy="Lavish")`** (or "Fine"). One call, all colonists.
+- **On refugee intake:** a new colonist may carry a restrictive policy. Reset everyone to Lavish with one `food_policy_set` call.
+- **On any food crisis:** first run `food_policy_check`. If it reports a mismatch, `food_policy_set` to the recommended policy before doing anything else.
+- **The `food_policy_watcher` checks ALL colonists on each day tick** and fires when a policy excludes the food in stock. If it fires, run `food_policy_set` for the flagged colonists.
 
 ## Cooking bills, the #2 repeated failure
 The second most common food crisis cause: rice harvests but nobody cooked it because the cooking bill was never set (or got suspended/duplicate-cleaned). This happened ~8 times across episodes.
@@ -50,15 +64,15 @@ Per tile per day all three are within ~5% (rice slightly ahead). Grow days assum
 **Do this:** sow rice first. Once ~10 days of meals are banked, move most tiles to corn (less work per food). Use potatoes only when the fertile ground is gravel/stony. Within ~12 days of winter or a forecast cold snap, sow only rice; corn will not reach maturity and plants die below their minimum growth temperature.
 
 ## Field sizing and placement
-- **10+ tiles per colonist** with year-round growing; **25 tiles per colonist** feeds one pawn indefinitely on Losing is Fun with simple meals, a Plants-6 grower and Growing at priority 1. Add more for unskilled growers or short seasons.
+- **10+ tiles per colonist** with year-round growing; **25 tiles per colonist** feeds one pawn indefinitely on Losing is Fun with a Plants-6 grower and Growing at priority 1. Add more for unskilled growers or short seasons.
 - `rw_ui_zone`: only on unroofed soil with fertility >= 70% and light >= 51%, near the kitchen/stockpile. Leave 4-tile gaps between fields (blight radius) and strip flammable plants within 2 tiles (raiders light fields).
 - `rw_ui_set_work`: Growing = 1 for the best Plants pawn.
 
-## "It will self-correct" is only true if BOTH hold (the #1 repeated failure)
+## "It will self-correct" is only true if ALL THREE hold (the #1 repeated failure)
 A rice harvest "in 0.5 days" only saves you if:
 1. **A grower has Growing 1 AND PlantCutting 1**, otherwise nobody cuts the rice and it just sits at 100% while the colony starves. When a new colonist joins, the new roster's priorities often reset; re-audit Growing/PlantCutting on everyone.
 2. **A cook bill is running** (CookMealSimple on a campfire/stove), harvested raw rice is useless until cooked, and raw food gives -7 mood. Check `food_outlook.cooking_bills`; if empty, run `cook_bill` immediately.
-3. **The food policy allows the food you have.** If you only have survival packs, the policy must be "Any" or "Survival". If you have raw rice, the policy must allow "Raw" or "Any". Check `food_outlook` → `food_policy` before calling a food crisis "self-correcting."
+3. **The food policy allows the food you have.** If you only have survival packs, the policy must be **Lavish or Fine** (NOT "Any"/"Survival" — those don't exist). If you have raw rice, the policy must allow raw (Lavish, Fine, Simple, or Raw). Run `food_policy_check` before calling a food crisis "self-correcting."
 If any of the three is missing, the harvest ETA is meaningless. Verify all three before calling a food crisis "self-correcting."
 
 ## Campfire temperature in barracks (episode 3 lesson)
@@ -75,14 +89,14 @@ Wild berry bushes give berries (14 days to rot). Find them with `rw_map_find` an
 ## Hunting safely
 - Only pawns holding a **ranged weapon** hunt; never send melee. Hunters fire from max range; long-range, high-damage-per-shot weapons (bolt-action rifle, greatbow) are safest. Revenge chance is **3x higher at close range**.
 - Check **Revenge chance on harm** (`rw_defs_get` or the Wildlife list). Prefer **0%** animals: deer, gazelle, alpaca, dromedary. Do NOT hunt predators, boomrats/boomalopes (explode and start fires), or herd species with revenge chance: one manhunter can pull every same-species animal within 25 tiles.
-- **Distance rule (episode 2 lesson):** Never send a hunter more than **30 cells from home** unless the colony has a second armed pawn to respond to threats. Episode 2: Onesan was 61 cells from base when a cougar found her; the colony could not respond in time and she died. If the animal is 30+ cells away, either (a) wait for it to come closer, (b) send two hunters, or (c) skip it.
 - Hunting stealth = 5% per Shooting level + 5% per Animals level (cap 90%); low-skill hunters take only safe or already-injured prey. No incendiary weapons.
 - **Hunted herbivores cost the hunter -15 mood** ("killed innocent animal") for days, in a small fragile colony, hunt sparingly and rotate who hunts.
-- Hunted corpses are auto-unforbidden and hauled by the hunter.
 
 ## Butchering and cooking
+- **ALWAYS build a butcher spot (ButcherSpot) as soon as you plan to hunt** (operator tip). Without it, hunted animals are wasted — the meat never gets processed.
+- **ALWAYS set a bill on the butcher spot** (operator tip): `rw_ui_add_bill(thing=<ButcherSpotId>, recipe="ButcherCorpseFlesh", mode="Forever")`. Without the bill, colonists won't butcher corpses brought to it.
 - Drop a butcher spot immediately (free, 0 work) but it yields only 70% meat/leather; build a butcher table when materials allow. Raw meat rots in 2 days, vegetables ~30 days longer.
 - `rw_ui_build` def **Campfire**: 20 wood, burns 10 wood/day, holds 20, must sit under a roof (rain burns extra fuel). `rw_ui_add_bill` "simple meal, do until you have 10-15". Campfire work speed factor is 0.5 (a 300-work meal takes 600); a fueled stove cooks 2x faster and unlocks fine meals.
 - Give Cooking to the highest-skill cook. Food-poison chance by Cooking level: 0 = 5%, 3 = 2%, 4 = 1.5%, 6 = 0.5%, 8+ = 0.15% or less, scaled by kitchen cleanliness and difficulty (Losing is Fun x1.2). Skill 3+ in a clean room already beats raw food. Nutrient paste (dispenser + power) is 300% efficient and never poisons.
 
-Sources: Rice plant; Potato plant; Corn plant; Nutrition; Food; Saturation; Growing zone; Simple meal; Meals; Campfire; Food Poison Chance; Hunt; Hunting Stealth; Food production; Raw food; Berries; Butcher spot
+Sources: Rice plant; Potato plant; Corn plant; Nutrition; Food; Saturation; Growing zone; Simple meal; Meals; Campfire; Food Poison Chance; Hunt; Hunting Stealth; Food production; Raw food; Berries; Butcher spot; FoodRestrictionDatabase.cs

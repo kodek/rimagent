@@ -1,102 +1,83 @@
 from rimagent.registry import tool
-@tool("food_policy_check", "Check if the current food policy allows the food actually in stock. Returns the policy, the food types in stock, and whether they match.", {})
-def food_policy_check(ctx):
-    """Check if the food policy matches the food in stock.
-    
-    Returns:
-        policy: the current food policy string
-        food_in_stock: list of food thing defs in the stockpile
-        match: True if the policy allows the food in stock
-        warning: string if there's a mismatch
-    """
+
+# Correct policy allow-sets, verified from FoodRestrictionDatabase.cs (RimWorld 1.6):
+#   Lavish: allows ALL food (no blocks)
+#   Fine:   blocks preferability>=10 -> allows survival packs(9), simple meals(9), raw; blocks fine meals, nutrient paste
+#   Simple: blocks preferability>=9 AND explicitly disallows MealSurvivalPack -> allows raw only
+#   Paste:  allows only nutrient paste
+#   Raw:    blocks preferability>=7 -> allows raw food only
+#   Nothing: allows nothing
+# There is NO "Any" and NO "Survival" policy. Survival packs are edible only under Lavish or Fine.
+ALLOW = {
+    "Lavish":   {"survival", "simple", "fine", "paste", "raw"},
+    "Fine":     {"survival", "simple", "raw"},
+    "Simple":   {"raw"},
+    "Paste":    {"paste"},
+    "Raw":      {"raw"},
+    "Nothing":  set(),
+}
+# A policy with an unknown/renamed label: assume it allows raw + survival + simple (safe default, flag it)
+DEFAULT_ALLOW = {"survival", "simple", "raw"}
+
+def _cat(defname):
+    d = defname.lower()
+    if "survival" in d:
+        return "survival"
+    if "nutrientpaste" in d or "nutrient" in d:
+        return "paste"
+    if "meal" in d:
+        # MealFine vs MealSimple
+        return "fine" if "fine" in d else "simple"
+    return "raw"  # rice, potato, corn, meat, berries, egg, milk, etc.
+
+@tool("food_policy_check",
+      "Check whether each colonist's food policy allows the food actually in stock. "
+      "Policies are a live DB (Lavish/Fine/Simple/Paste/Raw/Nothing, +ideology) - there is NO 'Any'/'Survival'. "
+      "Survival packs are edible only under Lavish or Fine. Returns per-colonist match + recommended fix.",
+      {"radius": "unused"})
+def food_policy_check(ctx, radius=None):
     summary = ctx.bridge.call("state.summary")
-    
-    # Get food policy from the first colonist (or any colonist)
     pawns = ctx.bridge.call("state.pawns", filter="colonists")
-    policy = None
-    if pawns:
-        for p in pawns:
-            if p.get("food_policy"):
-                policy = p["food_policy"]
-                break
-        if policy is None:
-            # Try to get it from the pawn's policies
-            for p in pawns:
-                name = p.get("name") or p.get("id")
-                if name:
-                    try:
-                        pawn_state = ctx.bridge.call("state.pawn", pawn=name)
-                        if pawn_state and "food_policy" in pawn_state:
-                            policy = pawn_state["food_policy"]
-                            break
-                    except Exception:
-                        pass
-    
-    # Get food stocks
-    stocks = summary.get("key_stocks", {})
+
+    # food defs in stock (stored + outside)
     food_items = []
-    for k, v in stocks.items():
-        if v and isinstance(v, int) and v > 0:
-            # Check if this is a food item
-            if any(x in k.lower() for x in ["meal", "food", "rice", "potato", "corn", "meat", "berry", "survival", "egg", "milk", "nutrient"]):
-                food_items.append({"def": k, "count": v})
-    
-    # Also check outside storage
-    outside = summary.get("outside_storage", {})
-    for k, v in outside.items():
-        if v and isinstance(v, int) and v > 0:
-            if any(x in k.lower() for x in ["meal", "food", "rice", "potato", "corn", "meat", "berry", "survival", "egg", "milk", "nutrient"]):
-                food_items.append({"def": k, "count": v, "location": "outside"})
-    
-    # Determine if policy matches
-    # "Any" allows everything
-    # "Survival" allows survival packs
-    # "Simple" allows simple meals (NOT survival packs)
-    # "Raw" allows raw food (NOT survival packs, NOT meals)
-    # "Cooked" allows cooked meals
-    # "Fine" allows fine meals
-    # "NutrientPaste" allows nutrient paste
-    
-    policy_lower = (policy or "Any").lower()
-    
-    # Map policy to allowed food categories
-    allowed = set()
-    if "any" in policy_lower:
-        allowed = {"any"}
-    elif "survival" in policy_lower:
-        allowed = {"survival"}
-    elif "simple" in policy_lower:
-        allowed = {"simple", "raw"}
-    elif "raw" in policy_lower:
-        allowed = {"raw"}
-    elif "cooked" in policy_lower:
-        allowed = {"simple", "cooked"}
-    elif "fine" in policy_lower:
-        allowed = {"fine", "cooked", "simple"}
-    elif "nutrient" in policy_lower:
-        allowed = {"nutrient"}
-    else:
-        allowed = {"any"}  # unknown policy, assume allows all
-    
-    # Check each food item
-    warnings = []
-    for item in food_items:
-        d = item["def"].lower()
-        if "any" in allowed:
+    for src in ("key_stocks", "outside_storage"):
+        for k, v in (summary.get(src) or {}).items():
+            if isinstance(v, int) and v > 0:
+                if any(x in k.lower() for x in ["meal", "rice", "potato", "corn", "meat", "berry",
+                                                 "survival", "egg", "milk", "nutrient", "food", "chocolate"]):
+                    food_items.append(k)
+    cats_present = sorted({_cat(f) for f in food_items})
+
+    # recommended policy that covers everything in stock
+    rec = None
+    for pol, allow in ALLOW.items():
+        if pol == "Nothing":
             continue
-        if "survival" in d:
-            if "survival" not in allowed and "any" not in allowed:
-                warnings.append(f"Survival pack in stock but policy '{policy}' does not allow it")
-        elif "meal" in d or "simple" in d or "cooked" in d:
-            if "simple" not in allowed and "cooked" not in allowed and "fine" not in allowed:
-                warnings.append(f"{item['def']} in stock but policy '{policy}' may not allow it")
-        elif "raw" in d or "rice" in d or "potato" in d or "corn" in d or "meat" in d or "berry" in d or "egg" in d:
-            if "raw" not in allowed and "any" not in allowed:
-                warnings.append(f"{item['def']} in stock but policy '{policy}' does not allow raw food")
-    
+        if set(cats_present) <= allow:
+            rec = pol
+            break
+    if rec is None:
+        rec = "Lavish"  # always covers everything
+
+    # per-colonist check
+    rows = []
+    for p in pawns:
+        name = p.get("name") or p.get("id")
+        pol = p.get("food_policy")
+        pol_key = pol if pol in ALLOW else None
+        allow = ALLOW.get(pol, DEFAULT_ALLOW)
+        blocked = [c for c in cats_present if c not in allow]
+        rows.append({"name": name, "policy": pol,
+                    "unknown_policy": pol_key is None,
+                    "blocked_categories": blocked,
+                    "ok": not blocked and pol_key is not None})
+
+    bad = [r for r in rows if not r["ok"]]
     return {
-        "policy": policy,
-        "food_in_stock": food_items,
-        "match": len(warnings) == 0,
-        "warnings": warnings,
+        "food_categories_in_stock": cats_present,
+        "recommended_policy": rec,
+        "colonists": rows,
+        "mismatched": bad,
+        "note": "No 'Any'/'Survival' policy exists. Survival packs need Lavish or Fine.",
     }

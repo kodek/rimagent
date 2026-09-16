@@ -1,10 +1,10 @@
 def watch(ctx, events):
-    """On day tick: if food_days < 2 AND no animals within 30 cells of home,
+    """On day tick: if food_days < 2 AND no meat-bearing animals on the map,
     alert the planner that the colony will starve before the next rice harvest.
 
     This is the gap that cook_gap and food_crisis_watcher don't cover: the bill
     is running, the rice is growing, but there's a 1.5-day gap between running
-    out of food and the harvest landing, and no animals close enough to hunt.
+    out of food and the harvest landing, and no animals to hunt.
     """
     out = []
     for ev in events:
@@ -19,10 +19,9 @@ def watch(ctx, events):
         if food_days is None or food_days >= 2:
             continue
 
-        # Check for animals within 30 cells of home
-        home = s.get("home_center") or [0, 0]
+        # Check for meat-bearing animals anywhere on the map
         try:
-            animals = ctx.bridge.call("map.find", kind="animal", radius=30, limit=20)
+            animals = ctx.bridge.call("map.find", kind="animal", radius=80, limit=50)
         except Exception:
             animals = {"things": []}
 
@@ -37,9 +36,8 @@ def watch(ctx, events):
                 "type": "alert",
                 "text": (
                     f"STARVATION GAP: food_days={food_days:.1f}, no meat-bearing animals "
-                    "within 30 cells. Rice harvest ETA unknown. Options: (1) send 2 armed "
-                    "hunters to the nearest animal 30-60 cells away, (2) forage berries, "
-                    "(3) accept starvation risk. Check crop_status for harvest ETA."
+                    "on the map. Rice harvest ETA unknown. Options: (1) forage berries, "
+                    "(2) accept starvation risk. Check crop_status for harvest ETA."
                 ),
                 "wake": True,
             })
