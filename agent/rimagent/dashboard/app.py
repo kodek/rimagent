@@ -481,7 +481,8 @@ footer .r{margin-left:auto}
 <main>
   <section class="tab active col" id="tab-live">
     <div class="toolbar">
-      <span class="dim">Think steps · newest first everywhere (steps and the calls inside them) · older steps collapse to one line</span>
+      <span class="dim">Think steps · newest first · streams:</span>
+      <span id="stream-legend" class="dim" style="display:flex;gap:10px;flex-wrap:wrap"></span>
       <button style="margin-left:auto" onclick="clearLive()">Clear</button>
     </div>
     <div class="toolbar" style="gap:6px">
@@ -681,6 +682,10 @@ async function pollState() {
 const live = $('live');
 const KEEP_OPEN = 5, KEEP_STEPS = 60;
 let curStep = null, stepCount = 0; const stepsByStream = {};
+const STREAM_COLORS = { play: '#6aa8ff', manager: '#f2c14e', econ: '#5fd39a', build: '#ff9f6e', guard: '#ff6b7a', steward: '#c79bff', improve: '#f2c14e', reflect: '#f2c14e' };
+const STREAM_LABELS = { play: 'play', manager: 'manager', econ: 'economy', build: 'builder', guard: 'guardian', steward: 'steward', improve: 'improve', reflect: 'reflection' };
+function streamColor(st) { return STREAM_COLORS[st] || '#9aa3ad'; }
+(function () { const el = document.getElementById('stream-legend'); if (!el) return; el.innerHTML = ['play', 'manager', 'econ', 'build', 'guard', 'steward', 'improve'].map(k => `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${STREAM_COLORS[k]};display:inline-block"></span>${STREAM_LABELS[k]}</span>`).join(''); })();
 function useStream(d) { const st = (d && d.stream) || 'play'; if (stepsByStream[st] !== undefined) curStep = stepsByStream[st]; return st; }
 function clearLive() { live.innerHTML = ''; curStep = null; }
 function liveAppend(node) {
@@ -701,8 +706,11 @@ function newStep(d, t) {
   const s = document.createElement('div');
   s.className = 'step'; stepCount++;
   const st = (d && d.stream) || 'play';
-  s.innerHTML = `<div class="step-head"><span class="dim">${fmtT(t)}</span><span>step ${esc(d.step ?? stepCount)}</span>${st !== 'play' ? `<span class="badge info">${esc(st)} stream</span>` : ''}<span class="trig">${esc(d.trigger || '')}</span><span class="sum"></span></div><div class="step-body"></div>`;
-  if (st !== 'play') s.style.borderLeft = '3px solid var(--warn)';
+  const col = streamColor(st);
+  s.innerHTML = `<div class="step-head"><span class="dim">${fmtT(t)}</span><span>step ${esc(d.step ?? stepCount)}</span><span class="badge" style="background:${col}22;color:${col};border:1px solid ${col}66">${esc(STREAM_LABELS[st] || st)}</span><span class="trig">${esc(d.trigger || '')}</span><span class="sum"></span></div><div class="step-body"></div>`;
+  s.style.borderLeft = '4px solid ' + col;
+  s.style.background = col + '0a';
+  s.dataset.stream = st;
   s.querySelector('.step-head').onclick = () => s.classList.toggle('collapsed');
   s._calls = 0; s._tools = [];
   const e = live.querySelector('.empty'); if (e) e.remove();
