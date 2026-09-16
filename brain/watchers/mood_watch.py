@@ -10,7 +10,7 @@ def watch(ctx, events):
     and can cross the major threshold.
 
     So for each colonist we compute:
-      raw_mood          = displayed mood
+      raw_mood          = displayed mood (percentage 0-100)
       catharsis_value   = the positive mood of the 'Catharsis' thought (0 if none)
       post_fade_mood    = raw_mood - catharsis_value
     and flag when raw_mood < major_threshold  OR  (catharsis present AND
@@ -40,7 +40,7 @@ def watch(ctx, events):
         if raw_mood is None:
             continue
 
-        # major-break threshold (percent)
+        # major-break threshold (fraction 0-1 from engine; convert to percentage)
         threshold = None
         try:
             t = ctx.bridge.call(
@@ -48,11 +48,12 @@ def watch(ctx, events):
                 path=f"Pawn:{name}.mindState.mentalBreaker.BreakThresholdMajor",
             )
             if isinstance(t, (int, float)):
-                threshold = t
+                # BreakThresholdMajor is a fraction (0.20 = 20%), convert to percentage
+                threshold = t * 100
         except Exception:
             pass
         if threshold is None:
-            threshold = 28  # Losing is Fun + neurotic fallback
+            threshold = 28.0  # Losing is Fun + neurotic fallback (percentage)
 
         # catharsis value from per-pawn thoughts
         catharsis = 0
@@ -74,8 +75,8 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"MOOD CRISIS: {name} at {raw_mood}% (major threshold "
-                    f"{round(threshold*100,1)}%). Run mood_triage and fix the "
+                    f"MOOD CRISIS: {name} at {raw_mood:.0f}% (major threshold "
+                    f"{threshold:.0f}%). Run mood_triage and fix the "
                     f"biggest negative thought now."
                 ),
                 "wake": True,
@@ -84,9 +85,9 @@ def watch(ctx, events):
             out.append({
                 "type": "alert",
                 "text": (
-                    f"CATHARSIS CRASH IMMINENT: {name} looks fine at {raw_mood}% "
+                    f"CATHARSIS CRASH IMMINENT: {name} looks fine at {raw_mood:.0f}% "
                     f"but has +{catharsis:.0f} catharsis that will fade -> post-fade "
-                    f"~{post_fade:.0f}% (< major threshold {round(threshold*100,1)}%). "
+                    f"~{post_fade:.0f}% (< major threshold {threshold:.0f}%). "
                     f"Fix the underlying debuff NOW (alcohol withdrawal? malnutrition? "
                     f"confined interior?) before the crash. Run mood_triage."
                 ),
