@@ -161,7 +161,10 @@ class Runner:
         st = self.bridge.status()
         if st.get("state") == "playing":
             if not self.seed:
-                # Resumed into an existing game (agent restarted): continue it as the current episode,
+                # Resumed into an existing game (agent restarted): adopt the game's god-mode state as the sandbox flag.
+                self.sandbox = bool(st.get("god_mode", False))
+                self.ctx.extra["sandbox"] = self.sandbox
+                # Continue it as the current episode,
                 # restoring the episode number / start day / counters saved by this same game if they match its seed.
                 saved = _load_episode()
                 self.seed = st.get("seed") or "resumed"
