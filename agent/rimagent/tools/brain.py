@@ -83,6 +83,10 @@ def tool_write(ctx, file: str, code: str):
     if err:
         return f"wrote {p.name} but it failed to load:\n{err}"
     names = [t.name for t in ctx.registry.tools.values() if getattr(t.fn, "_brain_file", None) == p.stem]
+    if not names:
+        return (f"wrote {p.name}: it parsed with no syntax error, but registered ZERO tools. "
+                f"This is a failure, not a success: your file has no function decorated with @tool(...), "
+                f"or the decorator/registry import is missing. Nothing is callable. Fix it now.")
     return f"wrote {p.name}; registered tools: {names}. They are callable from the next step."
 
 

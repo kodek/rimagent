@@ -9,6 +9,9 @@ not eat them and starve while packs sit in the stockpile. This tool detects it.
 """
 import json
 
+from rimagent.registry import tool
+
+
 def _map_find(ctx, thing_def):
     # 'def' is a Python reserved word; pass via dict unpacking
     return ctx.bridge.call("map.find", **{"def": thing_def})
@@ -63,6 +66,11 @@ POLICY_ALLOWS = {
     "RawFood":          {"Lavish", "Fine", "Simple", "Raw"},
 }
 
+@tool("food_crisis_triage",
+      "Combined food + mood triage in one call: food days, food breakdown, rice ETA, running cook bills, "
+      "per-colonist food-policy vs stock, mood flags, and a recommended action list. Use INSTEAD of the "
+      "3-call sequence (mood_triage + food_outlook + cook_bill).",
+      {})
 def food_crisis_triage(ctx):
     s = ctx.bridge.call("state.summary")
     food_days = s.get("food_days")
