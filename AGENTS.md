@@ -1,7 +1,9 @@
 # rimagent, developer notes (agent-readable)
 
-Two halves in one repo:
-- `mod/` **RimBridge** (C#, RimWorld 1.6, Harmony): loopback HTTP bridge exposing the engine. Symlinked into the
+Two halves, the mod as its own repo since 2026-09-16:
+- `mod/` **RimBridge** (C#, RimWorld 1.6, Harmony): loopback HTTP bridge exposing the engine. Its own repo,
+  github.com/zorrobyte/rimbridge, vendored here as a git submodule — `git submodule update --init` after cloning,
+  and commit/push mod-side changes from inside `mod/` before bumping the pointer here. Symlinked into the
   RimWorld Mods folder as `RimBridge`. Build `script/build.sh` (needs `DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec`),
   then `script/restart-game.sh` (DLLs load at startup only; always launch via Steam so Workshop Harmony loads).
 - `agent/` **rimagent** (Python, uv): the brain. `script/start.sh` = launch game if needed + `rimagent play` + dashboard.
