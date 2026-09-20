@@ -1,7 +1,9 @@
 """Episode runner: keeps the game running, wakes the agent, scores episodes, starts the next game."""
 from __future__ import annotations
 
+import os
 import subprocess
+import webbrowser
 import threading
 import time
 from typing import Any
@@ -266,8 +268,10 @@ class Runner:
                 return
             time.sleep(3)
         if self.cfg["play"].get("auto_restart_game", True):
-            self.bus.emit("log", {"text": "game unreachable for 60s; relaunching via script/restart-game.sh"})
-            subprocess.run([str(ROOT / "script" / "restart-game.sh")], timeout=60)
+            script = ROOT / "script" / ("restart-game.ps1" if os.name == "nt" else "restart-game.sh")
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)] if os.name == "nt" else [str(script)]
+            self.bus.emit("log", {"text": f"game unreachable for 60s; relaunching via script/{script.name}"})
+            subprocess.run(cmd, timeout=60)
             self.bridge.wait_alive(600)
             self.registry.add_bridge_methods(self.bridge.methods())
             # prefer the autosave of the current episode
@@ -846,7 +850,19 @@ def start_dashboard(runner: Runner) -> threading.Thread | None:
         runner.bus.emit("error", {"text": f"dashboard unavailable: {e}"})
         return None
     app = create_app(runner.bus, runner.bridge, runner.controls)
-    port = int(runner.cfg.get("dashboard", {}).get("port", 8770))
+    dash = runner.cfg.get("dashboard", {})
+    port = int(dash.get("port", 8770))
     t = serve_in_thread(app, port)
-    runner.bus.emit("log", {"text": f"dashboard at http://127.0.0.1:{port}"})
+    url = f"http://127.0.0.1:{port}"
+    runner.bus.emit("log", {"text": f"dashboard at {url}"})
+    if dash.get("open_browser", True):
+        # script/start.sh did this with macOS `open`; webbrowser works on every
+        # platform and does not require launching the agent through that script.
+        def _open() -> None:
+            time.sleep(2)  # let uvicorn bind before the tab races it
+            try:
+                webbrowser.open(url)
+            except Exception as e:  # noqa: BLE001
+                runner.bus.emit("log", {"text": f"could not open a browser ({e}); visit {url}"})
+        threading.Thread(target=_open, daemon=True, name="dashboard-open").start()
     return t

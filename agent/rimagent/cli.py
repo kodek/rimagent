@@ -108,7 +108,8 @@ def cmd_llm(args):
 
 def main(argv=None):
     import faulthandler, signal
-    faulthandler.register(signal.SIGUSR1, all_threads=True)  # kill -USR1 <pid> dumps every thread's stack to stderr
+    if hasattr(faulthandler, "register") and hasattr(signal, "SIGUSR1"):  # POSIX only; Windows has neither
+        faulthandler.register(signal.SIGUSR1, all_threads=True)  # kill -USR1 <pid> dumps every thread's stack to stderr
     ap = argparse.ArgumentParser(prog="rimagent")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("seed", help="scrape wiki, build indexes, distill starter skills")
