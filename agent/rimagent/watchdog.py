@@ -204,35 +204,80 @@ def verify_mod_steward() -> tuple[bool, str]:
 
 # ---------------------------------------------------------------- git (commit / revert only)
 
-def _git(*args: str, timeout: int = 120) -> str:
-    r = subprocess.run(["git", *args], cwd=str(_repo_root()), capture_output=True, text=True, timeout=timeout)
+def _git(*args: str, timeout: int = 120, cwd: Path | None = None) -> str:
+    r = subprocess.run(["git", *args], cwd=str(cwd or _repo_root()), capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
         raise WatchdogError((r.stderr or r.stdout).strip() or f"git {args[0]} failed")
     return r.stdout.strip()
 
 
+def _containing_repo(path: Path) -> Path | None:
+    """Top-level directory of the git repository containing `path`, or None if there is none.
+
+    `mod/` is a submodule, so for a path under it this returns the submodule checkout, not the
+    parent repository. Detected per path, never hardcoded, so a future submodule (or none at all)
+    needs no change here."""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                           cwd=str(path if path.is_dir() else path.parent),
+                           capture_output=True, text=True, timeout=30)
+    except OSError:
+        return None
+    if r.returncode != 0:
+        return None
+    return Path(r.stdout.strip()).resolve()
+
+
+def _repo_and_rel(rel: str) -> tuple[Path, str]:
+    """(repo top, in-repo posix path) for an already-validated repo-relative `rel`.
+
+    Refuses to operate outside the project root, whatever git reports."""
+    root = _repo_root()
+    full = (root / rel).resolve()
+    top = _containing_repo(full) or root
+    if top != root and root not in top.parents:
+        raise WatchdogError(f"{rel} is not inside this project; refused")
+    return top, full.relative_to(top).as_posix()
+
+
 def git_revert(rel: str) -> str:
-    """`git checkout -- <rel>`, scoped to one already-validated path."""
-    _git("checkout", "--", rel)
+    """`git checkout -- <rel>`, scoped to one already-validated path, in the repo that owns it."""
+    rel = safe_path(rel)
+    top, in_repo = _repo_and_rel(rel)
+    _git("checkout", "--", in_repo, cwd=top)
     return f"reverted {rel} to HEAD"
 
 
 def git_commit(paths: list[str], message: str) -> str:
-    """Stage exactly `paths` (never -A) and commit them with the fixed trailer. No push, ever."""
+    """Stage exactly `paths` (never -A) and commit them with the fixed trailer. No push, ever.
+
+    Paths under a submodule (mod/Source/) are committed inside that submodule; everything else in
+    the parent repository. One commit per repository, submodule-first and parent-last; the returned
+    sha is the last commit made (the parent repo's when parent paths are included). A submodule
+    commit leaves the parent's submodule pointer dirty by design -- the human deploy step records it."""
     rels = [safe_path(p) for p in paths]
     if not rels:
         raise WatchdogError("nothing to commit")
     body = (message or "watchdog fix").strip()
     if COMMIT_TRAILER not in body:
         body = body + "\n\n" + COMMIT_TRAILER
-    _git("add", "--", *rels)
-    try:
-        _git("commit", "-q", "-m", body, "--", *rels)
-    except WatchdogError as e:
-        if "nothing to commit" in str(e) or "no changes added" in str(e):
-            raise WatchdogError("nothing to commit: the files are identical to HEAD") from e
-        raise
-    return _git("rev-parse", "--short", "HEAD")
+    root = _repo_root()
+    groups: dict[str, tuple[Path, list[str]]] = {}
+    for rel in rels:
+        top, in_repo = _repo_and_rel(rel)
+        groups.setdefault(str(top), (top, []))[1].append(in_repo)
+    sha = ""
+    for key in sorted(groups, key=lambda k: (k == str(root), k)):
+        top, in_rels = groups[key]
+        _git("add", "--", *in_rels, cwd=top)
+        try:
+            _git("commit", "-q", "-m", body, "--", *in_rels, cwd=top)
+        except WatchdogError as e:
+            if "nothing to commit" in str(e) or "no changes added" in str(e):
+                raise WatchdogError("nothing to commit: the files are identical to HEAD") from e
+            raise
+        sha = _git("rev-parse", "--short", "HEAD", cwd=top)
+    return sha
 
 
 # ---------------------------------------------------------------- error collection

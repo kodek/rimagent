@@ -225,6 +225,83 @@ def test_git_commit_refuses_out_of_scope_paths(monkeypatch):
         wd.git_commit(["brain/memory/notebook.md"], "sneaky")
 
 
+# ---------------------------------------------------------------- submodule-owned paths
+#
+# In production mod/ is a submodule: the parent repository tracks nothing under mod/Source/, so
+# `git add/commit -- mod/Source/...` run in the parent dies with a pathspec error AFTER the patch
+# already verified green. These tests build real git repos (only real git exhibits the failure) under
+# tmp_path and point _repo_root at them; the shared RIMAGENT_ROOT tree is never a git repo, so the
+# tests above keep exercising the non-submodule fallback.
+
+def _git_in(cwd, *args):
+    import subprocess
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=60, env=env)
+    assert r.returncode == 0, f"git {' '.join(args)} failed: {r.stderr or r.stdout}"
+    return r.stdout.strip()
+
+
+@pytest.fixture
+def submod_root(tmp_path, monkeypatch):
+    """Fake project root: a git repo whose mod/ is a real submodule holding mod/Source/Foo.cs,
+    plus a parent-owned agent/rimagent/loop.py."""
+    parent = tmp_path / "proj"
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    _git_in(sub, "init", "-q", ".")
+    (sub / "Source").mkdir()
+    (sub / "Source" / "Foo.cs").write_text("// v1\n", encoding="utf-8")
+    _git_in(sub, "add", "-A")
+    _git_in(sub, "commit", "-qm", "init")
+    parent.mkdir()
+    _git_in(parent, "init", "-q", ".")
+    _git_in(parent, "commit", "-q", "--allow-empty", "-m", "init")
+    _git_in(parent, "-c", "protocol.file.allow=always", "submodule", "-q", "add", str(sub), "mod")
+    _git_in(parent, "commit", "-qm", "add mod")
+    (parent / "agent" / "rimagent").mkdir(parents=True)
+    (parent / "agent" / "rimagent" / "loop.py").write_text("# v1\n", encoding="utf-8")
+    _git_in(parent, "add", "-A")
+    _git_in(parent, "commit", "-qm", "add agent")
+    monkeypatch.setattr(wd, "_repo_root", lambda: parent.resolve())
+    return parent
+
+
+def test_commit_writes_a_submodule_path_inside_the_submodule(submod_root):
+    (submod_root / "mod" / "Source" / "Foo.cs").write_text("// v2\n", encoding="utf-8")
+    parent_head_before = _git_in(submod_root, "rev-parse", "--short", "HEAD")
+    sha = wd.git_commit(["mod/Source/Foo.cs"], "fix the bridge")
+    assert sha == _git_in(submod_root / "mod", "rev-parse", "--short", "HEAD")
+    assert _git_in(submod_root / "mod", "show", "HEAD:Source/Foo.cs").strip() == "// v2"
+    assert wd.COMMIT_TRAILER in _git_in(submod_root / "mod", "log", "-1", "--format=%B")
+    # The parent repo itself gains no commit; its submodule pointer is left dirty for the human deploy step
+    # (git reports a submodule with new commits as "M mod", a dirty worktree as " m mod").
+    assert _git_in(submod_root, "rev-parse", "--short", "HEAD") == parent_head_before
+    assert _git_in(submod_root, "status", "--porcelain").strip() == "M mod"
+
+
+def test_commit_routes_each_path_to_the_repo_that_owns_it(submod_root):
+    (submod_root / "mod" / "Source" / "Foo.cs").write_text("// v2\n", encoding="utf-8")
+    (submod_root / "agent" / "rimagent" / "loop.py").write_text("# v2\n", encoding="utf-8")
+    sha = wd.git_commit(["mod/Source/Foo.cs", "agent/rimagent/loop.py"], "fix both")
+    assert sha == _git_in(submod_root, "rev-parse", "--short", "HEAD")
+    assert _git_in(submod_root, "show", "HEAD:agent/rimagent/loop.py").strip() == "# v2"
+    assert _git_in(submod_root / "mod", "show", "HEAD:Source/Foo.cs").strip() == "// v2"
+
+
+def test_commit_still_stages_exactly_the_given_paths(submod_root):
+    (submod_root / "mod" / "Source" / "Foo.cs").write_text("// v2\n", encoding="utf-8")
+    (submod_root / "mod" / "Source" / "Other.cs").write_text("// unrelated\n", encoding="utf-8")
+    wd.git_commit(["mod/Source/Foo.cs"], "fix one file")
+    assert _git_in(submod_root / "mod", "status", "--porcelain") == "?? Source/Other.cs"
+
+
+def test_revert_restores_a_submodule_file(submod_root):
+    (submod_root / "mod" / "Source" / "Foo.cs").write_text("// v2\n", encoding="utf-8")
+    assert wd.git_revert("mod/Source/Foo.cs") == "reverted mod/Source/Foo.cs to HEAD"
+    assert (submod_root / "mod" / "Source" / "Foo.cs").read_text(encoding="utf-8") == "// v1\n"
+
+
 # ---------------------------------------------------------------- revert
 
 def test_revert_clears_the_unverified_flag_for_that_root(repo, monkeypatch):
