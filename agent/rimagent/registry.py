@@ -5,6 +5,7 @@ The registry produces OpenAI tool specs and executes calls with error capture.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import inspect
 import json
@@ -94,7 +95,8 @@ def tool(name: str | None = None, description: str | None = None, params: dict[s
 class Registry:
     tools: dict[str, Tool] = field(default_factory=dict)
     load_errors: dict[str, str] = field(default_factory=dict)
-    _mtimes: dict[str, float] = field(default_factory=dict)
+    # Content digest per brain file, not mtime. See _load_file.
+    _digests: dict[str, str] = field(default_factory=dict)
     watchers: dict[str, Callable] = field(default_factory=dict)
     watcher_errors: dict[str, str] = field(default_factory=dict)
     # watcher stem -> standing order id that replaced it; run_all skips these while the runner keeps the mapping
@@ -175,17 +177,38 @@ class Registry:
                 del self.watcher_superseded[name]
 
     def _load_file(self, path: Path, kind: str) -> None:
+        """Load a brain file if its CONTENT changed since the last load.
+
+        This compared st_mtime, and mtime is not a change signal. On Windows the file-time clock advances about
+        every 15 ms: 200 writes to one file measured here produced 15 distinct mtimes, so two writes to the same
+        file in quick succession are indistinguishable and the second one never loads. The agent edits its own
+        tools and watchers, so that is the shape of it fixing something it just wrote -- and the failure is
+        silent: tool_write reports which tools registered, and they can be the previous version's. mtime also
+        moves for reasons that have nothing to do with content: a checkout, a copy that preserves timestamps, an
+        unpacked archive.
+
+        The source is then compiled here rather than through loader.exec_module, because __pycache__ validates a
+        .pyc against the source's mtime AND SIZE -- the same weak signal again. A one-character fix under an
+        unchanged mtime is the same size, so exec_module hands back the previous version's bytecode. Compiling
+        the bytes already read has no cache to go stale.
+
+        Cost: 18 brain files, 66 KB, 1.84 ms per reload_brain(), against LLM calls measured in seconds.
+        """
         key = f"{kind}:{path.name}"
-        mtime = path.stat().st_mtime
-        if self._mtimes.get(key) == mtime:
+        try:
+            src = path.read_bytes()
+        except OSError:
+            return  # vanished between the glob and here; reload_brain drops it below
+        digest = hashlib.blake2b(src, digest_size=16).hexdigest()
+        if self._digests.get(key) == digest:
             return
-        self._mtimes[key] = mtime
+        self._digests[key] = digest
         modname = f"brain_{kind}_{re.sub(r'[^a-zA-Z0-9_]', '_', path.stem)}"
         try:
             spec = importlib.util.spec_from_file_location(modname, path)
             mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
             sys.modules[modname] = mod
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+            exec(compile(src, str(path), "exec"), mod.__dict__)  # noqa: S102
         except Exception:  # noqa: BLE001
             err = traceback.format_exc(limit=3)
             (self.load_errors if kind == "tool" else self.watcher_errors)[path.name] = err

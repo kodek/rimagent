@@ -18,7 +18,7 @@ def look(ctx, x: int | None = None, z: int | None = None, w: float = 60, around:
     png = ctx.bridge.screenshot(x, z, w, wpx, hpx)
     table = {}
     try:
-        from .annotate import annotate
+        from ..annotate import annotate
         detail = ctx.bridge.call("map.detail", x=x, z=z, w=min(60, int(w)), h=min(60, int(w * hpx / wpx) + 2))
         png, table = annotate(png, x, z, w, wpx, hpx, detail.get("things") or [], detail.get("anchors_in_view") or {}, marks=marks)
     except Exception as e:  # noqa: BLE001

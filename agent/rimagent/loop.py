@@ -13,6 +13,15 @@ from .registry import to_text
 
 PROMPTS = Path(__file__).parent / "prompts"
 
+LOG_CLIP = 3000
+MARK = '\n…(log clipped {n} chars; the model was given the full result)'
+
+
+def clip(text: str, limit: int = LOG_CLIP) -> str:
+    """Shorten a tool result for the log, and say that is what happened."""
+    return text if len(text) <= limit else text[:limit] + MARK.format(n=len(text) - limit)
+
+
 DEFAULT_SYSTEM = """You are rimagent. You run this RimWorld colony by yourself through tools, and you improve your own skills, tools and reflexes between games. Nobody else will help.
 
 Protocol for every step: read the situation, act on the most urgent thing with tools, update the notebook if something important changed, then call end_turn with a wake plan. Be terse in visible text; do the work with tool calls. Tool results are truncated at ~8k chars, so ask narrowly.
@@ -141,8 +150,12 @@ def think(ctx: Context, user_message: str, situation_hint: str = "", *, max_call
             if isinstance(result, dict) and "_image_png_b64" in result:
                 image = result.pop("_image_png_b64")
             text = to_text(result)
-            ctx.emit("tool_result", {"name": name, "id": cid, "ok": ok, "text": text[:3000], "elapsed": round(time.time() - t1, 2), "stream": st})
-            res.transcript.append({"role": "tool", "name": name, "ok": ok, "text": text[:3000]})
+            # The model gets `text` in full; the event and the transcript are clipped for size. Clipping them
+            # without saying so makes the run log misrepresent what the model was given -- a result cut mid-JSON
+            # reads as a malformed tool result rather than a long one. to_text already marks its own truncation.
+            logged = clip(text)
+            ctx.emit("tool_result", {"name": name, "id": cid, "ok": ok, "text": logged, "elapsed": round(time.time() - t1, 2), "stream": st})
+            res.transcript.append({"role": "tool", "name": name, "ok": ok, "text": logged})
             messages.append({"role": "tool", "tool_call_id": cid, "content": text})
             if image:
                 image_msgs.append({"role": "user", "content": [{"type": "text", "text": f"Image from {name}:"}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image}"}}]})

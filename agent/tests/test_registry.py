@@ -232,7 +232,6 @@ def test_hot_load_syntax_error_lands_in_load_errors():
         def fixed(ctx):
             return 1
     ''')
-    _bump_mtime(f)
     reg.reload_brain()
     assert "broken.py" not in reg.load_errors
     assert "fixed" in reg.tools
@@ -252,7 +251,10 @@ def test_hot_load_edit_reloads_and_delete_removes():
     assert reg.execute(None, "count", {}) == (1, True)
     assert reg.tools["count"].description == "v1"
 
-    # same mtime -> no reload even if content differs
+    # New content reloads whatever the clock says. This asserted the opposite -- that an edit under an
+    # unchanged mtime is ignored -- which is how the registry behaved: on Windows the file-time clock
+    # advances about every 15 ms, so two writes in quick succession share an mtime and the second one
+    # silently never loaded. That made this test fail about two full runs in five, against real code.
     st = f.stat()
     _write(f, '''
         from rimagent.registry import tool
@@ -263,13 +265,14 @@ def test_hot_load_edit_reloads_and_delete_removes():
     ''')
     os.utime(f, (st.st_atime, st.st_mtime))
     reg.reload_brain()
-    assert reg.tools["count"].description == "v1"
-
-    # bumped mtime -> reloaded, old tool name from this file replaced
-    _bump_mtime(f)
-    reg.reload_brain()
     assert reg.execute(None, "count", {}) == (2, True)
     assert reg.tools["count"].description == "v2"
+
+    # Unchanged content does not reload, whatever the clock says.
+    before = reg.tools["count"].fn
+    _bump_mtime(f)
+    reg.reload_brain()
+    assert reg.tools["count"].fn is before
 
     # renaming the tool inside the file drops the old name
     _write(f, '''
@@ -279,7 +282,6 @@ def test_hot_load_edit_reloads_and_delete_removes():
         def count(ctx):
             return 3
     ''')
-    _bump_mtime(f)
     reg.reload_brain()
     assert "count" not in reg.tools
     assert "count_renamed" in reg.tools
@@ -337,7 +339,6 @@ def test_watcher_syntax_error_and_delete():
     assert "bad" not in reg.watchers
 
     _write(f, "def watch(ctx, events):\n    return []\n")
-    _bump_mtime(f)
     reg.reload_brain()
     assert "bad.py" not in reg.watcher_errors
     assert "bad" in reg.watchers
@@ -345,3 +346,73 @@ def test_watcher_syntax_error_and_delete():
     f.unlink()
     reg.reload_brain()
     assert "bad" not in reg.watchers
+
+
+def test_a_rewrite_in_the_same_clock_tick_takes_effect():
+    """The agent writes a tool, sees it fail, and writes the fix. Both writes can land in one clock tick.
+
+    The Windows file-time clock advances about every 15 ms, so the two writes share an st_mtime. Change
+    detection compared exactly that, and the fix silently never loaded: tool_write reported success and the
+    tool went on behaving like the broken version.
+    """
+    f = paths.TOOLS / "quick.py"
+    reg = Registry()
+    seen = []
+    for version in (1, 2, 3, 4, 5):
+        _write(f, f'''
+            from rimagent.registry import tool
+
+            @tool("quick", "v{version}")
+            def quick(ctx):
+                return {version}
+        ''')
+        reg.reload_brain()
+        seen.append(reg.execute(None, "quick", {})[0])
+    assert seen == [1, 2, 3, 4, 5]
+
+
+def test_a_same_length_edit_under_an_unchanged_mtime_still_runs_the_new_code():
+    """One character, same file length, same mtime: the case __pycache__ gets wrong.
+
+    A .pyc is validated against the source's mtime and size. Both match here, so loader.exec_module hands
+    back the previous version's bytecode -- the file on disk says one thing and the code that runs says
+    another. Compiling the bytes we read has no cache to go stale.
+    """
+    f = paths.TOOLS / "onechar.py"
+    _write(f, '''
+        from rimagent.registry import tool
+
+        @tool("onechar", "x")
+        def onechar(ctx):
+            return 1
+    ''')
+    reg = Registry()
+    reg.reload_brain()
+    assert reg.execute(None, "onechar", {}) == (1, True)
+
+    st = f.stat()
+    _write(f, '''
+        from rimagent.registry import tool
+
+        @tool("onechar", "x")
+        def onechar(ctx):
+            return 2
+    ''')
+    assert f.stat().st_size == st.st_size, "the point of this test is that the size is identical"
+    os.utime(f, (st.st_atime, st.st_mtime))
+    reg.reload_brain()
+    assert reg.execute(None, "onechar", {}) == (2, True)
+
+
+def test_a_watcher_fixed_immediately_after_it_broke_is_picked_up():
+    """The same defect on the watcher side, where a dead watcher is silent by nature."""
+    f = paths.WATCHERS / "fixme.py"
+    _write(f, "def watch(ctx, events)\n    return []\n")
+    reg = Registry()
+    reg.reload_brain()
+    assert "fixme.py" in reg.watcher_errors
+
+    _write(f, "def watch(ctx, events):\n    return ['ok']\n")
+    reg.reload_brain()
+    assert "fixme.py" not in reg.watcher_errors
+    assert reg.watchers["fixme"](None, []) == ["ok"]
