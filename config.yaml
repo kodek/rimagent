@@ -66,3 +66,4 @@ watchdog:
   max_tool_calls: 40       # budget for the whole pass (smaller than play's max_tool_calls; reading source is expensive)
 dashboard:
   port: 8770
+  open_browser: true    # pop the dashboard in the default browser when play starts

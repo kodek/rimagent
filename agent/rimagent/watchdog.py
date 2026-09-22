@@ -62,7 +62,7 @@ def safe_path(path: str) -> str:
     if not raw:
         raise WatchdogError("empty path")
     root = _repo_root()
-    if raw.startswith("/"):
+    if os.path.isabs(raw):  # "/x" everywhere, and "C:/x" on Windows, which startswith("/") misses
         try:
             raw = os.path.relpath(os.path.realpath(raw), str(root))
         except ValueError as e:  # different drive / unrelated path
@@ -154,6 +154,14 @@ def _tail(text: str, limit: int = 4000) -> str:
 DOTNET_ROOT = os.environ.get("DOTNET_ROOT", "/opt/homebrew/opt/dotnet/libexec")
 
 
+def _dotnet_env() -> dict[str, str]:
+    """DOTNET_ROOT is only needed where the muxer is not already on PATH (the Homebrew default above).
+    Pointing it at a directory that does not exist breaks the host, so send nothing then (Windows, Linux)."""
+    if not Path(DOTNET_ROOT).is_dir():
+        return {}
+    return {"DOTNET_ROOT": DOTNET_ROOT, "PATH": os.environ.get("PATH", "") + os.pathsep + str(Path(DOTNET_ROOT).parent / "bin")}
+
+
 def verify_python() -> tuple[bool, str]:
     """`uv run pytest -q` in agent/."""
     ok, out = _run(["uv", "run", "pytest", "-q"], _repo_root() / "agent")
@@ -163,7 +171,7 @@ def verify_python() -> tuple[bool, str]:
 def verify_mod() -> tuple[bool, str]:
     """Build RimBridge (to a scratch output dir, never the live Assemblies symlink), then the mod test suite."""
     BUILD_OUT.mkdir(parents=True, exist_ok=True)
-    env = {"DOTNET_ROOT": DOTNET_ROOT, "PATH": os.environ.get("PATH", "") + os.pathsep + str(Path(DOTNET_ROOT).parent / "bin")}
+    env = _dotnet_env()
     ok, out = _run(
         ["dotnet", "build", "Source/RimBridge.csproj", "-c", "Release", "--nologo", "-v", "quiet",
          f"-p:OutputPath={BUILD_OUT.resolve()}{os.sep}"],
@@ -182,7 +190,7 @@ def verify_mod_steward() -> tuple[bool, str]:
     what the running game loaded. If mod/Source and mod-steward/Source were both patched in this pass, verify_mod
     must run first so that reference reflects the patched RimBridge."""
     BUILD_OUT.mkdir(parents=True, exist_ok=True)
-    env = {"DOTNET_ROOT": DOTNET_ROOT, "PATH": os.environ.get("PATH", "") + os.pathsep + str(Path(DOTNET_ROOT).parent / "bin")}
+    env = _dotnet_env()
     ok, out = _run(
         ["dotnet", "build", "Source/RimBridgeSteward.csproj", "-c", "Release", "--nologo", "-v", "quiet",
          f"-p:OutputPath={BUILD_OUT.resolve()}{os.sep}"],
