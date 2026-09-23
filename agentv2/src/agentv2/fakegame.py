@@ -1,0 +1,150 @@
+"""An in-process stand-in for RimBridge (httpx transport), for tests and for smoke runs without RimWorld.
+
+    game = FakeGame()
+    bridge = Bridge("http://fake", transport=game.transport())
+"""
+from __future__ import annotations
+
+import asyncio
+import io
+import json
+from dataclasses import dataclass, field
+from importlib import resources
+from typing import Any
+
+import httpx
+from PIL import Image
+
+TICKS_PER_HOUR = 2500
+
+
+@dataclass
+class FakeGame:
+    state: str = "playing"
+    tick: int = 60_000
+    speed: int = 3
+    paused: bool = False
+    seed: str = "rimagent-1"
+    colonists: list[dict[str, Any]] = field(default_factory=lambda: [
+        {"name": "Bob", "id": "Human1", "pos": [120, 118], "mood": 0.62, "health": 1.0, "job": "Cutting a tree", "downed": False},
+        {"name": "Ann", "id": "Human2", "pos": [122, 121], "mood": 0.55, "health": 0.9, "job": "Hauling", "downed": False},
+        {"name": "Cid", "id": "Human3", "pos": [118, 125], "mood": 0.71, "health": 1.0, "job": "Idle", "downed": False},
+    ])
+    ledger: list[dict[str, Any]] = field(default_factory=list)
+    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    methods: list[dict[str, str]] = field(default_factory=lambda: json.loads(resources.files("agentv2").joinpath("fake_methods.json").read_text()))
+
+    @property
+    def day(self) -> int:
+        return self.tick // (TICKS_PER_HOUR * 24)
+
+    @property
+    def hour(self) -> int:
+        return self.tick // TICKS_PER_HOUR % 24
+
+    def add_event(self, kind: str, text: str, **data: Any) -> None:
+        self.ledger.append({"seq": len(self.ledger) + 1, "kind": kind, "text": text, "tick": self.tick, "day": self.day, "hour": self.hour, **data})
+
+    def advance(self, hours: float) -> None:
+        before = self.day
+        self.tick += int(hours * TICKS_PER_HOUR)
+        if self.day != before:
+            self.add_event("day", f"day {self.day} begins")
+
+    async def run_clock(self, hours_per_second: float = 0.5, raid_every_days: int = 3) -> None:
+        """Advance time like a running game: faster at higher speeds, stopped while paused; a raid every few days."""
+        while True:
+            await asyncio.sleep(0.5)
+            if self.state == "playing" and not self.paused and self.speed > 0:
+                day = self.day
+                self.advance(hours_per_second * 0.5 * self.speed)
+                if self.day != day and self.day % raid_every_days == 0:
+                    self.add_event("hostile_group", "A pirate band of 3 raiders is approaching from the east.")
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/health":
+            return httpx.Response(200, json={"ok": True, "mainThreadAlive": True, "frames": 1})
+        if path == "/methods":
+            return httpx.Response(200, json={"ok": True, "result": self.methods})
+        if path == "/events":
+            since = int(request.url.params.get("since", 0))
+            events = [e for e in self.ledger if e["seq"] > since]
+            return httpx.Response(200, json={"ok": True, "result": {"events": events, "last_seq": len(self.ledger)}})
+        if path == "/screenshot":
+            buf = io.BytesIO()
+            Image.new("RGB", (int(request.url.params.get("width_px", 1024)), int(request.url.params.get("height_px", 768))), (60, 90, 40)).save(buf, format="PNG")
+            return httpx.Response(200, content=buf.getvalue(), headers={"content-type": "image/png"})
+        if path == "/rpc":
+            body = json.loads(request.content)
+            method, params = body.get("method", ""), body.get("params") or {}
+            self.calls.append((method, params))
+            try:
+                return httpx.Response(200, json={"ok": True, "result": self.rpc(method, params)})
+            except KeyError as e:
+                return httpx.Response(200, json={"ok": False, "error": str(e.args[0])})
+        return httpx.Response(404, json={"ok": False, "error": "not found"})
+
+    def rpc(self, method: str, p: dict[str, Any]) -> Any:
+        known = {m["method"] for m in self.methods}
+        if method not in known:
+            raise KeyError(f"unknown method {method!r}")
+        names = {c["name"] for c in self.colonists} | {c["id"] for c in self.colonists}
+        match method:
+            case "game.status":
+                return {"state": self.state, "tick": self.tick, "day": self.day, "hour": self.hour, "season": "Spring", "speed": self.speed,
+                        "paused": self.paused, "colonists": len(self.colonists), "seq": len(self.ledger), "seed": self.seed}
+            case "game.speed":
+                self.speed = int(p.get("speed", 1))
+                return {"speed": self.speed}
+            case "game.pause":
+                self.paused = bool(p.get("paused", True))
+                return {"paused": self.paused}
+            case "game.new_game":
+                self.state, self.seed, self.tick, self.ledger = "playing", str(p.get("seed", "x")), 60_000, []
+                return {"started": True}
+            case "game.save" | "steward.enable" | "steward.orders.set" | "game.dev_mode":
+                return {"ok": True}
+            case "game.list_saves":
+                return [{"name": "rimagent-autosave", "modified": "now"}]
+            case "state.summary":
+                return {"day": self.day, "hour": self.hour, "colonists": len(self.colonists), "colonist_list": self.colonists, "wealth": 14_500,
+                        "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120, "alerts": [], "key_stocks": {"WoodLog": 240, "Steel": 180}}
+            case "state.base":
+                return {"home_center": [120, 120], "rooms": [], "blueprints_pending": 0, "frames_in_progress": 0, "anchors": []}
+            case "state.dialogs" | "state.letters" | "state.alerts" | "state.threats":
+                return []
+            case "steward.status":
+                return {"enabled": {"scorer": True, "stock": True}, "posture": None, "stock": [], "problems": [], "pawns": []}
+            case "ui.draft" | "ui.goto":
+                if p.get("pawn") not in names:
+                    raise KeyError(f"no pawn {p.get('pawn')!r}")
+                return {"pawn": p["pawn"], "ok": True}
+            case "ui.build":
+                if not p.get("def"):
+                    raise KeyError("def is required")
+                return {"placed": [[120, 120]], "failed": []}
+            case "state.research":
+                return {"current": None, "available": [{"def": "Batteries", "cost": 400}, {"def": "SolarPanels", "cost": 600}], "finished": 3}
+            case "state.pawns":
+                return self.colonists
+            case "state.pawn":
+                match = [c for c in self.colonists if p.get("pawn") in (c["name"], c["id"])]
+                if not match:
+                    raise KeyError(f"no pawn {p.get('pawn')!r}")
+                return {**match[0], "skills": {"Shooting": 6, "Construction": 5, "Growing": 4}, "traits": ["Industrious"]}
+            case "steward.orders":
+                return [{"id": o, "enabled": True, "summary": "idle", "acting_on": 0} for o in ("combat", "rescue", "unforbid", "fire")]
+            case "map.detail":
+                return {"centre": [120, 120], "grid": ".....\n..@..\n.....", "things": [{"id": "Bed1", "def": "Bed", "pos": [121, 119], "state": "built"}]}
+            case "map.view" | "map.overview":
+                return {"grid": ".....\n..@..\n.....", "legend": "@ colonist"}
+            case "anchor.list" | "state.rooms" | "state.quests" | "state.designations" | "state.bills" | "state.storage":
+                return []
+            case _ if method.startswith(("ui.", "steward.", "anchor.", "game.")):
+                return {"done": True}
+            case _:
+                return {}
