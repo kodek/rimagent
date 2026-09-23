@@ -75,6 +75,43 @@ class StewardSettings(BaseModel):
     research_queue: list[str] = Field(default_factory=list)
 
 
+class JevSettings(BaseModel):
+    """TypeSafe's Jev. The direct API is faster than OpenRouter (base_url https://openrouter.ai/api, model typesafe/jev-1.13)."""
+
+    base_url: str = "https://api.typesafe.ai"
+    model: str = "jev-1.13.0"
+    api_key: str = ""
+    timeout_s: float = 2.0
+    hedge_after_s: float = 0.8
+    max_concurrency: int = 8
+    requests_per_minute: int = 600
+    usd_per_hour: float = 2.0
+    usd_per_million_input_tokens: float = 0.042
+    circuit_failures: int = 5
+    circuit_cooldown_s: float = 30.0
+
+
+class GateSettings(BaseModel):
+    heldout_share: float = 0.3
+    min_heldout: int = 4
+    min_agreement: float = 0.8
+    canary_actions: int = 5
+    demote_after_wrong: int = 2
+
+
+class LoopSettings(BaseModel):
+    enabled: bool = True
+    tick_s: float = 0.5
+    summary_max_age_s: float = 20.0
+    screen_max_age_s: float = 1.0
+    claim_timeout_s: float = 20.0
+    directive_hours: float = 24.0
+    escalations_per_hour: int = 6
+    director_lease_hours: float = 6.0
+    action_timeout_ms: int = 3000
+    gate: GateSettings = Field(default_factory=GateSettings)
+
+
 class DashboardSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8771
@@ -88,6 +125,8 @@ class Settings(BaseModel):
     context: ContextSettings = Field(default_factory=ContextSettings)
     watchers: WatcherSettings = Field(default_factory=WatcherSettings)
     steward: StewardSettings = Field(default_factory=StewardSettings)
+    jev: JevSettings = Field(default_factory=JevSettings)
+    loop: LoopSettings = Field(default_factory=LoopSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     root: Path = ROOT
     knowledge_dir: Path = ROOT.parent / "knowledge"
@@ -111,6 +150,10 @@ _ENV = {
     "AGENTV2_LLM_API_KEY": ("llm", "api_key"),
     "AGENTV2_LLM_THINKING": ("llm", "thinking"),
     "AGENTV2_BRIDGE_URL": ("bridge", "url"),
+    "TYPESAFE_API_KEY": ("jev", "api_key"),
+    "AGENTV2_JEV_API_KEY": ("jev", "api_key"),
+    "AGENTV2_JEV_BASE_URL": ("jev", "base_url"),
+    "AGENTV2_JEV_MODEL": ("jev", "model"),
 }
 
 
