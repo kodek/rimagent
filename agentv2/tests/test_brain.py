@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from agentv2.brain import Brain, BrainLayout
+from agentv2.bridge import GameStatus
+from agentv2.bus import Bus, JsonlLog
+from agentv2.episode import Episode, EpisodeStore
+from agentv2.events import Delta, Status
+from agentv2.history import Scores, score
+
+
+@pytest.fixture
+def brain(settings) -> Brain:
+    return Brain(BrainLayout(settings.brain))
+
+
+def test_seed_brain_is_valid(brain):
+    assert brain.problems() == {}
+    assert brain.skills.capability() is not None and brain.has_authored()
+    assert {s.name for s in brain.skills.infos()} >= {"defense-basics", "early-game-food", "work-priorities"}
+    assert brain.layout.doctrine.read_text().startswith("# Doctrine")
+
+
+def test_a_bad_skill_is_reported_and_the_others_still_load(brain):
+    bad = brain.layout.skills_dir / "broken"
+    bad.mkdir()
+    (bad / "SKILL.md").write_text("no frontmatter here\n", encoding="utf-8")
+    assert list(brain.problems()) == ["skill broken"]
+    skills = brain.skills.capability()
+    assert skills is not None and "broken" not in (skills.include or set())
+
+
+def test_authored_capability_round_trip(brain):
+    code = ("from dataclasses import dataclass\nfrom pydantic_ai.capabilities import AbstractCapability\n"
+            "@dataclass\nclass Hello(AbstractCapability):\n    def get_instructions(self):\n        return 'hello'\n")
+    record = brain.creation.store.write("hello", code)
+    assert record.last_error is None
+    assert brain.has_authored()
+    assert brain.authored()[-1]["name"] == "hello"
+
+
+def test_layout_refuses_names_outside_the_brain(brain):
+    for name in ("../AGENTS", "a/b", ".hidden", ""):
+        with pytest.raises(ValueError):
+            brain.layout.skill(name)
+    assert BrainLayout.kind_of("skills/x/SKILL.md") == "skill" and BrainLayout.kind_of("AGENTS.md") == "doctrine"
+
+
+def test_scores(settings):
+    scores = Scores(settings.brain / "scores.jsonl")
+    scores.record({"episode": 1, "seed": "s", "score": score(10, 3, 0, 15_000, 60, 4, 1)})
+    assert scores.history()[0]["score"] == 100 + 180 + 2.5 + 30 + 32 + 40
+    assert "episode | seed" in scores.text()
+
+
+def test_episode_store_reads_the_old_file_format(tmp_path):
+    path = tmp_path / "episode.json"
+    path.write_text('{"episode": 3, "seed": "s", "start_day": 2, "deaths": 1, "raids": 0, "last_improve_day": 4, "ended": false}')
+    episode = EpisodeStore(path).load()
+    assert episode is not None and episode == Episode(number=3, seed="s", start_day=2, deaths=1, last_improve_day=4)
+    episode.tally([{"kind": "hostile_group", "text": "raid"}, {"kind": "message", "text": "noise"}])
+    EpisodeStore(path).save(episode)
+    again = EpisodeStore(path).load()
+    assert again is not None and again.raids == 1 and [e["kind"] for e in again.timeline] == ["hostile_group"]
+
+
+def test_bus_keeps_persistent_events_and_streams_ephemeral_ones(tmp_path):
+    log = JsonlLog(tmp_path / "events.jsonl")
+    bus = Bus(sinks=[log])
+    queue = bus.subscribe()
+    bus.emit(Status.model_validate({"day": 3, "phase": "playing"}))
+    bus.emit(Delta(part="thinking", text="thinking…"), stream="play")
+    bus.emit(Status(deaths=1))
+    log.close()
+    assert [e["kind"] for e in bus.since(0)] == ["status", "status"]
+    assert bus.state == {"phase": "playing", "day": 3, "deaths": 1}
+    assert [queue.get_nowait()["data"] for _ in range(3)][1] == {"stream": "play", "part": "thinking", "text": "thinking…"}
+    assert [json.loads(line)["data"] for line in (tmp_path / "events.jsonl").read_text().splitlines()] == [{"day": 3, "phase": "playing"}, {"deaths": 1}]
+
+
+def test_a_reload_rewinds_the_episode_to_its_checkpoint():
+    episode = Episode(number=1, seed="s")
+    episode.tally([{"kind": "hostile_group", "text": "first raid"}])
+    episode.saved(GameStatus(state="playing", tick=90_000, day=1, hour=12))
+    episode.tally([{"kind": "colonist_died", "text": "Bob"}, {"kind": "hostile_group", "text": "second raid"}])
+    cp = episode.rewind(GameStatus(state="playing", tick=90_000, day=1, hour=12))
+    assert (cp.day, cp.hour) == (1, 12) and (episode.deaths, episode.raids) == (0, 1)
+    assert [e["kind"] for e in episode.timeline] == ["hostile_group", "reloaded"]
+
+
+def test_skills_match_their_wake_on_words(brain):
+    assert all(s.wake_on for s in brain.skills.infos())
+    assert brain.skills.matching("alert (Critical): Colonist needs rescue\nevent: hostile_group: raiders") == ["defense-basics", "medicine-and-health"]
+    plain = brain.layout.skills_dir / "plain"
+    plain.mkdir()
+    (plain / "SKILL.md").write_text("---\nname: plain\ndescription: no wake words\n---\nbody\n", encoding="utf-8")
+    assert "plain" not in brain.skills.matching("plain raid") and brain.problems() == {}

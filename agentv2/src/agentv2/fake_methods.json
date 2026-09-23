@@ -1,0 +1,462 @@
+[
+ {
+  "method": "anchor.delete",
+  "doc": "{name}"
+ },
+ {
+  "method": "anchor.list",
+  "doc": "named anchors with rects, sizes and distance/direction from home"
+ },
+ {
+  "method": "anchor.set",
+  "doc": "{name, cell?: location, rect?: location-rect, thing?: id} name a place; every tool then accepts the name ('bedroom2', 'bedroom2:NW', 'bedroom2:extend:E:4', 'bedroom2 +N2'). Saved with the game."
+ },
+ {
+  "method": "bridge.methods",
+  "doc": "list all rpc methods with docs"
+ },
+ {
+  "method": "defs.buildable",
+  "doc": "{category?: Structure|Production|Furniture|Power|Security|Misc|Floors|...} everything the player can build right now with costs (research done)"
+ },
+ {
+  "method": "defs.get",
+  "doc": "{def: defName, type?: ThingDef|RecipeDef|ResearchProjectDef|... (auto-detected if omitted), depth?: 1} rich def info: costs, stats, recipes, research, what it unlocks"
+ },
+ {
+  "method": "defs.search",
+  "doc": "{query, type?: ThingDef|RecipeDef|ResearchProjectDef|..., limit?: 30} search defs by defName/label substring"
+ },
+ {
+  "method": "defs.work_types",
+  "doc": "all work types in priority order with what they cover"
+ },
+ {
+  "method": "dev.damage",
+  "doc": "{pawn|thing, amount, def?: Cut|Blunt|Gunshot|Burn} apply damage (assisted)"
+ },
+ {
+  "method": "dev.destroy",
+  "doc": "{thing} destroy a thing (assisted)"
+ },
+ {
+  "method": "dev.finish_research",
+  "doc": "{def} complete a research project instantly (assisted)"
+ },
+ {
+  "method": "dev.god_mode",
+  "doc": "{enabled: bool} instant build/free everything (assisted)"
+ },
+ {
+  "method": "dev.heal",
+  "doc": "{pawn} remove all injuries/diseases (assisted)"
+ },
+ {
+  "method": "dev.incident",
+  "doc": "{def: IncidentDef (e.g. RaidEnemy, ColdSnap, Flashstorm, TraderCaravanArrival), points?: float, faction?: name} fire an incident now (assisted)"
+ },
+ {
+  "method": "dev.kill_hostiles",
+  "doc": "kill every hostile pawn on the map (assisted)"
+ },
+ {
+  "method": "dev.reveal_map",
+  "doc": "remove fog of war (assisted)"
+ },
+ {
+  "method": "dev.set_need",
+  "doc": "{pawn, need: NeedDef (Food, Rest, Joy, Mood...), level: 0..1} (assisted)"
+ },
+ {
+  "method": "dev.spawn",
+  "doc": "{def: ThingDef, cell: [x,z], count?: 1, stuff?: ThingDef, quality?: Awful..Legendary} spawn items/buildings (assisted)"
+ },
+ {
+  "method": "dev.spawn_pawn",
+  "doc": "{kind: PawnKindDef, cell: [x,z], faction?: Player|<name>|none, count?: 1} spawn pawns (assisted)"
+ },
+ {
+  "method": "dev.unlock_all_research",
+  "doc": "finish every research project (assisted)"
+ },
+ {
+  "method": "dev.weather",
+  "doc": "{def: WeatherDef} force weather (assisted)"
+ },
+ {
+  "method": "engine.call",
+  "doc": "{path, args?: [...], depth?: 2} invoke a method; args are coerced to parameter types (cells as [x,z], things by id, defs by defName, enums by name)"
+ },
+ {
+  "method": "engine.get",
+  "doc": "{path, depth?: 2} read any engine value. Roots: Find, Current, Map, World, Game, Player, Thing:<id>, Pawn:<name|id>, Def:<DefType>:<defName>, Type:<Full.Name>, Zone:<label>, Area:<label>, Faction:<name>. Segments: .member, .method(), [index|key|defName]"
+ },
+ {
+  "method": "engine.members",
+  "doc": "{path|type} list fields, properties and method signatures of an object or type (for discovery)"
+ },
+ {
+  "method": "engine.new",
+  "doc": "{type, args?: [...]} construct an object (e.g. IncidentParms), or pass {type, fields:{...}} to construct and fill"
+ },
+ {
+  "method": "engine.set",
+  "doc": "{path, value} assign a field/property (value coerced to the member type)"
+ },
+ {
+  "method": "engine.types",
+  "doc": "{query, limit?: 50} search type names in the game assembly (e.g. 'Designator_')"
+ },
+ {
+  "method": "game.dev_mode",
+  "doc": "{enabled: bool, god?: bool}"
+ },
+ {
+  "method": "game.list_saves",
+  "doc": "-> [{name, modified}]"
+ },
+ {
+  "method": "game.load",
+  "doc": "{name} load a saved game (async; poll game.status until state=playing)"
+ },
+ {
+  "method": "game.log_tail",
+  "doc": "{lines?: 100, filter?: substring} tail Player.log"
+ },
+ {
+  "method": "game.new_game",
+  "doc": "{scenario?: defName, storyteller?: defName, difficulty?: defName, seed?: string, map_size?: 200..300, permadeath?: bool} start a fresh game (async; poll game.status)"
+ },
+ {
+  "method": "game.pause",
+  "doc": "{paused: bool}"
+ },
+ {
+  "method": "game.quit_to_menu",
+  "doc": "leave the current game"
+ },
+ {
+  "method": "game.save",
+  "doc": "{name} save the current game"
+ },
+ {
+  "method": "game.speed",
+  "doc": "{speed: 0..4} set time speed (0 pause, 1 normal, 2 fast, 3 superfast, 4 ultrafast/dev)"
+ },
+ {
+  "method": "game.status",
+  "doc": "-> {state: menu|playing|loading, tick, day, hour, season, speed, paused, map_size, colonists, seq}"
+ },
+ {
+  "method": "map.cell",
+  "doc": "{cell: [x,z]} everything at a cell: terrain, fertility, roof, zone, room, things, fogged, walkable"
+ },
+ {
+  "method": "map.detail",
+  "doc": "{x?, z?, around?: thingId|pawn|location-grammar e.g. Room:12/anchor name (centre on it), w?: 24, h?: 24 (max 60, enough for a whole base), roof?: false} the BUILDING CAMERA: zoomed ASCII where every column is numbered, each building type gets its own letter (UPPER = built, lower = blueprint/frame), '*' marks interaction spots that must stay clear, '+' doors, '_' stockpile, ',' growing zone, 'i' items, '@' colonists, '!' hostiles, '^' rock, '~' water, '.' open ground. Returns legend + list of things in view with id/rot/size. Use before and after placing anything."
+ },
+ {
+  "method": "map.find",
+  "doc": "{def?: defName, category?: ThingCategoryDef, group?: ThingRequestGroup, kind?: resource_rock|tree|harvestable|corpse|chunk|animal|item|building|blueprint, near?: [x,z], radius?: n, reachable_from?: pawn, forbidden?: bool, faction?: player|hostile|none|any, limit?: 50} find things; sorted by distance from 'near' (default home)"
+ },
+ {
+  "method": "map.open_rects",
+  "doc": "{w, h, near?: [x,z], radius?: 40, limit?: 8, allow_trees?: true} find open rectangles of buildable, unroofed-or-roofed standable ground with no buildings/blueprints; returns min corners sorted by distance"
+ },
+ {
+  "method": "map.overview",
+  "doc": "{blocks?: 50} coarse whole-map picture, one char per block (majority feature)"
+ },
+ {
+  "method": "map.path",
+  "doc": "{from: [x,z]|pawn, to: [x,z]|thingId, pawn?} path cost/length between two points (optionally for a specific pawn)"
+ },
+ {
+  "method": "map.power",
+  "doc": "{x?, z?, around?, w?: 30, h?: 30} the ELECTRICAL camera: = conduit, G generator, B battery, C powered consumer, X UNPOWERED consumer, digits = net id under a transmitter, + door, # wall, . other. Use before and after wiring."
+ },
+ {
+  "method": "map.reachable",
+  "doc": "{pawn, target: [x,z]|thingId, danger?: Some|Deadly|None} can the pawn reach the target?"
+ },
+ {
+  "method": "map.screenshot_bytes",
+  "doc": "{x?, z?, w?: cells wide (default 60), width_px?: 1024, height_px?: 768} render the map around [x,z] to PNG (base64). Also GET /screenshot?x=&z=&w=. Does not move the player's camera."
+ },
+ {
+  "method": "map.survey",
+  "doc": "{rect?: location-rect | x?, z?, w?, h?, center?: bool | around?: thingId|pawn|anchor|Room:N (whole map when omitted), scale?: cells per glyph (auto: fits ~64 cols), budget?: 6000 chars (grid coarsens and lists shorten to fit), format?: auto|rle|rows, only?: [grid|buildings|blueprints|zones|roof|pawns|items|designations|home], trees?: true, power?: false (list conduits), xray?: false (see through fog: ore, ruin interiors; marks the game assisted)} SEE THE WHOLE MAP CHEAPLY: base grid (terrain/rock/water/zones/structure footprints; run-length encoded when that is cheaper, else aligned rows with an x ruler) + sparse lists with exact cells: walls as segments, buildings by def with position+rotation, blueprints/frames, zones as rects, constructed-roof rects, pawns with facing, item stacks by def, designations. Use this first, then map.detail to zoom."
+ },
+ {
+  "method": "map.terrain_stats",
+  "doc": "counts of fertile soil, water, rock, ore (by type) etc. within radius of home"
+ },
+ {
+  "method": "map.view",
+  "doc": "{x?, z?, w?: 60, h?: 40, layer?: all|terrain|buildings|zones|pawns|items|roof|fog|home, center?: bool} ASCII view of a region (x,z = min corner unless center=true; default centred on home). Max 150x150."
+ },
+ {
+  "method": "state.alerts",
+  "doc": "active alert bar entries with explanations"
+ },
+ {
+  "method": "state.areas",
+  "doc": "allowed areas (Home, animal pens, custom)"
+ },
+ {
+  "method": "state.base",
+  "doc": "{verbose?: false} the base as objects: rooms (role, size, free floor, doors and where they lead, contents with ids/interaction cells, problems: unroofed/no door/dark/cold), structures outside rooms, anchors, trapped colonists. Use this instead of grids to reason about the base."
+ },
+ {
+  "method": "state.bills",
+  "doc": "{thing: id} bills on a work table"
+ },
+ {
+  "method": "state.designations",
+  "doc": "{def?: Mine|CutPlant|Hunt|Haul|Deconstruct|...} designations on the map grouped by def with counts and sample cells"
+ },
+ {
+  "method": "state.dialogs",
+  "doc": "open modal windows with their text and choices (these pause the game until answered; answer with ui.dialog)"
+ },
+ {
+  "method": "state.factions",
+  "doc": "all factions with relations"
+ },
+ {
+  "method": "state.letters",
+  "doc": "{include_archived?: false} letters waiting on screen (with choices where applicable)"
+ },
+ {
+  "method": "state.pawn",
+  "doc": "{pawn: id|name} full pawn detail: skills, traits, health, needs, mood thoughts, gear, work priorities, schedule, policies, relations"
+ },
+ {
+  "method": "state.pawns",
+  "doc": "{filter?: colonists|prisoners|animals|hostiles|all} list pawns (brief)"
+ },
+ {
+  "method": "state.policies",
+  "doc": "apparel/food/drug/reading policies available"
+ },
+ {
+  "method": "state.power",
+  "doc": "power nets with generation/consumption/storage and members, plus every UNPOWERED consumer with the nearest conduit or transmitter cell. Read this when anything electrical is not working."
+ },
+ {
+  "method": "state.quests",
+  "doc": "active and available quests"
+ },
+ {
+  "method": "state.research",
+  "doc": "current project, available projects (with prerequisites met), finished count"
+ },
+ {
+  "method": "state.rooms",
+  "doc": "rooms with role, cells, stats (impressiveness, beauty, cleanliness, temperature)"
+ },
+ {
+  "method": "state.stocks",
+  "doc": "{category?: Foods|Manufactured|ResourcesRaw|Medicine|Weapons|Apparel|... , min?: 1} counted resources on the map (stored + loose, unforbidden), grouped by defName"
+ },
+ {
+  "method": "state.storage",
+  "doc": "all stockpiles/shelves with priority and allowed categories summary"
+ },
+ {
+  "method": "state.summary",
+  "doc": "colony overview: date, colonists (brief), wealth, food, mood, threats, alerts, research, zones, power, key stocks, plus one named block per loaded add-on (e.g. steward {scorer, stock, posture, stock_brief, problems, orders_active: [order id], rally: bool} if the optional Steward mod is loaded)"
+ },
+ {
+  "method": "state.threats",
+  "doc": "hostile pawns/things on the map with positions, weapons, and distance to home; plus storyteller threat points"
+ },
+ {
+  "method": "state.work_matrix",
+  "doc": "every colonist x every work type: current priority, relevant skill level and passion, disabled flags. The raw material for a priority matrix."
+ },
+ {
+  "method": "steward.enable",
+  "doc": "{scorer?: bool, stock?: bool} switch the work-priority scorer and/or the stock jobs at runtime (persisted per game) -> {scorer, stock}"
+ },
+ {
+  "method": "steward.explain",
+  "doc": "{pawn: id|name, work?: WorkTypeDef} why the scorer gives this pawn each work priority: [{work, priority: 0-4, score: 0..1, reasons: [{label, delta}]}] sorted best first (all work types, or the one asked)"
+ },
+ {
+  "method": "steward.orders",
+  "doc": "standing orders (deterministic reflexes in the mod): [{id: combat|rescue|fire|unforbid|corpses|beds|policies|blueprints, label, enabled, interval_ticks, last_run_hours_ago, summary, acting_on: int}]"
+ },
+ {
+  "method": "steward.orders.explain",
+  "doc": "{id} what a standing order does and what it leaves alone -> {id, label, enabled, doc, rules: [string], summary, hands_off: [{thing, reason, until_hours: float|'forever', key?}] (manual-touch cooldowns this order honours plus its own manual marks: bed:/med:/food:/temp:/bill: keys; steward.orders.release clears them)}"
+ },
+ {
+  "method": "steward.orders.rally",
+  "doc": "{rect?: [x,z,w,h], clear?: true} rally rect for the combat order: set it (must contain standable cells; inside walls, with cover, near the hospital), clear it, or read it with {} -> {rect: [x,z,w,h], center: [x,z], cells: standable count} | null"
+ },
+ {
+  "method": "steward.orders.release",
+  "doc": "{thing?|pawn?: id or name, id?: order id} hand a thing/pawn back to the standing orders now: clears its manual-touch cooldowns and the manual marks (bed/medical/food/temperature/bill) of the given order (all orders when omitted); a pawn the combat order left drafted is undrafted when no fight is on -> {thing, touches_cleared, marks_cleared, undrafted}"
+ },
+ {
+  "method": "steward.orders.run",
+  "doc": "{id} run a standing order now (ignores its interval and enabled flag) -> {ran: bool (it acted on something), summary, acting_on, ids: [thing ids]}"
+ },
+ {
+  "method": "steward.orders.set",
+  "doc": "{id: order id|all, enabled: bool} switch a standing order on/off (persisted per game) -> row, or [rows] for all; switching combat off while it is engaged releases first (row.released: {undrafted, restored, left})"
+ },
+ {
+  "method": "steward.pawn",
+  "doc": "{pawn: id|name, managed: bool} managed=false takes the pawn manual (the scorer stops writing its priorities), managed=true hands it back -> {pawn, id, managed}"
+ },
+ {
+  "method": "steward.posture",
+  "doc": "{preset?: defend|build|harvest|recover|normal, label?: string (a label equal to a preset name seeds that preset; use another word for a custom posture), hours?: float (default 12), work?: {WorkTypeDef: -1..1 delta ADDED to every managed pawn's 0..1 score: +0.5 = about two priority steps up, -1 = off for everyone; values outside -1..1 are clamped}, weights?: {ConsiderX: multiplier >= 0 on that scorer weight}, targets?: {stock kind: multiplier >= 0 on the job's target count: 1.5 = +50%, 0 = target 0 so the job releases its own designations and idles}, clear?: bool ends the posture} time-boxed colony-wide bias; explicit dicts override preset entries; a new call replaces the old posture -> posture or null"
+ },
+ {
+  "method": "steward.research",
+  "doc": "{queue?: [ResearchProjectDef...], append?: false, clear?: bool} ordered research queue: when the current project finishes (or none is set) the next queued project that can start now becomes current; {} reads -> {queue: [defName], current, current_progress, started?, skipped?}"
+ },
+ {
+  "method": "steward.settings",
+  "doc": "{scorer?: {field: value...}, stock?: {field: value...}} read (no args) or write scorer/stock settings by field name (bools/ints/floats clamped; scorer.globalWorkAdjustments: {WorkTypeDef: -1..1}; Enabled = mod default, use steward.enable for runtime) -> {scorer: {...}, stock: {...}}"
+ },
+ {
+  "method": "steward.status",
+  "doc": "steward overview: {enabled: {scorer, stock}, posture: null|{label, expires_in_hours, work, weights, targets}, pawns: [{id, name, managed, priorities: {WorkTypeDef: 1-4}, top: [{work, priority, why}]}], stock: [{id, kind, label, target, current, enabled, suspended, managed, last_run_hours_ago, designations (created by the job), adopted? (external designations counted toward the target, never removed by the job), failures, summary, notes}], problems: [string], orders: [{id, enabled, summary, acting_on}] (standing orders, see steward.orders), rally: [x,z,w,h]|null}"
+ },
+ {
+  "method": "steward.stock.add",
+  "doc": "{kind: forestry|forestry_clear|foraging|hunting|hunting_leather|mining|production|livestock, target: int (livestock: = max), allow?: [defName|label], area?: label (forestry_clear: area to clear; livestock: restrict tamed animals to it), recipe?: RecipeDef (production), table?: thing id (production), species: PawnKindDef (livestock), min?: int, max?: int, tame?: true, slaughter?: true, train?: [Obedience|Release|Rescue|Haul], buckets?: {adult_male|adult_female|juvenile_male|juvenile_female: {min, max}} (livestock)} add a stock job -> full job row"
+ },
+ {
+  "method": "steward.stock.list",
+  "doc": "stock jobs in full: status rows plus allowed: [defName], available: [defName], counted: [ThingDef], auto_scaled, interval_hours, check_reachable, settings (per kind: area, invert_area, allow_saplings | force_fully_mature | resource, unforbid_corpses, hunt_predators | haul_chunks, deconstruct_buildings, mine_thick_roofs | recipe, table, bill | livestock: species, min, max, tame, slaughter, area, train, buckets, counts, wild_on_map, pending_tame, pending_slaughter)"
+ },
+ {
+  "method": "steward.stock.remove",
+  "doc": "{id|kind} delete a stock job and the designations/bill it created -> {removed: true, id, kind}"
+ },
+ {
+  "method": "steward.stock.run",
+  "doc": "{id|kind} run a stock job now (ignores its interval and suspension) -> {ran: bool (work was designated/changed), summary, current, target, designations}"
+ },
+ {
+  "method": "steward.stock.set",
+  "doc": "{id|kind, target?: int, suspended?: bool, managed?: bool, allow?: [defName|label], disallow?: [...], allow_all?: bool, disallow_all?: bool, area?: label|null, max_radius?: int (global; 0 = no distance cap, the whole map is fair game \u2014 the default), hunt_predators?: bool (global), check_reachable?: bool, label?, interval_hours?: float, table?: thing id (production), min?/max?/tame?/slaughter?/train?: [TrainableDef]/buckets?: {adult_male: {min,max}..}|null (livestock; allow/disallow edit train)} edit a stock job -> full job row"
+ },
+ {
+  "method": "ui.add_bill",
+  "doc": "{thing: work table id (aliases: station/table/bench), recipe: RecipeDef, mode?: RepeatCount|TargetCount|Forever, count?: 1, radius?: 999, suspended?: false, first?: false}"
+ },
+ {
+  "method": "ui.animal",
+  "doc": "{pawn, train?: {TrainableDef: bool}, master?: colonist|none, follow_field?: bool, follow_draft?: bool} animal training and master"
+ },
+ {
+  "method": "ui.area",
+  "doc": "{action: home_add|home_remove|create|delete|add|remove, label?, cells?/rect?} edit the home area or allowed areas"
+ },
+ {
+  "method": "ui.attack",
+  "doc": "{pawn, target: thingId, melee?: bool} drafted attack order"
+ },
+ {
+  "method": "ui.bill",
+  "doc": "{thing, id|index, action: delete|suspend|resume|top|set, count?, mode?, radius?} modify a bill"
+ },
+ {
+  "method": "ui.build",
+  "doc": "{def: buildable defName (ThingDef or TerrainDef), at?: [x,z], rot?: N|E|S|W, stuff: ThingDef (REQUIRED for stuff-made things: Wall/Door/Bed/etc; omit once to see the options with on-map quantities and no material is guessed for you), line?: [[x1,z1],[x2,z2]], rect?: [x,z,w,h], fill?: bool (rect: fill vs outline), dry_run?: bool} place blueprints. Returns placed and failed cells with reasons."
+ },
+ {
+  "method": "ui.build_many",
+  "doc": "{ops: [ {same params as ui.build}, ... ], stop_on_error?: false} place a whole layout in one call (walls as rect outlines, floors as filled rects, doors/furniture as single cells). Returns one result per op. Use map.detail before and after."
+ },
+ {
+  "method": "ui.cancel_job",
+  "doc": "{pawn} interrupt the pawn's current job (and undraft if drafted=false given)"
+ },
+ {
+  "method": "ui.designate",
+  "doc": "{designator: mine|cut|harvest|harvestwood|hunt|haul|deconstruct|cancel|uninstall|tame|slaughter|strip|open|smooth|removefloor|claim|forbid|unforbid|plan|unplan|<Designator_ClassName>, cells?: [[x,z]...], rect?: [x,z,w,h], things?: [ids]} apply an orders/architect designator"
+ },
+ {
+  "method": "ui.dialog",
+  "doc": "{i?: window index from state.dialogs (default: topmost), choice?: label|index, name?/second_name?: naming dialogs, assign?: {role: pawn} rituals, trade?: {def|i: +buy/-sell} trade window, method?/action?/set? generic windows, close?: true} answer any open window"
+ },
+ {
+  "method": "ui.draft",
+  "doc": "{pawn, drafted: bool}"
+ },
+ {
+  "method": "ui.gizmos",
+  "doc": "{thing} buttons shown for a selected thing/pawn: [{i, label, desc, type, disabled, reason, active?}]"
+ },
+ {
+  "method": "ui.goto",
+  "doc": "{pawn, cell: [x,z], draft?: true} move a pawn to a cell (drafts first unless draft=false, in which case it's an undrafted goto)"
+ },
+ {
+  "method": "ui.job",
+  "doc": "{pawn, job: JobDef, target?: [x,z]|thingId, target_b?, target_c?, count?, queue?: false} give a pawn a specific job directly (e.g. Ingest, Equip, Wear, TakeInventory, HaulToCell, Rescue, TendPatient, LayDown, Research). Prefer ui.order when possible."
+ },
+ {
+  "method": "ui.letter",
+  "doc": "{id, action: choose|dismiss, choice?: label|index} respond to a letter (quests, events with choices)"
+ },
+ {
+  "method": "ui.order",
+  "doc": "{pawn, at: [x,z]|thingId, label|i} execute one of the right-click orders (label substring match)"
+ },
+ {
+  "method": "ui.orders_at",
+  "doc": "{pawn, at: [x,z]|thingId} the right-click orders this pawn would get at that cell/thing: [{label, disabled, priority}]"
+ },
+ {
+  "method": "ui.press",
+  "doc": "{thing, label|i, target?: [x,z]|thingId} press a gizmo by label (substring, case-insensitive) or index; targeted gizmos need target"
+ },
+ {
+  "method": "ui.prisoner",
+  "doc": "{pawn, mode?: NoInteraction|MaintainOnly|ReduceResistance|AttemptRecruit|Release|Execution|Enslave|Convert|..., medical?} set prisoner interaction"
+ },
+ {
+  "method": "ui.select",
+  "doc": "{thing|cell} select a thing in the game UI and jump the player's camera there (for the human watching)"
+ },
+ {
+  "method": "ui.set_policies",
+  "doc": "{pawn, apparel?, food?, drug?, reading?, area?: label|Unrestricted, medical?: NoCare|NoMeds|HerbalOrWorse|NormalOrWorse|Best, hostility?: Flee|Attack|Ignore, self_tend?: bool}"
+ },
+ {
+  "method": "ui.set_research",
+  "doc": "{def} set the current research project"
+ },
+ {
+  "method": "ui.set_schedule",
+  "doc": "{pawn, hours: 24-char string using A=Anything S=Sleep W=Work J=Joy M=Meditate (hour 0 first)}"
+ },
+ {
+  "method": "ui.set_work",
+  "doc": "{pawn, priorities: {WorkTypeDef: 0-4}} 0 = disabled, 1 = highest; enables manual priorities mode. Takes the pawn out of steward management first (steward.pawn managed=true hands it back)"
+ },
+ {
+  "method": "ui.set_work_many",
+  "doc": "{matrix: {pawn: {WorkType: 0-4, ...}, ...}} set many colonists' priorities in one call"
+ },
+ {
+  "method": "ui.storage",
+  "doc": "{zone?: label, thing?: shelf id, priority?: Low|Normal|Preferred|Important|Critical, allow_all?: bool, disallow_all?: bool, allow?: [ThingDef|ThingCategoryDef...], disallow?: [...]} edit storage settings"
+ },
+ {
+  "method": "ui.wire",
+  "doc": "{from: thing|cell, to: thing|cell, dry_run?: false} lay power conduit blueprints along a walkable path between two points (conduits go under walls/doors). Returns the path and any cells that could not take a conduit."
+ },
+ {
+  "method": "ui.zone",
+  "doc": "{action: create_stockpile|create_growing|delete|add_cells|remove_cells|set_plant|rename|set_priority, label?, cells?/rect?, plant?: ThingDef (e.g. Plant_Rice), priority?, preset?: DefaultStockpile|DumpingStockpile} create/edit zones"
+ }
+]
