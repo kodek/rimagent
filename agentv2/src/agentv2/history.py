@@ -125,6 +125,11 @@ class BrainTools(AbstractCapability[Deps]):
             """Delete a watcher (watchers/<name>.py). Git keeps the old version."""
             return _delete(ctx, layout.watcher, "watcher", name)
 
+        @toolset.tool
+        def delete_policy(ctx: RunContext[Deps], name: str) -> str:
+            """Delete a fast-loop policy (policies/<name>.yaml). Git keeps the old version; its decisions stay in the log."""
+            return _delete(ctx, layout.policy, "policy", name)
+
         return toolset
 
 

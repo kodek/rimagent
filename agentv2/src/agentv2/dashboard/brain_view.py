@@ -26,6 +26,7 @@ class BrainView:
             "skills": [{"name": s.name, "description": s.description, "chars": s.chars, "error": s.error} for s in self.brain.skills.infos()],
             "watchers": self.watchers.listing(),
             "capabilities": self.brain.authored(),
+            "policies": [{"name": p.stem} for p in sorted(layout.policies_dir.glob("*.yaml"))],
             "colony": episode.colony if episode.seed else None,
             "memory": {"doctrine": _chars(layout.doctrine), "notebook": _chars(layout.notebook(episode.colony)),
                        "journal": _chars(layout.journal()), "operator": _chars(layout.operator_log)},
@@ -38,7 +39,7 @@ class BrainView:
                  "operator": layout.operator_log}
         if kind in fixed:
             return fixed[kind]
-        named = {"skill": layout.skill, "watcher": layout.watcher, "capability": layout.capability}
+        named = {"skill": layout.skill, "watcher": layout.watcher, "capability": layout.capability, "policy": layout.policy}
         if kind not in named:
             raise ValueError(f"unknown kind {kind!r}")
         return named[kind](name or "")

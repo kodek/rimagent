@@ -144,6 +144,30 @@ class WatcherFailed(Event):
     error: str
 
 
+class LoopDecision(Event):
+    """One fast-loop decision: what a policy chose and what came of it (acted, escalated, shadow, skipped, ...)."""
+
+    KIND = "loop"
+    id: int
+    policy: str
+    stage: str
+    entity: str
+    summary: str
+    outcome: str
+    label: str | None
+    confidence: float | None
+    reason: str
+    ms: float | None
+
+
+class LoopNote(Event):
+    """A fast-loop change: a policy stage, Jev availability, an error."""
+
+    KIND = "loop"
+    text: str
+    policy: str | None = None
+
+
 class BrainChange(Event):
     KIND = "brain_change"
     kind: str

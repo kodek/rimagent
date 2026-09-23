@@ -1,0 +1,35 @@
+description: Answer a choice letter (a quest, a visitor, a request) when the directive covers it; send the rest to the director.
+subject: letters
+triggers:
+  events: [letter, quest]
+  every_seconds: 30
+claims: [letter]
+features: [time, colonists, food, mood, danger, hostiles, wealth]
+questions:
+  reply:
+    type: choice
+    instructions: >-
+      Which reply to this letter serves the directive best? Read the letter text and the colony state. Pick a reply
+      label exactly as written, or escalate.
+    options_from_subject: true
+    criteria:
+      escalate: >-
+        The director must decide: the letter offers something unusual, or the directive does not say how to treat
+        this kind of offer.
+  risks_colonists:
+    type: noul
+    instructions: Does accepting this letter put a colonist's life at risk or send colonists away from the colony?
+    criteria:
+      "true": Accepting brings a fight, a dangerous guest, or a trip that takes colonists away from the colony.
+      "false": Accepting is safe for every colonist, for example a trade or a gift.
+  breaks_rule:
+    type: noul
+    instructions: Would the reply that serves the directive best break a rule in directive.never?
+    criteria:
+      "true": That reply clearly breaks at least one rule in directive.never.
+      "false": It breaks none of them, or directive.never is empty.
+decide:
+  act_with: reply
+  min_confidence: 0.65
+  vetoes: {breaks_rule: 0.4, risks_colonists: 0.5}
+budget: {calls_per_minute: 20, actions_per_hour: 6}

@@ -1,0 +1,20 @@
+description: Read each ledger event and wake the director for the ones that need a decision soon. The fixed wake rules stay.
+subject: events
+triggers:
+  events: [letter, incident, quest, message, health, trade, colonist_joined, colonist_left, relation, construction_failed, steward, orders]
+features: [time, colonists, food, mood, danger, hostiles]
+questions:
+  needs_leader:
+    type: noul
+    instructions: Does this event need a decision by the colony leader within the next few in-game hours?
+    criteria:
+      "true": The colony must choose or act soon, and the Steward and its standing orders do not do it by themselves.
+      "false": It is information or routine, or the Steward and its standing orders handle it.
+  urgency:
+    type: score
+    instructions: How soon must the colony leader act on this event?
+    criteria: [no action needed, within a day, within a few hours, now]
+decide:
+  escalate_if: {needs_leader: 0.85, urgency: 2.5}
+budget: {calls_per_minute: 30}
+safe_without_directive: true

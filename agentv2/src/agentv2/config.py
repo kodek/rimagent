@@ -107,6 +107,7 @@ class LoopSettings(BaseModel):
     claim_timeout_s: float = 20.0
     directive_hours: float = 24.0
     escalations_per_hour: int = 6
+    report_up_threshold: float = 0.7
     director_lease_hours: float = 6.0
     action_timeout_ms: int = 3000
     gate: GateSettings = Field(default_factory=GateSettings)

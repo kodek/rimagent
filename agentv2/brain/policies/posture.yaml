@@ -1,0 +1,32 @@
+description: Keep the Steward posture right for the colony between the director's steps.
+subject: posture
+triggers:
+  events: [danger, hostile_group, hostile_group_gone, colonist_downed, mental_break]
+  every_hours: 2
+features: [time, colonists, food, mood, danger, hostiles, alerts]
+questions:
+  posture:
+    type: choice
+    instructions: Which Steward posture fits the colony now? posture.current is the posture in force.
+    options_from_subject: true
+    criteria:
+      normal: No special need. Work follows skills and passions.
+      defend: Hostiles are on the map or a raid is near. Doctors, builders and firefighters first; hunting, mining and cutting less.
+      build: Calm, food is enough, and building work waits. Construction, hauling and mining first.
+      harvest: Food is low or a harvest is due. Growing, cutting, cooking and hunting first.
+      recover: After a fight or during a disease. Doctors, cooks and cleaners first.
+      escalate: No posture fits, or colonists could die soon. The director must decide.
+  breaks_rule:
+    type: noul
+    instructions: Would the posture that fits best break a rule in directive.never?
+    criteria:
+      "true": That posture clearly breaks at least one rule in directive.never.
+      "false": It breaks none of them, or directive.never is empty.
+decide:
+  act_with: posture
+  min_confidence: 0.55
+  on_doubt: skip
+  vetoes: {breaks_rule: 0.5}
+  dwell_hours: 3
+params: {hours: 6}
+budget: {calls_per_minute: 6, actions_per_hour: 2}

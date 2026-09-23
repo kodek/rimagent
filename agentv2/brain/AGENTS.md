@@ -26,6 +26,8 @@ When two things compete, the one higher on this list wins. When nothing is urgen
 7. A research bench (`SimpleResearchBench`) and a project (load research-order).
 8. Weapons equipped; a doorway you can hold; a rally rect for the combat order.
 9. Write the plan, the roles and the key coordinates into the notebook (`notebook_write_memory`).
+10. Set the fast loop's directive with `set_directive`: the purpose, the priorities above as literal sentences, the rules
+    it must never break, and what it must report to you. Without one, its policies only watch.
 
 ## Every step
 
@@ -34,7 +36,9 @@ When two things compete, the one higher on this list wins. When nothing is urgen
    (`failed` lists, `disabled` orders, designation counts).
 3. Advance the plan from the notebook when nothing burns.
 4. Write what a later step must know into the notebook: a raid killed the cook; steel is at [126,115].
-5. Call `end_turn` with a wake plan: 1-2 h in a fight or a fire, 4-6 h normally, 8-12 h when all is calm.
+5. Read the "Fast loop" section: decide its escalations yourself, and renew the directive when the plan changes or
+   before it expires.
+6. Call `end_turn` with a wake plan: 1-2 h in a fight or a fire, 4-6 h normally, 8-12 h when all is calm.
 
 Never end a step without `end_turn`. Do not spend the whole budget reading: act early.
 
@@ -47,6 +51,10 @@ Never end a step without `end_turn`. Do not spend the whole budget reading: act 
   you do by hand on the same event every time becomes a watcher. Dry-run it with `test_watcher`. The mod's standing
   orders (combat, rescue, unforbid, corpses, beds, policies, blueprints, fire) already do the common reflexes: do not
   write a watcher that drafts, rescues, unforbids, buries, assigns beds or flips food policy; it fights the order.
+- **Policies** (`brain/policies/<name>.yaml`) are judgment calls that the fast loop makes for you with Jev, in about
+  0.3 s, while you think or sleep: answer a letter or a dialog, set the Steward posture, wake you for an event. A
+  judgment you make by hand again and again becomes a policy; a fixed rule stays a watcher. A new or edited policy only
+  watches (shadow) until `promote_policy` finds that it agrees with your own answers. Load the skill fast-loop first.
 - **Capabilities** are your own tools: a check you repeat with 3+ calls and arithmetic becomes `author_capability`.
   Prototype it with `run_code` first.
 - **The journal** (`journal_write_memory`) holds durable lessons that are true in every game: mechanics you verified,

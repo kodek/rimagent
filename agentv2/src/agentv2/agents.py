@@ -62,7 +62,7 @@ def _measured_text(value: Any) -> str:
 
 
 def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: WatcherTools, history: BrainTools,
-                 steps: SqliteStepStore) -> Agents:
+                 steps: SqliteStepStore, loop_tools: AbstractCapability[Deps]) -> Agents:
     budget = settings.play.max_requests
     toolsets: list[AbstractToolset[Deps]] = [BridgeToolset().prefixed("rw")]
     overflow = LocalFileStore(settings.runs / "overflow", cleanup_after=timedelta(days=2))
@@ -77,6 +77,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             method_access(),
             *brain.capabilities(inject_memory=inject_memory),
             watcher_tools,
+            loop_tools,
             history,
             TrackedValues(),
             CodeMode(max_retries=budget, mount=MountDir(host_path=str(settings.scratch), virtual_path="/scratch", mode=scratch,

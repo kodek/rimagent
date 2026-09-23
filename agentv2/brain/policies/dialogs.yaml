@@ -1,0 +1,29 @@
+description: Answer a modal dialog (a wanderer who asks to join, a message with buttons) at once, so the game does not stay paused.
+subject: dialogs
+triggers:
+  events: [dialog]
+  every_seconds: 10
+claims: [dialog]
+features: [time, colonists, food, mood, danger, hostiles]
+questions:
+  reply:
+    type: choice
+    instructions: >-
+      Which reply to this dialog serves the directive best? Read the dialog text and the colony state. Pick a reply
+      label exactly as written, or escalate.
+    options_from_subject: true
+    criteria:
+      escalate: >-
+        The director must decide: the reply cannot be undone and decides a colonist's life, a fight, a large payment or
+        who joins or leaves, and the directive does not say what to do.
+  breaks_rule:
+    type: noul
+    instructions: Would the reply that serves the directive best break a rule in directive.never?
+    criteria:
+      "true": That reply clearly breaks at least one rule in directive.never.
+      "false": It breaks none of them, or directive.never is empty.
+decide:
+  act_with: reply
+  min_confidence: 0.6
+  vetoes: {breaks_rule: 0.4}
+budget: {calls_per_minute: 30, actions_per_hour: 12}

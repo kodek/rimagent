@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import AliasChoices, BaseModel, Field
 
 from .bridge import GameStatus
+from .loop.directive import Directive
 from .world import Tracked, View, default_tracked
 
 TIMELINE_KINDS = {"day", "colonist_died", "colonist_downed", "incident", "hostile_group", "hostile_group_gone", "letter", "mental_break",
@@ -40,6 +41,7 @@ class Episode(BaseModel):
     tracked: dict[str, Tracked] = Field(default_factory=default_tracked)
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     pass_notes: list[str] = Field(default_factory=list)
+    directive: Directive | None = None
 
     @property
     def colony(self) -> str:

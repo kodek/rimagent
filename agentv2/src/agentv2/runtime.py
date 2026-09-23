@@ -21,11 +21,16 @@ from .events import Log
 from .flags import RuntimeFlags
 from .game import GameSwitches
 from .history import BrainGit, BrainTools, Scores
+from .loop.engine import Escalation, FastLoop
+from .loop.gate import Gate
+from .loop.jev import Jev
+from .loop.store import LoopStore
+from .loop.tools import LoopTools
 from .passes import BrainPasses
 from .poller import Inbox, LedgerPoller
 from .runner import Runner
 from .wake import WakePolicy
-from .watchers import Watchers
+from .watchers import Alert, Watchers
 from .watchers.tools import WatcherTools
 
 
@@ -41,10 +46,12 @@ class Runtime:
     runner: Runner
     controls: Controls
     brain_view: BrainView
+    loop: FastLoop
 
 
 @asynccontextmanager
-async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Model) -> AsyncIterator[Runtime]:
+async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Model, jev: Jev | None = None) -> AsyncIterator[Runtime]:
+    """`jev` is None when there is no Jev client: the fast loop then stays off and only reports that."""
     layout = BrainLayout(settings.brain)
     brain = Brain(layout, settings.knowledge_dir)
     scores, git = Scores(layout.scores), BrainGit(layout.root)
@@ -52,10 +59,20 @@ async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Mode
     flags = RuntimeFlags(danger_think_speed=settings.play.danger_think_speed, steward=settings.steward.enabled,
                          orders_off=set(settings.steward.orders_off))
     inbox = Inbox()
+    store = LoopStore(settings.runs / "loop.sqlite", settings.loop.gate.heldout_share)
     async with Watchers(layout.watchers_dir, bridge, bus, settings.watchers.timeout_s) as watchers:
-        agents = build_agents(model, settings, brain, WatcherTools(watchers), BrainTools(scores, git, layout), steps)
+
+        async def on_escalate(items: list[Escalation]) -> None:
+            inbox.alerts += [Alert(f"fast loop/{x.policy}", x.text, True) for x in items]
+            if urgent := [f"fast loop: {x.text}" for x in items if x.urgent]:
+                await on_urgent(urgent)
+
+        loop = FastLoop(settings.loop, jev, bridge, bus, store, layout.policies_dir, lambda: runner.episode, lambda: poller.status,
+                        set(settings.play.critical_kinds), on_escalate)
+        gate = Gate(loop, jev, settings.loop.gate, settings.loop.report_up_threshold) if jev else None
+        agents = build_agents(model, settings, brain, WatcherTools(watchers), BrainTools(scores, git, layout), steps, LoopTools(loop, gate))
         director = DirectorSession(agents.director, steps, brain, settings.play.max_requests)
-        passes = BrainPasses(agents.improver, agents.reflector, brain, git, scores, bus, director, settings.play.max_requests)
+        passes = BrainPasses(agents.improver, agents.reflector, brain, git, scores, bus, director, settings.play.max_requests, loop)
         game = GameSwitches(bridge, bus, settings.steward, flags)
 
         async def on_urgent(items: list[str]) -> None:
@@ -70,9 +87,12 @@ async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Mode
         async def on_day(st: GameStatus) -> None:
             await runner.day_rollover(st)
 
-        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent, on_menu, on_day)
+        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent, on_menu, on_day, claim=loop.observe)
         runner = Runner(settings, bus, bridge, flags, inbox, EpisodeStore(settings.runs / "episode.json"), poller, WakePolicy(settings.play),
-                        game, director, passes, brain, watchers, scores)
-        controls = Controls(flags, inbox, director, game, brain.operator, bus, lambda: runner.episode)
+                        game, director, passes, brain, watchers, scores, loop)
+        controls = Controls(flags, inbox, director, game, brain.operator, bus, lambda: runner.episode, loop)
         brain_view = BrainView(brain, watchers, git, scores, lambda: runner.episode)
-        yield Runtime(settings, bus, bridge, brain, watchers, agents, director, runner, controls, brain_view)
+        try:
+            yield Runtime(settings, bus, bridge, brain, watchers, agents, director, runner, controls, brain_view, loop)
+        finally:
+            store.close()

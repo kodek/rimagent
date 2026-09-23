@@ -16,6 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 from ..bridge import Bridge, BridgeError
 from ..bus import Bus
 from ..controls import Controls
+from ..loop.store import Stage
 from ..tools.vision import marked_map
 from .brain_view import BrainView
 
@@ -54,7 +55,24 @@ class _Rally(BaseModel):
         return await c.set_rally(self.rect or None)
 
 
-Command = Annotated[_Action | _Switch | _Order | _Rally, Field(discriminator="action")]
+class _Loop(BaseModel):
+    action: Literal["loop"]
+    value: bool = False
+
+    async def apply(self, c: Controls) -> Any:
+        return await c.set_loop(self.value)
+
+
+class _PolicyStage(BaseModel):
+    action: Literal["policy_stage"]
+    name: str
+    stage: Stage
+
+    async def apply(self, c: Controls) -> Any:
+        return await c.set_policy_stage(self.name, self.stage)
+
+
+Command = Annotated[_Action | _Switch | _Order | _Rally | _Loop | _PolicyStage, Field(discriminator="action")]
 _COMMAND = TypeAdapter[Command](Command)
 
 
@@ -181,6 +199,14 @@ def create_app(bus: Bus, bridge: Bridge, brain: BrainView, controls: Controls) -
                 status["orders"] = rows
         return status
 
+    @app.get("/api/loop")
+    def loop_view(limit: int = Query(60, ge=1, le=500)) -> dict[str, Any]:
+        loop = controls.loop
+        decisions = [d.model_dump(include={"id", "t", "policy", "stage", "summary", "outcome", "label", "confidence", "reason", "ms", "truth",
+                                           "truth_source"}) | {"truth": "(held out)" if d.truth and loop.store.heldout(d.id) else d.truth}
+                     for d in loop.store.recent(limit=limit)]
+        return loop.snapshot() | {"decisions": decisions}
+
     @app.get("/screenshot.png")
     async def screenshot(x: int | None = None, z: int | None = None, w: float = 80) -> Response:
         try:
@@ -213,6 +239,8 @@ def create_app(bus: Bus, bridge: Bridge, brain: BrainView, controls: Controls) -
             raise HTTPException(400, f"bad control: {e.errors(include_url=False)}") from e
         try:
             result = await command.apply(controls)
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from e
         except BridgeError as e:
             return {"ok": False, "error": str(e), "paused": controls.paused}
         return {"ok": True, "result": result, "paused": controls.paused, "no_pause": controls.no_pause}

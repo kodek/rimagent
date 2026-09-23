@@ -42,7 +42,7 @@ class Inbox:
 class LedgerPoller:
     def __init__(self, bridge: Bridge, bus: Bus, watchers: Watchers, inbox: Inbox, settings: Settings,
                  on_urgent: Callable[[list[str]], Awaitable[None]], on_menu: Callable[[], None],
-                 on_day: Callable[[GameStatus], Awaitable[None]]) -> None:
+                 on_day: Callable[[GameStatus], Awaitable[None]], claim: Callable[[list[dict[str, Any]]], set[int]] = lambda _: set()) -> None:
         self.bridge = bridge
         self.bus = bus
         self.watchers = watchers
@@ -52,6 +52,7 @@ class LedgerPoller:
         self.on_urgent = on_urgent
         self.on_menu = on_menu
         self.on_day = on_day
+        self.claim = claim
         self.lost_contact = False
         self.status = GameStatus()
         self.last_seq = 0
@@ -82,6 +83,7 @@ class LedgerPoller:
         episode.assisted |= st.assisted
         data = await self.bridge.events(self.last_seq, 500)
         events: list[dict[str, Any]] = data.get("events") or []
+        claimed = self.claim(events) if events else set()
         if events:
             self.last_seq = int(data.get("last_seq", self.last_seq))
             for e in events:
@@ -97,7 +99,7 @@ class LedgerPoller:
             self._watched = time.monotonic()
             alerts = await self.watchers.run_all(events, st.model_dump())
             self.inbox.alerts += alerts
-        urgent = [f"{e.get('kind')}: {e.get('text', '')}" for e in events if e.get("kind") in self.critical_kinds]
+        urgent = [f"{e.get('kind')}: {e.get('text', '')}" for e in events if e.get("kind") in self.critical_kinds and e.get("seq") not in claimed]
         urgent += [f"watcher {a.watcher}: {a.text}" for a in alerts if a.wake]
         if urgent:
             await self.on_urgent(urgent)

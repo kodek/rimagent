@@ -54,6 +54,7 @@ class Wakeup:
     show_base: bool = True
     notebook: str | None = None
     journal: str | None = None
+    loop: str | None = None
 
 
 @dataclass
@@ -153,7 +154,13 @@ def _events(snap: Snapshot, wake: Wakeup) -> str | None:
 def _watcher_alerts(snap: Snapshot, wake: Wakeup) -> str | None:
     if not wake.alerts:
         return None
-    return "## Watcher alerts\n" + "\n".join(f"- {a.watcher}: {a.text}" for a in wake.alerts)
+    return "## Alerts from watchers and the fast loop\n" + "\n".join(f"- {a.watcher}: {a.text}" for a in wake.alerts)
+
+
+def _loop(snap: Snapshot, wake: Wakeup) -> str | None:
+    if not wake.loop:
+        return None
+    return "## Fast loop (Jev policies) since your last step\n" + wake.loop
 
 
 def _threats(snap: Snapshot, wake: Wakeup) -> str | None:
@@ -300,6 +307,6 @@ def _last_line(text: str) -> str:
 
 
 SECTIONS: list[Callable[[Snapshot, Wakeup], str | None]] = [
-    _trigger, _operator, _sandbox, _now, _dialogs, _letters, _events, _watcher_alerts, _threats, _game_alerts, _changes, _tracked,
+    _trigger, _operator, _sandbox, _now, _dialogs, _letters, _events, _watcher_alerts, _loop, _threats, _game_alerts, _changes, _tracked,
     _problems, _colonists, _steward, _base, _journal, _notebook, _brain_problems,
 ]

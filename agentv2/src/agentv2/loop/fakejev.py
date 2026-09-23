@@ -8,7 +8,17 @@ from typing import Any
 
 from pydantic import JsonValue
 
-from .jev import SPECIAL, Choice, Health, JevUnavailable, Noul, Question, Reply, Score, check_reply
+from .jev import (
+    SPECIAL,
+    Choice,
+    Health,
+    JevUnavailable,
+    Noul,
+    Question,
+    Reply,
+    Score,
+    check_reply,
+)
 
 Responder = Callable[[JsonValue, dict[str, Question]], dict[str, Any]]
 

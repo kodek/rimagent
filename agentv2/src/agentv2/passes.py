@@ -16,6 +16,7 @@ from .deps import Deps
 from .director import DirectorSession
 from .events import BrainChange, Error, ThinkEnd, ThinkStart, ToolCall, ToolResult
 from .history import BrainGit, GitError, Scores
+from .loop.engine import FastLoop
 from .roles import DIRECTOR
 from .running import run_agent
 from .tools.turn import Finished
@@ -33,6 +34,7 @@ class BrainPasses:
     bus: Bus
     director: DirectorSession
     max_requests: int
+    loop: FastLoop
     usage_seq: int = field(default=0, init=False)
 
     async def improve(self, deps: Deps, day: int) -> str:
@@ -40,7 +42,8 @@ class BrainPasses:
         notes = await self.director.notes(episode.colony)
         prompt = (f"# Improvement pass, day {day} of episode {episode.number}\n\n## Your tool use since the last pass (calls, failures)\n"
                   f"{self.usage_stats()}\n\n## Recent step notes\n" + _bullets(notes[-30:])
-                  + "\n\n## Earlier passes\n" + _bullets(episode.pass_notes[-5:]) + f"\n\n## Scores\n{self.scores.text(8)}")
+                  + "\n\n## Earlier passes\n" + _bullets(episode.pass_notes[-5:]) + f"\n\n## Scores\n{self.scores.text(8)}"
+                  + f"\n\n## Fast loop\n{self._loop_summary()}")
         result = await self._run(self.improver, prompt, deps, f"episode {episode.number} day {day}: improvement pass")
         episode.pass_notes.append(f"[improvement pass day {day}] {result}")
         return result
@@ -52,7 +55,8 @@ class BrainPasses:
         prompt = (f"# Episode {episode.number} reflection (seed {episode.seed})\n\nThis game is over ({reason}) after {days} days. Score {total}.\n\n"
                   f"## Timeline\n{timeline}\n\n## Your step notes\n" + _bullets(notes[-40:])
                   + "\n\n## Improvement passes\n" + _bullets(episode.pass_notes)
-                  + f"\n\n## What the operator said\n{self.brain.operator.tail(3000)}\n\n## Scores\n{self.scores.text(12)}")
+                  + f"\n\n## What the operator said\n{self.brain.operator.tail(3000)}\n\n## Scores\n{self.scores.text(12)}"
+                  + f"\n\n## Fast loop\n{self._loop_summary()}")
         return await self._run(self.reflector, prompt, deps, f"episode {episode.number} ({episode.seed}): {reason}; score {total}")
 
     def usage_stats(self) -> str:
@@ -77,6 +81,9 @@ class BrainPasses:
         repeated = [f"- {p}  x{n}" for p, n in patterns.most_common(8) if n >= REPEATED and " > " in p]
         return "\n".join(lines + (["", "Call patterns that run_code snippets repeated (candidates for a capability or a watcher):", *repeated]
                                    if repeated else []))
+
+    def _loop_summary(self) -> str:
+        return self.loop.pass_summary(self.loop.settings.gate.min_heldout)
 
     async def commit(self, message: str) -> str | None:
         try:

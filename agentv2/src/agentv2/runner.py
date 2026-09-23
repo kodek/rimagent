@@ -23,6 +23,7 @@ from .events import EpisodeEnd, EpisodeStart, Error, Log, Situation, Status
 from .flags import RuntimeFlags
 from .game import GameSwitches
 from .history import Scores, score
+from .loop.engine import FastLoop
 from .passes import BrainPasses
 from .poller import Inbox, LedgerPoller
 from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
@@ -46,6 +47,7 @@ class Runner:
     brain: Brain
     watchers: Watchers
     scores: Scores
+    loop: FastLoop
     episode: Episode = field(default_factory=Episode, init=False)
     catalog: list[Method] = field(default_factory=list, init=False)
     base_shown: bool = field(default=False, init=False)
@@ -66,6 +68,7 @@ class Runner:
     async def run(self) -> None:
         await self.prepare()
         poller = asyncio.create_task(self.poller.run(lambda: self.episode, lambda: self.flags.stop), name="poller")
+        loop = asyncio.create_task(self.loop.run(lambda: self.flags.stop), name="fast-loop")
         try:
             while not self.flags.stop:
                 try:
@@ -79,6 +82,7 @@ class Runner:
                     await asyncio.sleep(5)
         finally:
             poller.cancel()
+            loop.cancel()
             if self.improve_task:
                 self.improve_task.cancel()
         self.bus.emit(Log(text="runner stopped"))
@@ -132,6 +136,7 @@ class Runner:
         self.notebook_shown = None
         self.poller.last_seq = 0
         self.poller.lost_contact = False
+        self.loop.reset()
 
     async def resume(self, st: GameStatus, saved: Episode | None) -> None:
         seed = st.seed or "resumed"
@@ -282,7 +287,8 @@ class Runner:
             if self.flags.paused:
                 await asyncio.sleep(1)
                 continue
-            wake = self.inbox.take_forced() or self.wake.check(st.tick, self.inbox.alerts, self.inbox.events, await self._game_alerts())
+            events = [e for e in self.inbox.events if not self.loop.holds(e)]
+            wake = self.inbox.take_forced() or self.wake.check(st.tick, self.inbox.alerts, events, await self._game_alerts())
             if wake is None:
                 await asyncio.sleep(0.5)
                 continue
@@ -322,9 +328,9 @@ class Runner:
             await world.sample(self.bridge, episode.tracked, snap.summary)
         notebook = _read(self.brain.layout.notebook(episode.colony))
         wakeup = situation.Wakeup(wake.trigger, events, alerts, list(self.inbox.operator), episode.view, episode.tracked,
-                                  self.brain.problems() | self.watchers.errors(), episode.sandbox, show_base=not self.base_shown,
+                                  self.brain.problems() | self.watchers.errors() | self.loop.problems(), episode.sandbox, show_base=not self.base_shown,
                                   notebook=notebook if not self.base_shown or notebook != self.notebook_shown else None,
-                                  journal=_read(self.brain.layout.journal()) if not self.base_shown else None)
+                                  journal=_read(self.brain.layout.journal()) if not self.base_shown else None, loop=self.loop.report())
         self.notebook_shown = notebook
         report = situation.render(snap, wakeup)
         if snap.summary:
@@ -342,6 +348,7 @@ class Runner:
             chosen = deps.turn.model_speed
             await self.game.set_speed(self.settings.play.speed if chosen is None else max(1, chosen))
             self.bus.emit(Status(phase="playing", model_speed=chosen))
+        self.episodes.save(self.episode)
         if deps.turn.replies:
             self.inbox.operator.clear()
         elif self.inbox.operator and not outcome.error:

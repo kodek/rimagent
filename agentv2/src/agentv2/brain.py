@@ -58,7 +58,8 @@ Put knowledge in a skill, reflexes that must run without you in a watcher, and a
 
 BRAIN_GUIDE = '''brain_* tools edit your brain directory: `AGENTS.md` (your doctrine, loaded at the start of every step),
 `skills/<name>/SKILL.md` (one folder per skill: YAML frontmatter with `name` equal to the folder name and a one-line
-`description` of when to load it, then the Markdown body; create the folder first) and `watchers/<name>.py`. A new or edited
+`description` of when to load it, then the Markdown body; create the folder first), `watchers/<name>.py` and the fast-loop
+policies `policies/<name>.yaml` (the skill fast-loop has their format). A new or edited
 skill is in the catalog from your next step. Keep skills concrete: triggers, steps, numbers, pitfalls; edit an existing skill
 before you add a near-duplicate. The frontmatter `metadata: {wake-on: "raid, hostile_group"}` lists words: when a wake's
 trigger, events or alerts contain one, you are reminded to load the skill.'''
@@ -74,13 +75,14 @@ class BrainLayout:
         self.skills_dir = root / "skills"
         self.watchers_dir = root / "watchers"
         self.capabilities_dir = root / "capabilities"
+        self.policies_dir = root / "policies"
         self.memory_dir = root / "memory"
         self.doctrine = root / "AGENTS.md"
         self.operator_log = root / "operator.md"
         self.scores = root / "scores.jsonl"
 
     def make_dirs(self) -> None:
-        for d in (self.skills_dir, self.watchers_dir, self.capabilities_dir, self.memory_dir):
+        for d in (self.skills_dir, self.watchers_dir, self.capabilities_dir, self.policies_dir, self.memory_dir):
             d.mkdir(parents=True, exist_ok=True)
 
     def skill(self, name: str) -> Path:
@@ -92,6 +94,9 @@ class BrainLayout:
     def capability(self, name: str) -> Path:
         return self.capabilities_dir / f"{_checked(name)}.py"
 
+    def policy(self, name: str) -> Path:
+        return self.policies_dir / f"{_checked(name)}.yaml"
+
     def notebook(self, colony: str) -> Path:
         return self.memory_dir / colony / "main" / "MEMORY.md"
 
@@ -101,7 +106,8 @@ class BrainLayout:
     @staticmethod
     def kind_of(path: str) -> str:
         head = path.split("/", 1)[0]
-        return {"skills": "skill", "watchers": "watcher", "capabilities": "capability"}.get(head, "doctrine" if path == "AGENTS.md" else "file")
+        return {"skills": "skill", "watchers": "watcher", "capabilities": "capability", "policies": "policy"}.get(
+            head, "doctrine" if path == "AGENTS.md" else "file")
 
 
 def _checked(name: str) -> str:

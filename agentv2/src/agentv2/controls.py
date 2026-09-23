@@ -13,6 +13,8 @@ from .episode import Episode
 from .events import Log, Operator
 from .flags import RuntimeFlags
 from .game import GameSwitches
+from .loop.engine import FastLoop
+from .loop.store import Stage
 from .poller import Inbox
 from .wake import Wake
 
@@ -26,6 +28,7 @@ class Controls:
     operator: OperatorLog
     bus: Bus
     episode: Callable[[], Episode]
+    loop: FastLoop
 
     @property
     def paused(self) -> bool:
@@ -79,6 +82,14 @@ class Controls:
 
     async def set_rally(self, rect: list[int] | None) -> Any:
         return await self.game.set_rally(rect)
+
+    async def set_loop(self, value: bool) -> None:
+        self.loop.on = value
+        self.bus.emit(Log(text=f"the operator switched the fast loop {'on' if value else 'off'}"))
+
+    async def set_policy_stage(self, name: str, stage: Stage) -> Stage:
+        """The operator is not held to the gate."""
+        return self.loop.set_stage(name, stage, "set by the operator")
 
     async def kill(self) -> None:
         self.flags.stop = True

@@ -45,6 +45,9 @@ Turn what the recent steps did by hand into automation and knowledge:
 - a reaction repeated by hand becomes a watcher (dry-run it with test_watcher);
 - a multi-call check repeated at every step becomes an authored capability;
 - a strategy that worked or failed tightens the relevant skill, with concrete numbers;
+- a judgment the director makes by hand again and again becomes a fast-loop policy; the fast loop's unlabelled
+  decisions get labels (label_decisions), and a policy that disagrees with its labels gets better questions (the skill
+  fast-loop; replay_policy before and after the edit; promote_policy when it is ready);
 - a durable lesson goes into the journal.
 Change the smallest set of files that makes the next steps better. Finish with finish(notes).""")
 
@@ -52,7 +55,8 @@ REFLECTOR = Role("reflector", "reflect", """You are rimagent's episode reflectio
 run_code (Python). Make the next game go better:
 1. Name the 2-4 decisions or omissions that mattered most, with evidence from the timeline.
 2. Edit or create skills so the same situation goes better next time (triggers, steps, numbers).
-3. Write or fix a watcher for a reaction that came too late.
+3. Write or fix a watcher for a reaction that came too late, or a fast-loop policy for a judgment that came too late;
+   label the fast loop's decisions you can judge now that the game is over (label_decisions).
 4. Write one journal entry with durable lessons, not colony details.
 5. Change AGENTS.md only for a rule that applies to every step.
 Finish with finish(notes).""")

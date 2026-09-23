@@ -12,6 +12,8 @@ from typing import Any
 from . import config, events
 from .bridge import Bridge
 from .bus import Bus, JsonlLog
+from .loop.fakejev import FakeJev
+from .loop.jev import JevClient
 from .model import build_model
 
 _PRINTED = {e.KIND for e in (events.Assistant, events.Log, events.Error, events.ThinkStart, events.ThinkEnd, events.EpisodeStart, events.EpisodeEnd,
@@ -50,8 +52,9 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
         tasks.append(asyncio.create_task(game.run_clock(), name="fake-clock"))
     else:
         bridge = Bridge(settings.bridge.url, settings.bridge.timeout_s)
+    jev = FakeJev() if fake else _jev(settings)
     try:
-        async with open_runtime(settings, bus, bridge, build_model(settings.llm)) as rt:
+        async with open_runtime(settings, bus, bridge, build_model(settings.llm), jev) as rt:
             if not args.no_dashboard:
                 host, port = settings.dashboard.host, settings.dashboard.port
                 tasks.append(asyncio.create_task(serve(create_app(bus, bridge, rt.brain_view, rt.controls), port, host), name="dashboard"))
@@ -65,7 +68,16 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
         for task in tasks:
             task.cancel()
         await bridge.aclose()
+        if isinstance(jev, JevClient):
+            await jev.aclose()
         log.close()
+
+
+def _jev(settings: config.Settings) -> JevClient | None:
+    if not settings.jev.api_key:
+        print("fast loop off: no Jev key (jev.api_key in config.local.yaml, or TYPESAFE_API_KEY)")
+        return None
+    return JevClient(settings.jev)
 
 
 async def _tools(_: argparse.Namespace) -> None:
@@ -109,8 +121,9 @@ async def _think(args: argparse.Namespace) -> None:
 
     settings = config.load()
     bridge = Bridge(settings.bridge.url, settings.bridge.timeout_s)
+    jev = _jev(settings)
     try:
-        async with open_runtime(settings, Bus(sinks=[_printer]), bridge, build_model(settings.llm)) as rt:
+        async with open_runtime(settings, Bus(sinks=[_printer]), bridge, build_model(settings.llm), jev) as rt:
             await rt.runner.prepare()
             if not (await bridge.status()).playing:
                 print("no game is playing: start one with `agentv2 play`")
@@ -121,6 +134,8 @@ async def _think(args: argparse.Namespace) -> None:
             print(f"\nnotes: {outcome.notes}\nwake: {outcome.end.model_dump() if outcome.end else outcome.episode_end or outcome.error}\nthe game is paused")
     finally:
         await bridge.aclose()
+        if jev:
+            await jev.aclose()
 
 
 async def _seed(args: argparse.Namespace) -> None:
