@@ -29,3 +29,12 @@ Also: a row where a Major-passion skill work (Intel 5) reads Research 0 despite 
 
 ## 2026-09-16 22:00 (episode 4): Tree growth threshold blocks steward forestry
 Steward forestry job with `allow_saplings=False` (the default) only designates trees with growth >= 1.0. In early game, poplars (15-day grow) are often at 0.4-0.98 growth, so the job stalls with "no valid trees (count N / target 500)" while 10+ trees sit right there. Fix: `rw_steward_stock_set(kind="forestry", target=500, allow_saplings=True)` or wait ~5-10 days for trees to reach 1.0. A tree at 0.98 growth still yields ~98% of its full wood. Also: the "no designation needed" / "not haulable" error when manually designating cut on a tree means the tree is too young (growth < ~0.5) or the cell is in a growing zone.
+
+## 2026-09-16 (episode 4, day 8): allow_saplings fix tool absent in this sandbox build
+Verified: `rw_steward_stock_set` and `rw_steward_stock_run` are NOT present in the sandbox tool table
+(both raise `NameError: Unknown function`). The documented allow_saplings fix cannot be applied via tool.
+Re-verified root cause this pass: forestry job still `allow_saplings: False` (read via rw_steward_stock_list),
+so it only cuts growth>=1.0; poplars near home are 0.57-0.88 growth -> "no valid trees (count 12 / target 500)",
+61 runs without targets. The 3 usable poplars (growth 0.69-0.88) refuse manual cut-designate too in this build
+("not haulable"). Net: wood was stuck at 12 logs all day 7-8.
+LESSON (all games): before applying any journal fix, probe whether its tool exists in the CURRENT sandbox build — call it and catch `NameError: Unknown function`. The RimBridge sandbox exposes a SUBSET of tools per build (this episode: rw_steward_stock_set / rw_steward_stock_run absent, so the allow_saplings=True fix is unapplyable; wood stalls at 12 logs). When a documented fix's tool is absent, fall back to the next control level (rw_ui_designate cut on growth>=0.6 trees if it exists) or plan around the resource. Never burn steps assuming the fix tool works.

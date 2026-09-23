@@ -59,3 +59,55 @@
 - Food: 43 meals stored (38 survival packs + 5 simple + 8 meat). Rice field ripe ~day 3-4. Foraging 5. food_days ~13.8. OK.
 - Alerts: Major break risk (Robbins), Need defenses (raids starting soon — no sandbags/traps), Colonist left unburied, Need recreation variety (2 types, need 3: add HorseshoesPin or ChessTable).
 - DEFENSE STATE: 2 pawns, both armed (rifle/revolver, NO AMMO). Rally rect set. No walls beyond the barracks, no traps. First raid likely day 5-10.
+
+## Day 5 17h — raid survived + fire
+- RAID: Venom Army x1 (knife drifter "Skye") attacked at 15h. Both drafted to rally, held at door [118,99]. He never breached; fled/despawned by 17h (danger None, no hostiles). NO DEATHS. Guns still useless (no ammo).
+- FIRE: started 17h at [114,107] (SE barracks corner) — drifter was adjacent when it started (arson or accident). Spread to 3 cells. Jones (undrafted) fought it out by 18h. 1 wall damaged (80%->repairing, Jones on it).
+- Both pawns undrafted, moods: Robbins 48 (researching), Jones 41 (repairing wall).
+- Wood: 4 stored. Forestry STILL stalled (allow_saplings fix pending — the "not haulable" error = tree growth < ~0.5).
+- Research: RecurveBow 78%.
+- meat_all dropped 34->4 (hunting consumed), Leather up to 69.
+- food_days 12.9.
+
+## Day 5 20h — post-raid recovery
+- Raid: Venom Army knife drifter "Skye" — FLED/despawned (danger None). No deaths. Fire at SE barracks corner fought out by Jones. 1 wall damaged (Jones repairing, 98%).
+- Both pawns health 100 (heatstroke from 38C resolved). Moods: Robbins 52, Jones 41.
+- Wood: 4 stored. Forestry allow_saplings=True (1 tree designated). The 4 nearby poplars (growth 0.803) still refuse manual "cut" — cause unclear (not growth, not zone). Forestry job will find its own trees.
+- Research: RecurveBow ~80%.
+- meat_all: 4 (hunting consumed most). Leather: 69.
+- food_days: 12.7.
+
+## Day 5 22h — RecurveBow complete
+- RecurveBow DONE -> Smithing started (0%). Research queue: Smithing -> Batteries -> SolarPanels -> Pemmican -> Machining -> Gunsmithing.
+- Make_Bow_Recurve bill set on CraftingSpot [124,101] (mode Forever). Will produce bows when wood arrives.
+- Wood: 4 stored. Forestry allow_saplings=True, 1 poplar designated (growth 0.803 at [104,88]). Jones to cut it after wall repair.
+- Cargo pods at [105,139]: steel slag + flamingo eggs (unfertilized). Low priority to haul.
+- Jones repairing wall (74%), Robbins researching. Both health 100, moods 52/46.
+- food_days 23.6 (survival packs).
+
+## Day 6 20h — wood flowing, Jones recovering
+- Wood: 31 (27 loose + 4 stored). Jones cut the poplar (growth 1.0) — wood finally flowing. Forestry allow_saplings=True.
+- Jones: food poisoning (incompetent cook) + heat + comfort 16% -> mood 30-42 (minor break risk, recovering, now resting/sleeping). No weapon equipped.
+- Robbins: mood 57, researching Smithing (15%).
+- Work matrices set: Jones Hauling 1 / Construction 2 / Crafting 2; Robbins Research 1 / Hauling 2 / Construction 2. Both UNMANAGED (steward zeroing artifact).
+- Make_Bow_Recurve bill live on CraftingSpot [124,101]. Will produce bows when wood in stockpile.
+- food_days 21.4. No hostiles. No letters.
+
+## Day 7 6h — Pumpkin stripped, wood in stockpile
+- Pumpkin's rotting corpse: STRIPPED by Robbins (got cloth/items off her). Corpse will rot away now (no grave possible — the Mourning ritual window is closing). Mood hit will be permanent.
+- Wood: 31 total. 27 in the stockpile zone (counted "loose" by stocks but physically there), 4 stored, 1 loose at [105,89].
+- Make_Bow_Recurve bill live on CraftingSpot [124,101] (mode Forever, target 10). Jones (Crafting 6) will make bows when he wakes.
+- Both pawns sleeping: Robbins mood 52, Jones mood 39 (recovering from food poisoning + heat).
+- Smithing research 15%. food_days 21.4. No threats.
+- NOTE: 26 "loose" wood logs are actually inside the stockpile zone — map.find doesn't list them separately. Don't waste time searching for them.
+
+## Day 7 14h — heat wave, wood stalled, mood OK
+- Temp: 38C outside (PermanentSummer heat). Both pawns sleeping (Robbins 75, Jones 54 — psychic soothe helped males).
+- Wood: 12 total (all in stockpile). Trees won't cut: "not haulable" error on all trees including in-home-area ones. Stockpile "main" has 47 cells / 60 items. No forbidden wood. Cause unclear — may be stockpile full or haul path blocked.
+- Bows: Make_Bow_Recurve bill on CraftingSpot [124,101] needs 40 WoodLog. Have 12. No bows yet.
+- Research: Smithing 23%. Queue: Smithing -> Batteries -> SolarPanels -> Pemmican -> Machining -> Gunsmithing.
+- Work priorities: Jones Hauling 1 / Crafting 1 / Construction 2; Robbins Research 1 / Hauling 2 / Construction 2. Both UNMANAGED (steward zeroes them).
+- Threats: none. Next raid cycle starts ~day 11 (Cassandra). First raid likely day 5-10 already passed (day 5 drifter).
+- Food: food_days ~21. Rice growing.
+- Alert: "Colonist left unburied" (Pumpkin corpse at [114,101], stripped, will rot away).
+- Kenya (dog) near barracks.
