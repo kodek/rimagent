@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
-from pydantic_ai import BinaryContent, RunContext, ToolFailed, ToolReturn
+from pydantic_ai import BinaryContent, RunContext, ToolFailed
 from pydantic_ai.toolsets import FunctionToolset
 
 from ..bridge import Bridge, BridgeError
@@ -90,9 +90,11 @@ vision = FunctionToolset[Deps](id="vision")
 
 
 @vision.tool
-async def look(ctx: RunContext[Deps], x: int | None = None, z: int | None = None, w: float = 60, around: str | None = None, marks: bool = True) -> ToolReturn:
+async def look(ctx: RunContext[Deps], x: int | None = None, z: int | None = None, w: float = 60, around: str | None = None,
+               marks: bool = True) -> list[dict[str, Any] | BinaryContent]:
     """Look at the map as an image with a coordinate grid (every 5 cells) and numbered marks on buildings and blueprints.
-    Returns the mark table (number -> id, def, cell) so you can refer to what you see. Use rw_map_detail for exact placement.
+    Returns [mark table (number -> id, def, cell), image]. End the code with this list to see the image.
+    Use rw_map_detail for exact placement.
 
     Args:
         x: Centre x (default: home).
@@ -105,8 +107,6 @@ async def look(ctx: RunContext[Deps], x: int | None = None, z: int | None = None
         seen = await marked_map(ctx.deps.bridge, x, z, w, around, marks)
     except BridgeError as e:
         raise ToolFailed(str(e)) from e
-    return ToolReturn(
-        return_value={"centre": list(seen.centre), "cells_wide": w, "marks": seen.marks,
-                      "note": "grid lines every 5 cells; yellow labels are x (top) and z (left)"},
-        content=[BinaryContent(data=seen.image, media_type="image/png")],
-    )
+    return [{"centre": list(seen.centre), "cells_wide": w, "marks": seen.marks,
+             "note": "grid lines every 5 cells; yellow labels are x (top) and z (left)"},
+            BinaryContent(data=seen.image, media_type="image/png")]

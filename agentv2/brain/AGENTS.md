@@ -18,11 +18,11 @@ When two things compete, the one higher on this list wins. When nothing is urgen
 ## First day (do all of it in the first steps)
 
 1. Read `rw_state_summary`: colonist ids and skills, `home_center`, biome, season.
-2. Unforbid the drops: `rw_map_find(kind=item, forbidden=true)`, then `rw_ui_designate(designator=unforbid, things=[...])`.
+2. Unforbid the drops: `rw_map_find(kind=item, forbidden=True)`, then `rw_ui_designate(designator=unforbid, things=[...])`.
 3. A stockpile: `rw_map_open_rects(w=8, h=6)`, then `rw_ui_zone(action=create_stockpile, rect=..., label="main")`.
 4. A rice field on fertile soil, 36-50 cells for 3 colonists (load the early-game-food skill).
 5. Wood: the steward's forestry job keeps logs flowing; raise its target rather than designating by hand.
-6. Shelter: walls and a door around ~8x6, one bed each, a campfire inside if it is cold. `dry_run=true` first.
+6. Shelter: walls and a door around ~8x6, one bed each, a campfire inside if it is cold. `dry_run=True` first.
 7. A research bench (`SimpleResearchBench`) and a project (load research-order).
 8. Weapons equipped; a doorway you can hold; a rally rect for the combat order.
 9. Write the plan, the roles and the key coordinates into the notebook (`notebook_write_memory`).
@@ -63,11 +63,11 @@ are never compared with honest ones. In a sandbox episode, experiment and write 
 
 # RimBridge operator's manual
 
-Every bridge RPC `a.b` is a tool named `rw_a_b`; its documented params go at the top level of the call (e.g.
-`rw_ui_build(def="Wall", rect=[60,60,5,4])`). Results are JSON. A result longer than ~10k chars is stored and you get a
-preview with a handle: page through it with `read_tool_result`, but still ask narrowly (filters, `limit`, small `w`/`h`).
-A bridge error comes back as a failed result with `{"error": ...}`; read it, it names the missing param or the reason a
-cell failed.
+Every bridge RPC `a.b` is an async function `rw_a_b` in `run_code`; its documented params are keyword arguments (e.g.
+`await rw_ui_build(def_="Wall", rect=[60,60,5,4])`; a param named like a Python keyword takes a trailing `_`). Results
+are Python data. A `run_code` result longer than ~10k chars is stored and you get a preview with a handle: page through
+it with `read_tool_result`, but still return narrowly (filter in code, `limit`, small `w`/`h`). A bridge error raises an
+exception in your code; read it (or catch it), it names the missing param or the reason a cell failed.
 
 ## 1. The three senses
 
@@ -79,14 +79,14 @@ threat_points, alerts, pending_letters, zones, blueprints, power, key_stocks). T
 - `rw_state_threats`: hostiles with weapons and distance to home, plus storyteller threat points.
 - `rw_state_stocks(category=Foods)`, `rw_state_storage`, `rw_state_research`, `rw_state_rooms`, `rw_state_designations`,
   `rw_state_bills(thing=...)`, `rw_state_quests`.
-- `rw_map_find(kind=item|tree|resource_rock|animal|corpse|chunk|building|blueprint, def=..., near=[x,z], radius=,
-  forbidden=true, limit=)`: things sorted by distance from home.
+- `rw_map_find(kind=item|tree|resource_rock|animal|corpse|chunk|building|blueprint, def_=..., near=[x,z], radius=,
+  forbidden=True, limit=)`: things sorted by distance from home.
 - `rw_map_cell(cell=[x,z])`, `rw_map_open_rects(w=8,h=6,near=,limit=)` (free buildable rectangles, min corners),
   `rw_map_terrain_stats`, `rw_map_path`, `rw_map_reachable`.
-- `rw_defs_buildable(category=Structure|Production|Furniture|Power|Security|Misc|Floors)`; `rw_defs_get(def=...)`;
+- `rw_defs_buildable(category=Structure|Production|Furniture|Power|Security|Misc|Floors)`; `rw_defs_get(def_=...)`;
   `rw_defs_search(query=)`; `rw_defs_work_types`.
 
-**`rw_map_view` (layout).** ASCII, one char per cell. `x, z` = **min corner** (or `center=true`), `w, h` up to 150,
+**`rw_map_view` (layout).** ASCII, one char per cell. `x, z` = **min corner** (or `center=True`), `w, h` up to 150,
 `layer=all|terrain|buildings|zones|pawns|items|roof|fog|home`. Default: centred on home, 60x40. Legend:
 `? fog | @ colonist | ! hostile | a colony animal | w wild animal | n other pawn | # wall | + door | ^ rock | o ore | b bed |
 t work table | s stove/campfire | r research | g power | % turret | x other building | p blueprint/frame | S stockpile |
@@ -97,7 +97,7 @@ Roof layer: `R` thick rock, `r` thin natural, `c` constructed, `.` none. Home la
 **Coordinates.** x grows to the **right**, z grows **up** (the top printed row is max z). A cell is `[x, z]`. A rect is
 `[minX, minZ, w, h]`, so `[60,60,5,4]` covers x 60..64, z 60..63.
 
-**`look` (a picture).** `look(x, z, w=60)` shows you the real map as an image with a grid every 5 cells and numbered
+**`look` (a picture).** `await look(x=..., z=..., w=60)` shows you the real map as an image with a grid every 5 cells and numbered
 marks on buildings and blueprints. Use it to check a layout; use `rw_map_view`/`rw_map_detail` for exact coordinates.
 
 ## 2. Control altitudes (pick the lowest that works)
@@ -109,9 +109,9 @@ marks on buildings and blueprints. Use it to check a layout; use `rw_map_view`/`
 2. **Buttons: `rw_ui_gizmos` / `rw_ui_press`.** Draft, Fire at will, Hold fire, Rest until healed, Toggle power, Rearm.
 3. **Designators: `rw_ui_designate`.** `designator=mine|cut|harvest|harvestwood|hunt|haul|deconstruct|cancel|uninstall|tame|
    slaughter|strip|open|smooth|removefloor|claim|forbid|unforbid|plan|unplan`, on `cells`, `rect` or `things`.
-4. **Blueprints: `rw_ui_build`.** `def`, then `at=[x,z]`, `line=[[x1,z1],[x2,z2]]` or `rect=[x,z,w,h]` (+`fill=true`).
+4. **Blueprints: `rw_ui_build`.** `def_`, then `at=[x,z]`, `line=[[x1,z1],[x2,z2]]` or `rect=[x,z,w,h]` (+`fill=True`).
    `rot=N|E|S|W` when orientation matters. `stuff` is REQUIRED for stuff-made things (Wall, Door, Bed): omit it once to see
-   the options. `dry_run=true` first for big placements: it returns `placed`, `failed` (cell + reason), cost and work.
+   the options. `dry_run=True` first for big placements: it returns `placed`, `failed` (cell + reason), cost and work.
    `rw_ui_build_many(ops=[...])` places a whole layout in one call.
 5. **Zones: `rw_ui_zone`.** `action=create_stockpile|create_growing|delete|add_cells|remove_cells|set_plant|rename|
    set_priority`, with `rect`/`cells`, `label`, `plant="Plant_Rice"`, `priority`. Storage filters: `rw_ui_storage`.
@@ -159,20 +159,22 @@ see them on every poll. Use `wake_on` in `end_turn` to be woken by a kind.
   builds: check materials, priorities, forbids and reachability.
 - Growing zones only take fertile terrain; clear trees with `cut` first. `set_plant` needs the plant's research.
 - Drafted pawns freeze colony work: undraft after combat.
-- A bill needs a work table id: `rw_map_find(kind="building", def="Campfire")`; `rw_defs_get(def="Campfire")` lists recipes.
+- A bill needs a work table id: `await rw_map_find(kind="building", def_="Campfire")`; `await rw_defs_get(def_="Campfire")` lists recipes.
 
 ## 6. Worked examples
 
-**Day-1 unforbid and stockpile.** `rw_map_find(kind="item", forbidden=true, limit=40)`;
-`rw_ui_designate(designator="unforbid", things=[...])`; `rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)`;
-`rw_ui_zone(action="create_stockpile", rect=[98,114,8,6], label="main")`; `rw_ui_storage(zone="main", priority="Important")`.
+**Day-1 unforbid and stockpile.** `await rw_map_find(kind="item", forbidden=True, limit=40)`;
+`await rw_ui_designate(designator="unforbid", things=[...])`; `await rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)`;
+`await rw_ui_zone(action="create_stockpile", rect=[98,114,8,6], label="main")`;
+`await rw_ui_storage(zone="main", priority="Important")`.
 
-**A wooden room with a door, then beds.** `rw_ui_build(def="Wall", stuff="WoodLog", rect=[106,114,8,6], dry_run=true)`,
-check `failed`, then place it; `rw_ui_build(def="Door", stuff="WoodLog", at=[110,114])`; after the walls stand,
-`rw_ui_build(def="Bed", stuff="WoodLog", at=[107,118], rot="S")` for each colonist.
+**A wooden room with a door, then beds.**
+`await rw_ui_build(def_="Wall", stuff="WoodLog", rect=[106,114,8,6], dry_run=True)`, check `failed`, then place it;
+`await rw_ui_build(def_="Door", stuff="WoodLog", at=[110,114])`; after the walls stand,
+`await rw_ui_build(def_="Bed", stuff="WoodLog", at=[107,118], rot="S")` for each colonist.
 
-**First raid.** Woken by `hostile_group`: `rw_state_threats`; the combat order drafts everyone to the rally rect. Override
+**First raid.** Woken by `hostile_group`: `await rw_state_threats()`; the combat order drafts everyone to the rally rect. Override
 only for breachers or drop pods inside. `end_turn(wake_in_hours=1, wake_on=["colonist_downed","hostile_group_gone"])`.
 
-**Batch reads in the sandbox.**
-`run_code(code="trees = await rpc(method='map.find', params={'kind': 'tree', 'radius': 25, 'limit': 200})\nlen(trees)")`.
+**Batch reads in one snippet.**
+`run_code(code="trees = await rw_map_find(kind='tree', radius=25, limit=200)\nlen(trees)")`.

@@ -10,16 +10,16 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.tools import ToolDefinition
 
 from ..deps import DirectorDeps
-from ..tools.bridge import bridge_call
+from ..tools.bridge import bridge_method
 
 
 @dataclass
 class TrackSpeed(AbstractCapability[DirectorDeps]):
     async def after_tool_execute(self, ctx: RunContext[DirectorDeps], *, call: ToolCallPart, tool_def: ToolDefinition,
                                  args: ValidatedToolArgs, result: Any) -> Any:
-        match bridge_call(tool_def, args):
-            case ("game.speed", params):
-                ctx.deps.turn.model_speed = int(params.get("speed", 1))
-            case ("game.pause", params) if params.get("paused", True):
+        match bridge_method(tool_def):
+            case "game.speed":
+                ctx.deps.turn.model_speed = int(args.get("speed", 1))
+            case "game.pause" if args.get("paused", True):
                 ctx.deps.turn.model_speed = 0
         return result

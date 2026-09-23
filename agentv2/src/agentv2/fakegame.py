@@ -138,6 +138,8 @@ class FakeGame:
                 return {**match[0], "skills": {"Shooting": 6, "Construction": 5, "Growing": 4}, "traits": ["Industrious"]}
             case "steward.orders":
                 return [{"id": o, "enabled": True, "summary": "idle", "acting_on": 0} for o in ("combat", "rescue", "unforbid", "fire")]
+            case "map.find":
+                return [{"id": f"Tree{i}", "def": "Plant_TreeOak", "pos": [i % 250, i // 250]} for i in range(int(p.get("limit", 50)))]
             case "map.detail":
                 return {"centre": [120, 120], "grid": ".....\n..@..\n.....", "things": [{"id": "Bed1", "def": "Bed", "pos": [121, 119], "state": "built"}]}
             case "map.view" | "map.overview":

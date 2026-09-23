@@ -9,7 +9,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo
 
 from agentv2.runtime import open_runtime
-from agentv2.scripted import call, scripted_model
+from agentv2.scripted import call, code, scripted_model
 from agentv2.wake import TICKS_PER_HOUR, Wake
 
 
@@ -52,7 +52,7 @@ def prompts(messages: list[ModelMessage]) -> str:
 async def test_resume_then_step_schedules_the_next_wake(started, game):
     rt, script = started
     assert rt.runner.episode.number == 1 and rt.runner.episode.seed == "rimagent-1"
-    script.responses = [call("rw_state_summary"), call("end_turn", {"notes": "all calm", "wake_in_hours": 6, "wake_on": ["letter"]})]
+    script.responses = [code("await rw_state_summary()"), call("end_turn", {"notes": "all calm", "wake_in_hours": 6, "wake_on": ["letter"]})]
     outcome = await rt.runner.step(Wake("scheduled check-in", False))
     assert outcome.notes == "all calm"
     assert rt.runner.wake.next_tick == game.tick + 6 * TICKS_PER_HOUR
@@ -71,7 +71,7 @@ async def test_the_conversation_continues_across_steps(started):
 
 async def test_a_failed_step_keeps_its_history(started):
     rt, script = started
-    script.responses = [call("rw_state_summary"), ModelHTTPError(500, "scripted")]
+    script.responses = [code("await rw_state_summary()"), ModelHTTPError(500, "scripted")]
     outcome = await rt.runner.step(Wake("the model breaks", False))
     assert outcome.error
     script.responses = [call("end_turn", {"notes": "back"})]
@@ -84,7 +84,7 @@ async def test_operator_message_wakes_and_gets_a_reply(started, bus):
     await rt.controls.say("build a freezer")
     wake = rt.runner.inbox.take_forced()
     assert wake == Wake("operator message", True)
-    script.responses = [call("reply_to_operator", {"text": "on it"}), call("end_turn", {"notes": "freezer planned"})]
+    script.responses = [code("await reply_to_operator(text='on it')"), call("end_turn", {"notes": "freezer planned"})]
     await rt.runner.step(wake)
     assert "build a freezer" in prompts(script.received[0])
     assert rt.runner.inbox.operator == []
@@ -100,7 +100,7 @@ async def test_urgent_event_reaches_the_model_mid_step(started, game):
             game.add_event("colonist_downed", "Bob is down")
 
     script.on_call = raid_arrives
-    script.responses = [call("rw_state_summary"), call("end_turn", {"notes": "handled"})]
+    script.responses = [code("await rw_state_summary()"), call("end_turn", {"notes": "handled"})]
     original = rt.bridge.call
 
     async def call_and_poll(method, params=None, timeout_ms=None):
@@ -117,7 +117,7 @@ async def test_urgent_event_reaches_the_model_mid_step(started, game):
 async def test_the_operator_ends_the_episode_mid_step(started):
     rt, script = started
     gate = asyncio.Event()
-    script.responses = [call("rw_state_summary")] * 3
+    script.responses = [code("await rw_state_summary()")] * 3
     original = rt.bridge.call
 
     async def slow_summary(method, params=None, timeout_ms=None):
@@ -141,7 +141,7 @@ async def test_the_operator_ends_the_episode_mid_step(started):
 
 async def test_end_episode_reflects_scores_commits_and_starts_a_new_game(started, game, root):
     rt, script = started
-    script.responses = [call("journal_write_memory", {"content": "raids come early"}), call("finish", {"notes": "lesson written"})]
+    script.responses = [code("await journal_write_memory(content='raids come early')"), call("finish", {"notes": "lesson written"})]
     await rt.runner.end_episode("test over")
     row = rt.runner.scores.history()[-1]
     assert row["episode"] == 1 and row["ended"] == "test over" and row["notes"] == "lesson written"

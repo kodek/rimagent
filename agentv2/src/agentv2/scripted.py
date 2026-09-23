@@ -28,3 +28,7 @@ def scripted_model(respond: Responder) -> FunctionModel:
 
 def call(name: str, args: dict[str, Any] | str | None = None) -> ModelResponse:
     return ModelResponse(parts=[ToolCallPart(name, args or {})])
+
+
+def code(source: str) -> ModelResponse:
+    return call("run_code", {"code": source})

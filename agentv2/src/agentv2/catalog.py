@@ -6,6 +6,7 @@ model sees named, typed arguments and the server can convert them, while an unex
 """
 from __future__ import annotations
 
+import keyword
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -34,16 +35,20 @@ class Method:
         return self.name.split(".", 1)[0]
 
     @property
-    def read_only(self) -> bool:
-        return is_read_only(self.name)
-
-    @property
     def dev(self) -> bool:
         return self.group == "dev"
 
 
 def is_read_only(method: str) -> bool:
     return any(method == p or (p.endswith(".") and method.startswith(p)) for p in READ_PREFIXES)
+
+
+def python_name(param: str) -> str:
+    return f"{param}_" if keyword.iskeyword(param) else param
+
+
+def bridge_params(args: dict[str, Any]) -> dict[str, Any]:
+    return {k[:-1] if k.endswith("_") and keyword.iskeyword(k[:-1]) else k: v for k, v in args.items()}
 
 
 def _split_top(text: str, sep: str = ",") -> list[str]:
@@ -108,6 +113,7 @@ def parse_schema(doc: str) -> dict[str, Any]:
             name = raw.rstrip("?")
             if not _NAME.match(name):
                 continue
+            name = python_name(name)
             prop = _type_of(hint) if hint else {}
             if hint.strip():
                 prop["description"] = hint.strip()

@@ -49,11 +49,11 @@ One asyncio loop runs everything: the game poller, the watchers, the think steps
 
 | Piece | Built with |
 |---|---|
-| RimBridge methods as tools `rw_<group>_<name>` | a custom `AbstractToolset`; typed JSON schemas parsed from the method docs (`catalog.py`); bridge errors become `ToolFailed` |
-| Who may call which method (`policy.py`) | core `PrepareTools` hides the `rw_*` tools a role may not use; Harness `ToolGuardrail` blocks such `rpc` calls |
+| RimBridge methods as tools `rw_<group>_<name>` | a custom `AbstractToolset`; typed JSON schemas parsed from the method docs (`catalog.py`), a parameter named like a Python keyword gets a trailing `_`; bridge errors become `ToolFailed` |
+| Who may call which method (`policy.py`) | core `PrepareTools` hides the `rw_*` tools a role may not use; it runs inside `CodeMode`, so `run_code` does not get them either |
 | Tool arguments | Harness `RepairToolArguments` (broken JSON), then `CoerceArguments` (JSON inside string arguments) |
-| Batch reads and computation | Harness `CodeMode` (the Monty sandbox) with a sandbox-only `rpc(method, params)` tool |
-| Map screenshots | the `look` tool returns a marked PNG as `BinaryContent` (the model reads images) |
+| Tool calls | Harness `CodeMode` (the Monty sandbox): every tool except `load_capability` and `author_capability` is a function in `run_code`, so the model composes calls in code. `SandboxCalls` shows each call from the code on the dashboard under its `run_code` call. `ToolOutputLimits` skips calls from the code, so the code gets whole results |
+| Map screenshots | `look` returns `[mark table, marked PNG as BinaryContent]`; a `run_code` snippet that ends with it gives the model the image |
 | Doctrine (`brain/AGENTS.md`) | Harness `RepoContext` |
 | Skills (`brain/skills/<name>/SKILL.md`) | Harness `Skills`, loaded on demand with `load_capability`; re-read every run through core `DynamicCapability` |
 | Notebook (per colony) and journal (across games) | two Harness `Memory` capabilities on one `FileStore` |

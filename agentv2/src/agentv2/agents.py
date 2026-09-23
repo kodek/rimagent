@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.messages import is_multi_modal_content
 from pydantic_ai.models import Model
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai_harness import (
@@ -26,6 +28,7 @@ from pydantic_ai_harness.tool_output_limits import Band, LocalFileStore, Spill, 
 from .brain import Brain
 from .capabilities.access import method_access
 from .capabilities.arguments import CoerceArguments
+from .capabilities.sandbox_calls import SandboxCalls, outside_sandbox
 from .capabilities.speed import TrackSpeed
 from .capabilities.step import StepBudget
 from .capabilities.telemetry import telemetry
@@ -34,7 +37,6 @@ from .deps import Deps, DirectorDeps
 from .history import BrainTools
 from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
 from .tools.bridge import BridgeToolset
-from .tools.code import CODE_MODE, sandbox
 from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd, operator
 from .tools.vision import vision
 from .watchers.tools import WatcherTools
@@ -47,10 +49,17 @@ class Agents:
     reflector: Agent[Deps, Finished]
 
 
+def _measured_text(value: Any) -> str:
+    """A run_code result can hold an image next to data; the image is not text for the size limit."""
+    if isinstance(value, list):
+        value = [f"<{item.kind}>" if is_multi_modal_content(item) else item for item in value]
+    return indented_json(value)
+
+
 def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: WatcherTools, history: BrainTools,
                  steps: SqliteStepStore) -> Agents:
     budget = settings.play.max_requests
-    toolsets: list[AbstractToolset[Deps]] = [BridgeToolset().prefixed("rw"), sandbox]
+    toolsets: list[AbstractToolset[Deps]] = [BridgeToolset().prefixed("rw")]
     overflow = LocalFileStore(settings.runs / "overflow", cleanup_after=timedelta(days=2))
 
     def common() -> list[AbstractCapability[Deps]]:
@@ -58,13 +67,15 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             StepBudget(budget),
             RepairToolArguments(),
             CoerceArguments(),
-            *method_access(),
+            method_access(),
             *brain.capabilities(),
             watcher_tools,
             history,
-            CodeMode(tools=CODE_MODE),
+            CodeMode(max_retries=budget),
+            SandboxCalls(),
             telemetry(),
-            ToolOutputLimits(bands=[Band(over=10_000, action=Spill(then=Truncate()))], store=overflow, serializer=indented_json),
+            ToolOutputLimits(bands=[Band(over=10_000, action=Spill(then=Truncate()))], store=overflow, serializer=_measured_text,
+                             tool_filter=outside_sandbox),
             WarnNearLimits(max_iterations=budget),
         ]
 

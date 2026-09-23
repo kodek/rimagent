@@ -79,10 +79,13 @@ class Assistant(Event):
 
 
 class ToolCall(Event):
+    """`parent` is the id of the run_code call whose code made this call."""
+
     KIND = "tool_call"
     name: str
     args: dict[str, Any]
     id: str
+    parent: str | None = None
 
 
 class ToolResult(Event):
@@ -90,6 +93,7 @@ class ToolResult(Event):
     name: str | None
     id: str
     ok: bool
+    parent: str | None = None
     text: str
     elapsed: float
 

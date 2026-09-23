@@ -20,17 +20,21 @@ with tools, keep the colony notebook current, then call end_turn with a wake pla
 whole game, so you remember earlier steps; old tool results are cleared or summarized as it grows, so write what you
 must not lose into the notebook.
 
-- rw_* tools are the game (RimBridge). Read before you act on exact positions.
-- look shows the map as an image with a coordinate grid and numbered marks on buildings.
-- run_code runs Python in a sandbox where rpc(method, params) calls any RimBridge method: batch many reads and compute.
-  The last expression is the result; return data, do not json.dumps it.
+- run_code runs Python in a sandbox where every tool is an async function: await each call, compose calls, loop and
+  compute in one snippet, and run independent calls together with asyncio.gather. The last expression is the result;
+  return data, do not json.dumps it. A parameter named like a Python keyword takes a trailing underscore:
+  await rw_ui_build(def_="Wall", ...).
+- rw_* functions are the game (RimBridge). Read before you act on exact positions.
+- await look() shows the map as an image with a coordinate grid and numbered marks on buildings; end the snippet with its
+  result to see the image.
 - load_capability loads a skill from the catalog. Load the skill for a situation before you act on it.
-- A tool result that is too long is stored; page through it with read_tool_result.
+- A result that is too long is stored; page through it with read_tool_result.
 - reply_to_operator answers the human operator. Answer each operator message first. If it is advice on how to play,
   write it into the relevant skill.
 Be terse in visible text. Do the work with tool calls.""", writes_game=True)
 
 IMPROVER = Role("improver", "improve", """You are rimagent's improvement pass. The game keeps running and another stream plays it; you only read the game.
+Your tools are functions in run_code (Python).
 Turn what the recent steps did by hand into automation and knowledge:
 - a reaction repeated by hand becomes a watcher (dry-run it with test_watcher);
 - a multi-call check repeated at every step becomes an authored capability;
@@ -38,7 +42,8 @@ Turn what the recent steps did by hand into automation and knowledge:
 - a durable lesson goes into the journal.
 Change the smallest set of files that makes the next steps better. Finish with finish(notes).""")
 
-REFLECTOR = Role("reflector", "reflect", """You are rimagent's episode reflection. This game is over. Make the next game go better:
+REFLECTOR = Role("reflector", "reflect", """You are rimagent's episode reflection. This game is over. Your tools are functions in
+run_code (Python). Make the next game go better:
 1. Name the 2-4 decisions or omissions that mattered most, with evidence from the timeline.
 2. Edit or create skills so the same situation goes better next time (triggers, steps, numbers).
 3. Write or fix a watcher for a reaction that came too late.

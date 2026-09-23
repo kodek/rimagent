@@ -85,6 +85,9 @@ main>.tab:not(.active){display:none}
 #live .tool .result pre{color:var(--fg1)}
 #live .tool .result .more{color:var(--acc);cursor:pointer;font-size:11px;margin-left:6px}
 #live .tool.pending .tool-head{opacity:.75}
+#live .tool pre.code{padding:4px 8px 6px;border-top:1px solid var(--line);color:var(--fg1);max-height:320px;overflow:auto}
+#live .tool .subcalls{border-top:1px solid var(--line);padding:4px 8px 4px 18px;display:flex;flex-direction:column;gap:3px}
+#live .tool.sub .tool-head{font-size:11px;padding:2px 6px}
 #live .think-end{background:#141c26;border:1px dashed #2a3b52;border-radius:5px;padding:5px 10px;font-size:12px}
 #live .think-end .wake{font-family:var(--mono);color:var(--fg1);font-size:11px;margin-top:3px}
 #live .sys{font-family:var(--mono);font-size:11.5px;color:var(--fg1);padding:2px 4px;margin:2px 0}
@@ -459,16 +462,26 @@ function itemReasoning(d) {
 function itemAssistant(d) { const n = document.createElement('div'); n.className = 'item assistant'; n.textContent = d.text || ''; return n; }
 function itemToolCall(d) {
   const n = document.createElement('div'); n.className = 'item tool pending'; n.dataset.id = d.id || '';
-  const args = JSON.stringify(d.args ?? {});
-  n.innerHTML = `<div class="tool-head"><span class="tname">${esc(d.name)}</span><span class="argprev">${esc(args)}</span><span class="badge">…</span><span class="el"></span></div><pre class="args" hidden>${esc(JSON.stringify(d.args ?? {}, null, 2))}</pre>`;
+  const code = d.name === 'run_code' ? String((d.args || {}).code ?? '') : null;
+  const prev = code !== null ? code.split('\n')[0] : JSON.stringify(d.args ?? {});
+  const body = code !== null ? `<pre class="code args">${esc(code)}</pre>` : `<pre class="args" hidden>${esc(JSON.stringify(d.args ?? {}, null, 2))}</pre>`;
+  n.innerHTML = `<div class="tool-head"><span class="tname">${esc(d.name)}</span><span class="argprev">${esc(prev)}</span><span class="badge">…</span><span class="el"></span></div>${body}`;
   n.querySelector('.tool-head').onclick = () => { const p = n.querySelector('pre.args'); p.hidden = !p.hidden; };
-  if (curStep) { curStep._calls++; curStep._tools.push(d.name); updateSummary(curStep); }
+  if (curStep && d.name !== 'run_code') { curStep._calls++; curStep._tools.push(d.name); updateSummary(curStep); }
   return n;
+}
+function subToolCall(d) {
+  const parent = curStep && curStep.querySelector(`.tool[data-id="${CSS.escape(d.parent)}"]`);
+  const n = itemToolCall(d); n.classList.add('sub');
+  if (!parent) { liveAppend(n); return; }
+  let box = parent.querySelector(':scope > .subcalls');
+  if (!box) { box = document.createElement('div'); box.className = 'subcalls'; parent.insertBefore(box, parent.querySelector(':scope > .result')); }
+  box.appendChild(n);   // execution order inside one run_code call
 }
 function attachResult(d) {
   let card = null;
   if (d.id && curStep) card = curStep.querySelector(`.tool[data-id="${CSS.escape(d.id)}"]`);
-  if (!card && curStep) { const c = curStep.querySelectorAll('.tool.pending'); card = c[0] || null; }
+  if (!card && curStep) { const c = curStep.querySelectorAll('.step-body > .tool.pending'); card = c[0] || null; }
   const txt = d.text || '';
   const LIM = 500;
   const res = document.createElement('div'); res.className = 'result';
@@ -849,7 +862,7 @@ function handle(ev) {
     case 'assistant': useStream(d); ensureStep(t); endStreaming('text'); liveAppend(itemAssistant(d)); break;
     case 'context': $('s-context').textContent = `${Math.round((d.fraction || 0) * 100)}% (${fmtK(d.used_tokens)}/${fmtK(d.window_tokens)})`; break;
     case 'harness': { useStream(d); ensureStep(t); liveAppend(sysLine('harness', t, `${d.kind} ${JSON.stringify(d.data || {}).slice(0, 240)}`)); break; }
-    case 'tool_call': useStream(d); ensureStep(t); liveAppend(itemToolCall(d)); break;
+    case 'tool_call': useStream(d); ensureStep(t); if (d.parent) subToolCall(d); else liveAppend(itemToolCall(d)); break;
     case 'tool_result': useStream(d); ensureStep(t); attachResult(d); break;
     case 'think_end': { const st = useStream(d); ensureStep(t); liveAppend(itemThinkEnd(d)); stepsByStream[st] = null; curStep = stepsByStream['play'] || null; break; }
     case 'ledger': addLedger(d, t); break;

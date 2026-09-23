@@ -21,9 +21,9 @@ _PRINTED = {e.KIND for e in (events.Assistant, events.Log, events.Error, events.
 def _printer(event: dict[str, Any]) -> None:
     kind, data = event["kind"], event["data"]
     if kind == events.ToolCall.KIND:
-        print(f"→ [{data.get('stream')}] {data['name']} {json.dumps(data['args'])[:300]}")
+        print(f"{'    ' if data.get('parent') else ''}→ [{data.get('stream')}] {data['name']} {json.dumps(data['args'])[:300]}")
     elif kind == events.ToolResult.KIND:
-        print(f"← [{data.get('stream')}] {data['name']} {'ok' if data['ok'] else 'FAILED'} {data['text'][:300]}")
+        print(f"{'    ' if data.get('parent') else ''}← [{data.get('stream')}] {data['name']} {'ok' if data['ok'] else 'FAILED'} {data['text'][:300]}")
     elif kind == events.Reasoning.KIND:
         print(f"[thinking] {data['text'][:400].replace(chr(10), ' ')}…")
     elif kind in _PRINTED:
@@ -91,7 +91,12 @@ async def _tools(_: argparse.Namespace) -> None:
         problems = rt.brain.problems()
     for tool in sorted(seen[0].function_tools, key=lambda t: t.name):
         print(f"{tool.name:34s} {(tool.description or '').splitlines()[0][:100]}")
-    print(f"\n{len(seen[0].function_tools)} tools; output tools: {', '.join(t.name for t in seen[0].output_tools)}")
+    run_code = next(t.description or "" for t in seen[0].function_tools if t.name == "run_code")
+    functions = [line for line in run_code.splitlines() if line.startswith(("def ", "async def "))]
+    for line in functions:
+        print(f"  {line[:130]}")
+    print(f"\n{len(seen[0].function_tools)} tools, {len(functions)} functions in run_code; "
+          f"output tools: {', '.join(t.name for t in seen[0].output_tools)}")
     for name, error in problems.items():
         print(f"brain problem: {name}: {error}")
 
