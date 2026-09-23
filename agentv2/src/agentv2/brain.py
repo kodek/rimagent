@@ -24,6 +24,7 @@ from pydantic_ai_harness.memory import FileStore
 
 from .capabilities.files import NamedFileSystem
 from .deps import Deps
+from .knowledge import KnowledgeSearch
 
 AUTHORED = "authored_capabilities"
 """Run metadata key: False runs without the agent-authored capabilities."""
@@ -63,7 +64,8 @@ before you add a near-duplicate. The frontmatter `metadata: {wake-on: "raid, hos
 trigger, events or alerts contain one, you are reminded to load the skill.'''
 
 KNOWLEDGE_GUIDE = '''kb_* tools read the offline RimWorld knowledge base: `wiki/<Page>.md` (the RimWorld wiki) and `source-1.6/**/*.cs`
-(the decompiled game source). Use kb_grep to search, kb_find_files for names, kb_read_file to read.'''
+(the decompiled game source). kb_search finds wiki pages by topic; kb_grep searches exact text (use it for the source),
+kb_find_files finds names, kb_read_file reads a file.'''
 
 
 class BrainLayout:
@@ -182,7 +184,8 @@ class Brain:
         ]
         if self.knowledge:
             caps.append(NamedFileSystem(root_dir=self.knowledge, tools=["read_file", "list_directory", "find_files", "grep"],
-                                        max_read_lines=400, prefix="kb", id="knowledge_files"))
+                                        denied_patterns=["*.sqlite", "*.pkl", "*.log"], max_read_lines=400, prefix="kb", id="knowledge_files"))
+            caps.append(KnowledgeSearch(self.knowledge))
         return caps
 
     def guides(self) -> str:

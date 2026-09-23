@@ -101,6 +101,13 @@ async def _tools(_: argparse.Namespace) -> None:
         print(f"brain problem: {name}: {error}")
 
 
+async def _seed(args: argparse.Namespace) -> None:
+    from .knowledge import seed
+
+    settings = config.load()
+    await seed(settings.knowledge_dir, refresh=args.refresh, limit=args.limit, index_only=args.index_only)
+
+
 async def _llm(args: argparse.Namespace) -> None:
     from pydantic_ai import Agent
     from pydantic_ai.messages import ThinkingPart
@@ -127,6 +134,10 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("--no-dashboard", action="store_true")
         p.add_argument("-v", "--verbose", action="store_true")
     sub.add_parser("tools", help="list the director's tools")
+    seed = sub.add_parser("seed", help="download the RimWorld wiki into ../knowledge and index it")
+    seed.add_argument("--refresh", action="store_true", help="download the pages that are already there too")
+    seed.add_argument("--limit", type=int, help="only the first N articles (for a quick check)")
+    seed.add_argument("--index-only", action="store_true", help="only rebuild the search index")
     llm = sub.add_parser("llm", help="test the model endpoint")
     llm.add_argument("prompt")
     args = parser.parse_args(argv)
@@ -136,6 +147,8 @@ def main(argv: list[str] | None = None) -> None:
                 asyncio.run(_play(args, fake=args.cmd == "fake"))
             case "tools":
                 asyncio.run(_tools(args))
+            case "seed":
+                asyncio.run(_seed(args))
             case "llm":
                 asyncio.run(_llm(args))
     except KeyboardInterrupt:
