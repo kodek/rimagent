@@ -20,7 +20,7 @@ from pydantic_ai_harness.step_persistence import continue_run
 from . import situation
 from .agents import Agents, build_agents
 from .brain import Brain, RunCapabilities
-from .bridge import Bridge, BridgeError
+from .bridge import Bridge, BridgeError, GameStatus
 from .bus import Bus
 from .catalog import parse_catalog
 from .config import Settings
@@ -71,7 +71,7 @@ class Runner:
         self.force: str | None = None
         self.force_end: str | None = None
         self.thinking = False
-        self.status: dict[str, Any] = {}
+        self.status = GameStatus()
         self.step_no = 0
         self.improve_task: asyncio.Task[None] | None = None
         self.agents: Agents
@@ -136,17 +136,17 @@ class Runner:
 
     async def ensure_game(self) -> None:
         st = await self.bridge.status()
-        if st.get("state") == "playing":
+        if st.playing:
             if not self.episode.seed:
                 saved = json.loads(self.episode_file.read_text()) if self.episode_file.exists() else {}
-                if saved.get("ended") and saved.get("seed") == st.get("seed"):
+                if saved.get("ended") and saved.get("seed") == st.seed:
                     self.episode = Episode(number=int(saved.get("episode", 0)))
                     await self.new_game()
                 else:
                     await self.resume(st, saved)
             return
-        if st.get("state") == "loading":
-            while (await self.bridge.status()).get("state") == "loading":
+        if st.state == "loading":
+            while (await self.bridge.status()).state == "loading":
                 await asyncio.sleep(2)
             return
         await self.new_game()
@@ -154,17 +154,17 @@ class Runner:
     def _next_episode_number(self) -> int:
         return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [0]) + 1
 
-    async def resume(self, st: dict[str, Any], saved: dict[str, Any]) -> None:
-        seed = str(st.get("seed") or "resumed")
+    async def resume(self, st: GameStatus, saved: dict[str, Any]) -> None:
+        seed = st.seed or "resumed"
         same = saved.get("seed") == seed
         self._reset_episode_state()
-        self.sandbox = bool(st.get("god_mode", False))
+        self.sandbox = st.god_mode
         self.episode = Episode(number=int(saved.get("episode", 0)) if same else self._next_episode_number(), seed=seed,
-                               start_day=int(saved.get("start_day", 0)) if same else int(st.get("day", 0)), sandbox=self.sandbox)
+                               start_day=int(saved.get("start_day", 0)) if same else st.day, sandbox=self.sandbox)
         if same:
             self.deaths, self.raids = int(saved.get("deaths", 0)), int(saved.get("raids", 0))
             self.last_improve_day = int(saved.get("last_improve_day", self.episode.start_day))
-        self.last_seq, self.last_day = int(st.get("seq", 0)), int(st.get("day", 0))
+        self.last_seq, self.last_day = st.seq, st.day
         self._new_deps()
         self.history = await self.restore_conversation()
         self.bus.emit("episode_start", {"episode": self.episode.number, "seed": seed, "resumed": True, "day": self.episode.start_day,
@@ -185,7 +185,7 @@ class Runner:
         await asyncio.sleep(3)
         st = await self.bridge.wait_for("playing", 600)
         self._reset_episode_state()
-        self.episode = Episode(number=number, seed=seed, start_day=int(st.get("day", 0)), sandbox=self.sandbox)
+        self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.sandbox)
         self.last_day = self.last_improve_day = self.episode.start_day
         self.history = []
         self._new_deps()
@@ -228,9 +228,9 @@ class Runner:
         self.status = st
         if time.monotonic() - self._status_emitted >= 1.0:
             self._status_emitted = time.monotonic()
-            self.bus.emit("status", {**st, "episode": self.episode.number, "seed": self.episode.seed, "deaths": self.deaths, "raids": self.raids,
+            self.bus.emit("status", {**st.model_dump(exclude_unset=True), "episode": self.episode.number, "seed": self.episode.seed, "deaths": self.deaths, "raids": self.raids,
                                      "phase": "thinking" if self.thinking else "playing", "next_wake_tick": self.next_wake_tick, "steward": self.steward})
-        if st.get("state") != "playing" or not self.episode.seed:
+        if not st.playing or not self.episode.seed:
             return
         data = await self.bridge.events(self.last_seq, 500)
         events = data.get("events") or []
@@ -245,7 +245,7 @@ class Runner:
         alerts: list[Alert] = []
         if events or time.monotonic() - self._watched >= self.s.watchers.poll_s:
             self._watched = time.monotonic()
-            alerts = await self.watchers.run_all(events, st)
+            alerts = await self.watchers.run_all(events, st.model_dump())
             self.pending_alerts += alerts
         if self.thinking and self.deps is not None:
             urgent = [f"{e.get('kind')}: {e.get('text', '')}" for e in events if e.get("kind") in self.s.play.critical_kinds]
@@ -262,14 +262,14 @@ class Runner:
         await self.bridge.call("game.speed", {"speed": play.speed})
         while not self.stop:
             st = await self.bridge.status()
-            if st.get("state") != "playing":
-                if st.get("state") == "loading":
+            if not st.playing:
+                if st.state == "loading":
                     await asyncio.sleep(2)
                     continue
                 await self.end_episode("the game left the play state")
                 return
-            tick, day = int(st.get("tick", 0)), int(st.get("day", 0))
-            if int(st.get("colonists", 0)) == 0 and day > self.episode.start_day:
+            tick, day = st.tick, st.day
+            if st.colonists == 0 and day > self.episode.start_day:
                 await self.end_episode("all colonists dead")
                 return
             if self.force_end:
@@ -384,9 +384,9 @@ class Runner:
             self.force = "operator message"
         self.step_notes.append(outcome.notes)
         try:
-            tick = int((await self.bridge.status()).get("tick", 0))
+            tick = (await self.bridge.status()).tick
         except BridgeError:
-            tick = int(self.status.get("tick", 0))
+            tick = self.status.tick
         play = self.s.play
         hours = outcome.end.wake_in_hours if outcome.end and outcome.end.wake_in_hours else play.wake_hours
         floor = 0.5 if wake.urgent or self.deps.turn.model_speed is not None else play.min_wake_hours
@@ -515,9 +515,9 @@ class Runner:
             summary = await self.bridge.call("state.summary")
         except BridgeError as e:
             self.bus.emit("error", {"text": f"final read: {e}"})
-        days = int(st.get("day", self.last_day)) - self.episode.start_day
-        colonists = int(summary.get("colonists", st.get("colonists", 0)) or 0)
-        assisted = bool(st.get("assisted", False)) or self.sandbox
+        days = max(st.day, self.last_day) - self.episode.start_day
+        colonists = int(summary.get("colonists", st.colonists) or 0)
+        assisted = st.assisted or self.sandbox
         total = score(days, colonists, self.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0),
                       int(summary.get("research_done", 0) or 0), self.raids)
         self.bus.emit("log", {"text": f"episode {self.episode.number} over: {reason}; days={days} colonists={colonists} deaths={self.deaths} score={total}"})

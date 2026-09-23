@@ -97,7 +97,7 @@ def create_app(runner: Runner) -> FastAPI:
     @app.get("/api/state")
     async def api_state() -> dict[str, Any]:
         try:
-            game = await asyncio.wait_for(bridge.status(), 5.0)
+            game = (await asyncio.wait_for(bridge.status(), 5.0)).model_dump()
         except (BridgeError, TimeoutError):
             game = None
         ctl = {"paused": controls.paused, "no_pause": controls.no_pause, "sandbox": controls.sandbox, "steward": controls.steward}

@@ -52,7 +52,7 @@ class WatcherTools(AbstractCapability[Deps]):
             """
             status = await ctx.deps.bridge.status()
             try:
-                return await watchers.dry_run(name, events or [], status)
+                return await watchers.dry_run(name, events or [], status.model_dump())
             except LookupError as e:
                 raise ToolFailed(str(e)) from e
 

@@ -6,10 +6,31 @@ import time
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 
 class BridgeError(Exception):
     pass
+
+
+class GameStatus(BaseModel):
+    """`game.status`: the fields the runner reads are typed; the others pass through to the dashboard."""
+
+    model_config = ConfigDict(extra="allow", coerce_numbers_to_str=True)
+
+    state: str = ""
+    tick: int = 0
+    day: int = 0
+    hour: int = 0
+    colonists: int = 0
+    seq: int = 0
+    seed: str | None = None
+    god_mode: bool = False
+    assisted: bool = False
+
+    @property
+    def playing(self) -> bool:
+        return self.state == "playing"
 
 
 class Bridge:
@@ -64,15 +85,15 @@ class Bridge:
             raise BridgeError(response.text[:300])
         return response.content
 
-    async def status(self) -> dict[str, Any]:
-        return await self.call("game.status")
+    async def status(self) -> GameStatus:
+        return GameStatus.model_validate(await self.call("game.status"))
 
-    async def wait_for(self, state: str, timeout: float = 600) -> dict[str, Any]:
+    async def wait_for(self, state: str, timeout: float = 600) -> GameStatus:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
                 status = await self.status()
-                if status.get("state") == state:
+                if status.state == state:
                     return status
             except BridgeError:
                 pass
