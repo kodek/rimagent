@@ -1,6 +1,6 @@
 # Research: an LLM director with a Jev fast loop
 
-Date: 2026-09-22. Status: research and a candidate design. Nothing here is built yet. Scope: `agentv2/`, `mod-steward/`, and changes to `mod/` that we can request.
+Date: 2026-09-22. Status: research and a design. The first slice is built in `agentv2/src/agentv2/loop/` (section 12). Scope: `agentv2/`, `mod-steward/`, and changes to `mod/` that we can request.
 
 This document uses ASD-STE100 Simplified Technical English. Code names stay in their original form.
 
@@ -580,3 +580,36 @@ E1 and E3 need a TypeSafe API key. E2 and E4 need the game to run.
 3. **Mod changes.** Can we change `mod-steward` (leases)? Do we fork or send upstream changes to `zorrobyte/rimbridge` (batch, long poll, cancel on timeout)?
 4. **Jev account and budget.** A direct TypeSafe key (lower latency) or OpenRouter. A spend cap per hour and per game.
 5. **Combat ownership.** Does the combat standing order stay the only owner of drafted pawns? Or can the loop lease pawns during fights?
+
+## 12. Implementation status
+
+The first slice uses the recommended options of section 11:
+
+- option A (declarative policies with a feature library);
+- the first domains in shadow mode;
+- no change to the mods;
+- combat stays with the standing order.
+
+| Design part | Where | Notes |
+|---|---|---|
+| Jev client (5.4) | `loop/jev.py` | Direct API, 2 s timeout, one hedged request, rate and spend limits, circuit breaker. `FakeJev` for tests and `agentv2 fake`. |
+| Directive (5.2) | `loop/directive.py`, `set_directive` in `loop/tools.py` | Kept in `Episode`. A `report_when` item becomes the harness question `report_up`. Each acting policy must have a veto question for `directive.never`. |
+| Policies (5.3, 5.7 A) | `loop/spec.py`, `loop/subjects.py`, `brain/policies/*.yaml` | Subjects: events, letters, dialogs, posture. Features with literal bands. |
+| Runtime (5.4) | `loop/engine.py` | Shared read cache, triggers and cadence, claims, leases from the director's own calls, dwell and budgets, act on change only, stale check before an action. |
+| Escalation and reports (5.5) | `loop/engine.py`, `situation.py`, `runtime.py` | Escalations become alerts. A critical claim that is released wakes the director at once. A "Fast loop" section is in each situation report. |
+| Decision log and labels (5.6) | `loop/store.py` | `runs/loop.sqlite`. The director's answers become labels automatically. Held-out labels are hidden from the agents. |
+| Gate (5.6) | `loop/gate.py` | Replay on logged states. shadow -> canary on held-out agreement; canary -> active after clean actions. Automatic demotion. An edit starts a new version in shadow. |
+| Passes (5.6) | `passes.py`, `roles.py`, the skill `fast-loop` | The improver and the reflector see each policy's counts and labels. |
+| Dashboard | `dashboard/` Loop tab, `/api/loop` | The operator can set any stage and switch the loop off. |
+| Watcher action check (8.4) | `watchers/actions.py` | Runner-only and `dev.*` methods are refused. |
+
+Not built yet:
+
+- the speed owner (section 8, item 5);
+- the method check for authored `my_*` tools;
+- automatic GEPA optimization of the question text;
+- the mod changes in section 8 (batch RPC, long poll, leases in `mod-steward`);
+- combat stances;
+- the experiments of section 10.
+
+E1 and E3 need a TypeSafe key.

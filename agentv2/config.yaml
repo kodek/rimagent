@@ -33,6 +33,21 @@ steward:
   enabled: true
   orders_off: []            # standing orders to keep off, e.g. [corpses]; the dashboard switches add to it until the agent stops
   research_queue: []        # research defNames queued with steward.research at the start of each game
+jev:                        # TypeSafe's Jev for the fast loop; the key goes in config.local.yaml or TYPESAFE_API_KEY (no key: the loop stays off)
+  base_url: https://api.typesafe.ai   # direct API; OpenRouter (https://openrouter.ai/api, model typesafe/jev-1.13) is slower
+  model: jev-1.13.0         # pin the version: thresholds are tuned against it
+  timeout_s: 2.0            # per request; a request still open after hedge_after_s gets one parallel copy
+  hedge_after_s: 0.8
+  requests_per_minute: 600  # half the account limit (1,200/min), so a replay cannot starve the live loop
+  usd_per_hour: 2.0         # spend limit; the loop waits when it is reached
+loop:
+  enabled: true
+  directive_hours: 24       # in-game hours a directive lasts when set_directive gives none
+  escalations_per_hour: 6   # escalations per in-game hour before the rest are held back
+  gate:
+    min_heldout: 4          # held-out labels a shadow policy needs before canary
+    min_agreement: 0.8      # agreement with them
+    canary_actions: 5       # actions in canary, none failed or labelled wrong, before active
 dashboard:
   host: 127.0.0.1         # 0.0.0.0 serves it on the LAN (no authentication)
   port: 8771

@@ -130,6 +130,39 @@ imports beyond Monty's subset, one second per call. `memo` persists between call
 game (read-only methods only). The runner executes returned actions and logs them. A failing watcher, or one that returns
 an item that is not an action or an alert, is disabled until its file changes. `test_watcher` dry-runs one.
 
+## The fast loop
+
+The fast loop (`loop/`) makes judgment calls between the director's steps, in about 0.3 s each, with Jev: TypeSafe's
+System One model, which answers yes/no, choice and score questions about a JSON state with probabilities. It cannot
+write text or do math, so code computes the numbers and gives them with literal bands. The research and the design are
+in `../docs/jev-fast-loop-research.md`.
+
+- **The director stays in charge.** `set_directive` gives the loop a typed intent: the purpose, ranked priorities,
+  never-rules, what to report up, guidance per domain and an expiry (`loop/directive.py`, kept in `Episode`). Every Jev
+  request carries the part its policy needs. Without a valid directive, the policies only watch.
+- **Policies are data the agent writes.** `brain/policies/<name>.yaml` (`loop/spec.py`, strict schema; the skill
+  fast-loop is the manual) names a subject, triggers, colony features, Jev questions and a rule: act with a choice,
+  veto on a yes/no, escalate on a yes/no or a score. A subject (`loop/subjects.py`: events, letters, dialogs, posture)
+  reads the game through a shared short-lived cache and may call exactly one RimBridge method. There is no state
+  machine: each policy asks "what now?" about the current thing and directive.
+- **The engine** (`loop/engine.py`) runs beside the poller on the same asyncio loop. An acting policy claims the ledger
+  events it answers (a dialog), so they do not wake the director; a claim it cannot resolve in `loop.claim_timeout_s`
+  (Jev down, doubt, no directive) is released, and a critical one wakes the director at once. Escalations become alerts.
+  The director's own `rw_ui_letter`, `rw_ui_dialog` and `rw_steward_posture` calls lease the thing to it and label the
+  loop's decisions on it.
+- **Every decision is kept** in `runs/loop.sqlite` (`loop/store.py`) with the exact state and questions, outside the
+  brain. About a third are held out: the agents never see their labels.
+- **Evidence gates every change** (`loop/gate.py`). A policy version (its content hash) starts in `shadow`.
+  `promote_policy` moves it to `canary` when a replay on the held-out labels agrees, then to `active` after clean canary
+  actions. Wrong labels on its actions demote it; an edit starts a new version in shadow. The operator can set any stage.
+- **The passes improve it.** The improver and the reflector see each policy's counts and labels; they label decisions,
+  edit the questions, `replay_policy` before and after, and promote.
+- **Jev client** (`loop/jev.py`): httpx on the direct API, a 2 s timeout, one hedged request, a request-rate and a
+  spend limit, and a circuit breaker. `FakeJev` (`loop/fakejev.py`) answers in the tests and in `agentv2 fake`.
+
+The seed policies (all shadow): `dialogs`, `letters`, `posture`, `event-triage`. The dashboard's Loop tab shows Jev's
+health and spend, the directive, the policies with their stages, and the decisions.
+
 ## Not in agentv2
 
 The v1 watchdog (source self-repair), the parallel specialist streams and the SFT capture and export are not ported.

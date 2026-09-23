@@ -21,6 +21,9 @@ Two halves, the mod as its own repo since 2026-09-16, split further into bridge 
   sandbox), one asyncio loop, one continuous compacted conversation per game, its own dashboard (port 8771).
   `cd agentv2 && uv run agentv2 fake -v` plays an in-process fake game; `uv run pytest -q`; `uv run agentv2 seed` fills
   `knowledge/wiki/` (the v1 format) and adds `knowledge/wiki-index.sqlite` for its `kb_search`. See `agentv2/README.md`.
+  Its fast loop (`agentv2/src/agentv2/loop/`) runs agent-written Jev policies (`agentv2/brain/policies/*.yaml`) under the
+  director's `set_directive`, logs decisions to `runs/loop.sqlite`, and gates each policy version shadow -> canary ->
+  active on held-out labels; it needs `jev.api_key` or `TYPESAFE_API_KEY` (`docs/jev-fast-loop-research.md`).
 - `brain/` what the agent authors: `skills/*.md` (frontmatter name/description/tags/always), `tools/*.py`,
   `watchers/*.py` (hot-loaded), `memory/notebook.md` (per colony), `memory/journal.md` (cross-game), `scores.jsonl`.
   The runner commits `brain/` per episode; the agent can `brain_revert`.
