@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import pytest
@@ -8,32 +10,27 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ThinkingPart, Tool
 from pydantic_ai.models.function import AgentInfo
 from pydantic_ai.tools import ToolDefinition
 
-from agentv2.agents import Agents, build_agents
-from agentv2.brain import Brain, BrainLayout
-from agentv2.catalog import parse_catalog
 from agentv2.capabilities.arguments import CoerceArguments, coerce
-from agentv2.deps import Deps, DirectorDeps
+from agentv2.deps import DirectorDeps
 from agentv2.episode import Episode
-from agentv2.history import BrainGit, BrainTools, Scores
-from agentv2.roles import DIRECTOR, IMPROVER
+from agentv2.roles import IMPROVER
+from agentv2.runtime import Runtime, open_runtime
 from agentv2.scripted import call, scripted_model
 from agentv2.tools.turn import TurnEnd
-from agentv2.watchers import Watchers
+from agentv2.wake import Wake
 
 
 @dataclass
 class Stack:
-    agents: Agents
+    rt: Runtime
     deps: DirectorDeps
-    brain: Brain
     seen: list[AgentInfo]
     script: list[ModelResponse]
     messages: list[list[ModelMessage]]
-    watchers: Watchers
 
 
-@pytest.fixture
-async def stack(settings, bridge, bus):
+@asynccontextmanager
+async def open_stack(settings, bridge, bus) -> AsyncIterator[Stack]:
     seen: list[AgentInfo] = []
     script: list[ModelResponse] = []
     received: list[list[ModelMessage]] = []
@@ -43,16 +40,21 @@ async def stack(settings, bridge, bus):
         received.append(list(messages))
         return script.pop(0)
 
-    brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
-    async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
-        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
-        deps = DirectorDeps(bridge=bridge, bus=bus, catalog=parse_catalog(await bridge.methods()), episode=Episode(number=1, seed="rimagent-1"), role=DIRECTOR)
-        yield Stack(agents, deps, brain, seen, script, received, watchers)
+    async with open_runtime(settings, bus, bridge, scripted_model(respond)) as rt:
+        await rt.runner.load_catalog()
+        rt.runner.episode = Episode(number=1, seed="rimagent-1")
+        yield Stack(rt, rt.runner.director_deps(), seen, script, received)
+
+
+@pytest.fixture
+async def stack(settings, bridge, bus):
+    async with open_stack(settings, bridge, bus) as s:
+        yield s
 
 
 async def run(stack: Stack, *responses: ModelResponse, prompt: str = "situation", history=None):
     stack.script[:] = list(responses)
-    return await stack.agents.director.run(prompt, deps=stack.deps, message_history=history)
+    return await stack.rt.agents.director.run(prompt, deps=stack.deps, message_history=history)
 
 
 def returns(result, tool: str) -> list[ToolReturnPart]:
@@ -99,7 +101,7 @@ async def test_tool_surface(stack):
     assert {"rw_state_summary", "rw_ui_draft", "look", "run_code", "load_capability", "brain_write_file"} <= names
     assert {"notebook_write_memory", "journal_write_memory", "author_capability", "test_watcher", "brain_revert", "reply_to_operator"} <= names
     assert "rpc" not in names and not any(n.startswith("rw_dev_") for n in names)
-    assert "rw_game_new_game" not in names
+    assert "rw_game_new_game" not in names and "search_conversation_history" not in names
     assert {t.name for t in stack.seen[0].output_tools} == {"end_turn", "end_episode"}
 
 
@@ -111,8 +113,7 @@ async def test_sandbox_episode_shows_dev_tools(stack):
 
 async def test_brain_passes_only_read_the_game(stack, game):
     stack.script[:] = [call("run_code", {"code": "await rpc(method='ui.draft', params={'pawn': 'Bob'})"}), call("finish", {"notes": "done"})]
-    deps = Deps(bridge=stack.deps.bridge, bus=stack.deps.bus, catalog=stack.deps.catalog, episode=stack.deps.episode, role=IMPROVER)
-    result = await stack.agents.improver.run("improve", deps=deps)
+    result = await stack.rt.agents.improver.run("improve", deps=stack.rt.runner.deps(IMPROVER))
     names = {t.name for t in stack.seen[0].function_tools}
     assert result.output.notes == "done"
     assert "rw_state_summary" in names
@@ -136,19 +137,27 @@ async def test_the_speed_the_director_sets_is_tracked(stack):
 
 async def test_run_code_reaches_the_bridge_through_the_sandbox(stack):
     result = await run(stack, call("run_code", {"code": "s = await rpc(method='state.summary')\nlen(s['colonist_list'])"}), call("end_turn", {"notes": "x"}))
-    returns = [p for m in result.all_messages() for p in getattr(m, "parts", []) if isinstance(p, ToolReturnPart) and p.tool_name == "run_code"]
-    assert returns[0].model_response_str() == "3"
+    assert returns(result, "run_code")[0].model_response_str() == "3"
 
 
 async def test_skill_catalog_and_loading(stack):
     result = await run(stack, call("load_capability", {"id": "defense-basics"}), call("end_turn", {"notes": "x"}))
-    returns = [p for m in result.all_messages() for p in getattr(m, "parts", []) if isinstance(p, ToolReturnPart) and p.tool_name == "load_capability"]
-    assert "# Skill: defense-basics" in returns[0].model_response_str()
+    assert "# Skill: defense-basics" in returns(result, "load_capability")[0].model_response_str()
 
 
-async def test_notebook_is_per_colony(stack, settings):
+async def test_a_broken_authored_capability_is_left_out(stack, bus):
+    stack.rt.brain.creation.store.write("broken", "from dataclasses import dataclass\nfrom pydantic_ai.capabilities import AbstractCapability\n"
+                                                  "from pydantic_ai.exceptions import UserError\n@dataclass\nclass Broken(AbstractCapability):\n"
+                                                  "    async def before_run(self, ctx):\n        raise UserError('broken on purpose')\n")
+    stack.script[:] = [call("end_turn", {"notes": "played anyway"})]
+    outcome = await stack.rt.director.step("situation", stack.deps, Wake("x", False))
+    assert outcome.notes == "played anyway"
+    assert any("authored capability broke the run" in e["data"].get("text", "") for e in bus.since(0, kinds={"error"}))
+
+
+async def test_notebook_is_per_colony(stack):
     await run(stack, call("notebook_write_memory", {"content": "steel at [126,115]"}), call("end_turn", {"notes": "x"}))
-    assert "steel at [126,115]" in stack.brain.layout.notebook(stack.deps.episode.colony).read_text()
+    assert "steel at [126,115]" in stack.rt.brain.layout.notebook(stack.deps.episode.colony).read_text()
 
 
 async def test_history_carries_across_steps(stack):
@@ -158,13 +167,12 @@ async def test_history_carries_across_steps(stack):
     assert "situation" in seen_prompts and "next" in seen_prompts
 
 
-async def test_step_budget_leaves_only_end_turn(stack, settings):
+async def test_step_budget_leaves_only_end_turn(settings, bridge, bus):
     settings.play.max_requests = 2
-    stack.agents = build_agents(stack.agents.director.model, settings, stack.brain, stack.watchers,
-                                BrainTools(Scores(stack.brain.layout.scores), BrainGit(stack.brain.layout.root), stack.brain.layout))
-    result = await run(stack, call("rw_state_summary"), call("rw_state_summary"), call("end_turn", {"notes": "budget"}))
-    assert result.output == TurnEnd(notes="budget")
-    assert [len(info.function_tools) > 0 for info in stack.seen] == [True, True, False]
+    async with open_stack(settings, bridge, bus) as stack:
+        result = await run(stack, call("rw_state_summary"), call("rw_state_summary"), call("end_turn", {"notes": "budget"}))
+        assert result.output == TurnEnd(notes="budget")
+        assert [len(info.function_tools) > 0 for info in stack.seen] == [True, True, False]
 
 
 async def test_brain_file_tools_emit_their_events(stack, bus):
@@ -176,4 +184,4 @@ async def test_brain_file_tools_emit_their_events(stack, bus):
     assert all(e["data"].get("ok", True) for e in events if e["kind"] == "tool_result")
     changes = [(e["data"]["kind"], e["data"]["name"], e["data"]["action"]) for e in events if e["kind"] == "brain_change"]
     assert changes == [("skill", "skills/new-skill", "mkdir"), ("skill", "skills/new-skill/SKILL.md", "write")]
-    assert "new-skill" in {s.name for s in stack.brain.skills.infos()}
+    assert "new-skill" in {s.name for s in stack.rt.brain.skills.infos()}

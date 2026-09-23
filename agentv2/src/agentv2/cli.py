@@ -14,7 +14,6 @@ from .bridge import Bridge
 from .bus import Bus, JsonlLog
 from .model import build_model
 
-
 _PRINTED = {e.KIND for e in (events.Assistant, events.Log, events.Error, events.ThinkStart, events.ThinkEnd, events.EpisodeStart, events.EpisodeEnd,
                              events.WatcherAlert, events.BrainChange, events.Reply, events.Harness)}
 
@@ -34,7 +33,7 @@ def _printer(event: dict[str, Any]) -> None:
 async def _play(args: argparse.Namespace, fake: bool) -> None:
     from .dashboard.app import create_app, serve
     from .fakegame import FakeGame
-    from .runner import Runner
+    from .runtime import open_runtime
 
     settings = config.load()
     if args.max_days:
@@ -51,16 +50,16 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
         tasks.append(asyncio.create_task(game.run_clock(), name="fake-clock"))
     else:
         bridge = Bridge(settings.bridge.url, settings.bridge.timeout_s)
-    runner = Runner(settings, bus, bridge, build_model(settings.llm))
-    if not args.no_dashboard:
-        host, port = settings.dashboard.host, settings.dashboard.port
-        tasks.append(asyncio.create_task(serve(create_app(runner), port, host), name="dashboard"))
-        url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
-        print(f"dashboard: {url} (listening on {host}:{port})")
-        if settings.dashboard.open_browser:
-            asyncio.get_running_loop().call_later(2, webbrowser.open, url)
     try:
-        await runner.run()
+        async with open_runtime(settings, bus, bridge, build_model(settings.llm)) as rt:
+            if not args.no_dashboard:
+                host, port = settings.dashboard.host, settings.dashboard.port
+                tasks.append(asyncio.create_task(serve(create_app(bus, bridge, rt.brain_view, rt.controls), port, host), name="dashboard"))
+                url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
+                print(f"dashboard: {url} (listening on {host}:{port})")
+                if settings.dashboard.open_browser:
+                    asyncio.get_running_loop().call_later(2, webbrowser.open, url)
+            await rt.runner.run()
     finally:
         for task in tasks:
             task.cancel()
@@ -72,33 +71,24 @@ async def _tools(_: argparse.Namespace) -> None:
     from pydantic_ai.messages import ModelResponse
     from pydantic_ai.models.function import AgentInfo
 
-    from .agents import build_agents
-    from .brain import Brain, BrainLayout
-    from .catalog import parse_catalog
-    from .deps import DirectorDeps
     from .episode import Episode
     from .fakegame import FakeGame
-    from .history import BrainGit, BrainTools, Scores
-    from .roles import DIRECTOR
+    from .runtime import open_runtime
     from .scripted import call, scripted_model
-    from .watchers import Watchers
 
     settings = config.load()
-    game = FakeGame()
-    bridge = Bridge("http://fakegame", transport=game.transport())
-    bus = Bus()
-    brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
+    bridge = Bridge("http://fakegame", transport=FakeGame().transport())
     seen: list[AgentInfo] = []
 
     def respond(_: list[Any], info: AgentInfo) -> ModelResponse:
         seen.append(info)
         return call("end_turn", {"notes": "listing tools"})
 
-    async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
-        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
-        problems = brain.problems()
-        deps = DirectorDeps(bridge=bridge, bus=bus, catalog=parse_catalog(await bridge.methods()), episode=Episode(number=1, seed="tools"), role=DIRECTOR)
-        await agents.director.run("list", deps=deps)
+    async with open_runtime(settings, Bus(), bridge, scripted_model(respond)) as rt:
+        await rt.runner.load_catalog()
+        rt.runner.episode = Episode(number=1, seed="tools")
+        await rt.agents.director.run("list", deps=rt.runner.director_deps())
+        problems = rt.brain.problems()
     for tool in sorted(seen[0].function_tools, key=lambda t: t.name):
         print(f"{tool.name:34s} {(tool.description or '').splitlines()[0][:100]}")
     print(f"\n{len(seen[0].function_tools)} tools; output tools: {', '.join(t.name for t in seen[0].output_tools)}")

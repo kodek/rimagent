@@ -5,55 +5,64 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
-from ..bridge import BridgeError
-from ..runner import Controls, Runner
+from ..bridge import Bridge, BridgeError
+from ..bus import Bus
+from ..controls import Controls
 from ..tools.vision import marked_map
+from .brain_view import BrainView
 
 PAGE = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
-_ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause",
-            "sandbox": "set_sandbox", "steward": "set_steward", "order": "set_order", "rally": "set_rally", "kill": "kill"}
-_BOOL_ACTIONS = {"no_pause", "sandbox", "steward"}
 
 
-class ControlRequest(BaseModel):
-    action: str
-    value: bool | None = None
-    id: str | None = None
+class _Action(BaseModel):
+    action: Literal["pause", "resume", "think", "end_episode", "kill"]
+
+    async def apply(self, c: Controls) -> Any:
+        return await {"pause": c.pause, "resume": c.resume, "think": c.think_now, "end_episode": c.end_episode, "kill": c.kill}[self.action]()
+
+
+class _Switch(BaseModel):
+    action: Literal["no_pause", "sandbox", "steward"]
+    value: bool = False
+
+    async def apply(self, c: Controls) -> Any:
+        return await {"no_pause": c.set_no_pause, "sandbox": c.set_sandbox, "steward": c.set_steward}[self.action](self.value)
+
+
+class _Order(BaseModel):
+    action: Literal["order"]
+    id: str
+    value: bool = False
+
+    async def apply(self, c: Controls) -> Any:
+        return await c.set_order(self.id, self.value)
+
+
+class _Rally(BaseModel):
+    action: Literal["rally"]
     rect: list[int] | None = None
 
+    async def apply(self, c: Controls) -> Any:
+        return await c.set_rally(self.rect or None)
 
-def _chars(path: Path) -> int | None:
-    return len(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+Command = Annotated[_Action | _Switch | _Order | _Rally, Field(discriminator="action")]
+_COMMAND = TypeAdapter[Command](Command)
 
 
-def create_app(runner: Runner) -> FastAPI:
+def create_app(bus: Bus, bridge: Bridge, brain: BrainView, controls: Controls) -> FastAPI:
     app = FastAPI(title="agentv2 dashboard", docs_url=None, redoc_url=None)
-    bus, bridge, brain, controls = runner.bus, runner.bridge, runner.brain, Controls(runner)
 
     async def call(method: str, params: dict[str, Any] | None = None, timeout: float = 20.0) -> Any:
         return await asyncio.wait_for(bridge.call(method, params or {}), timeout)
-
-    def brain_file(kind: str, name: str | None) -> Path:
-        layout = brain.layout
-        fixed = {"doctrine": layout.doctrine, "notebook": layout.notebook(runner.episode.colony), "journal": layout.journal(),
-                 "operator": layout.operator_log}
-        if kind in fixed:
-            return fixed[kind]
-        named = {"skill": layout.skill, "watcher": layout.watcher, "capability": layout.capability}
-        if kind not in named:
-            raise HTTPException(400, f"unknown kind {kind!r}")
-        try:
-            return named[kind](name or "")
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -101,36 +110,31 @@ def create_app(runner: Runner) -> FastAPI:
 
     @app.get("/api/brain/tree")
     def api_brain_tree() -> dict[str, Any]:
-        colony, layout = runner.episode.colony, brain.layout
-        return {
-            "skills": [{"name": s.name, "description": s.description, "chars": s.chars, "error": s.error} for s in brain.skills.infos()],
-            "watchers": runner.watchers.listing(),
-            "capabilities": brain.authored(),
-            "colony": colony if runner.episode.seed else None,
-            "memory": {"doctrine": _chars(layout.doctrine), "notebook": _chars(layout.notebook(colony)),
-                       "journal": _chars(layout.journal()), "operator": _chars(layout.operator_log)},
-        }
+        return brain.tree()
 
     @app.get("/api/brain/file")
     def api_brain_file(kind: str, name: str | None = None) -> dict[str, Any]:
-        path = brain_file(kind, name)
+        try:
+            path = brain.file(kind, name)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
         if not path.is_file():
             raise HTTPException(404, f"no {kind} {name or ''}".strip())
         return {"kind": kind, "name": path.name, "text": path.read_text(encoding="utf-8")}
 
     @app.get("/api/git/log", response_class=PlainTextResponse)
     async def api_git_log(n: int = Query(30, ge=1, le=500)) -> str:
-        return await runner.git.log(n)
+        return await brain.log(n)
 
     @app.get("/api/git/diff", response_class=PlainTextResponse)
     async def api_git_diff(sha: str) -> str:
         if not sha.isalnum() or len(sha) > 64:
             raise HTTPException(400, "bad sha")
-        return await runner.git.diff(sha)
+        return await brain.diff(sha)
 
     @app.get("/api/scores")
     def api_scores() -> list[dict[str, Any]]:
-        return runner.scores.history(100)
+        return brain.score_rows(100)
 
     @app.get("/api/ledger")
     async def api_ledger(since: int = 0) -> dict[str, Any]:
@@ -202,20 +206,13 @@ def create_app(runner: Runner) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/control")
-    async def api_control(req: ControlRequest) -> dict[str, Any]:
-        method = _ACTIONS.get(req.action)
-        if method is None:
-            raise HTTPException(400, f"unknown action {req.action!r}")
-        fn = getattr(controls, method)
+    async def api_control(req: Request) -> dict[str, Any]:
         try:
-            if req.action == "order":
-                if not req.id:
-                    raise HTTPException(400, "order needs an id")
-                result = await fn(req.id, bool(req.value))
-            elif req.action == "rally":
-                result = await fn(list(req.rect) if req.rect else None)
-            else:
-                result = await (fn(bool(req.value)) if req.action in _BOOL_ACTIONS else fn())
+            command = _COMMAND.validate_python(await req.json())
+        except ValidationError as e:
+            raise HTTPException(400, f"bad control: {e.errors(include_url=False)}") from e
+        try:
+            result = await command.apply(controls)
         except BridgeError as e:
             return {"ok": False, "error": str(e), "paused": controls.paused}
         return {"ok": True, "result": result, "paused": controls.paused, "no_pause": controls.no_pause}

@@ -36,7 +36,6 @@ from .tools.bridge import BridgeToolset
 from .tools.code import CODE_MODE, sandbox
 from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd, operator
 from .tools.vision import vision
-from .watchers import Watchers
 from .watchers.tools import WatcherTools
 
 
@@ -45,12 +44,11 @@ class Agents:
     director: Agent[DirectorDeps, TurnEnd | EpisodeEnd]
     improver: Agent[Deps, Finished]
     reflector: Agent[Deps, Finished]
-    steps: SqliteStepStore
 
 
-def build_agents(model: Model, settings: Settings, brain: Brain, watchers: Watchers, history: BrainTools) -> Agents:
+def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: WatcherTools, history: BrainTools,
+                 steps: SqliteStepStore) -> Agents:
     budget = settings.play.max_requests
-    steps = SqliteStepStore(database=settings.runs / "steps.sqlite", max_snapshots_per_run=4)
     toolsets: list[AbstractToolset[Deps]] = [BridgeToolset().prefixed("rw"), sandbox]
     overflow = LocalFileStore(settings.runs / "overflow", cleanup_after=timedelta(days=2))
 
@@ -61,7 +59,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watchers: Watch
             CoerceArguments(),
             *method_access(),
             *brain.capabilities(),
-            WatcherTools(watchers),
+            watcher_tools,
             history,
             CodeMode(tools=CODE_MODE),
             telemetry(),
@@ -109,4 +107,4 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watchers: Watch
             capabilities=common(),
         )
 
-    return Agents(director=director, improver=brain_pass(IMPROVER), reflector=brain_pass(REFLECTOR), steps=steps)
+    return Agents(director=director, improver=brain_pass(IMPROVER), reflector=brain_pass(REFLECTOR))
