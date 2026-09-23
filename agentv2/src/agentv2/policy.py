@@ -23,3 +23,4 @@ class MethodPolicy:
 
 
 WATCHER_POLICY = MethodPolicy(writes=False, read_only_hint="return an action instead")
+WATCHER_ACTIONS = MethodPolicy(writes=True)

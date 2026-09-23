@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from ..bridge import Bridge, BridgeError
 from ..bus import Bus
 from ..events import WatcherAction, WatcherAlert
+from ..policy import WATCHER_ACTIONS
 from .sandbox import ActionItem, WatchItem
 
 
@@ -26,9 +27,12 @@ class WatcherActions:
             self.bus.emit(WatcherAlert(name=name, alert=item.text, wake=item.wake))
             return Alert(name, item.text, item.wake)
         params = item.params or {}
-        try:
-            result, ok = await self.bridge.call(item.method, params), True
-        except BridgeError as e:
-            result, ok = str(e), False
+        if refusal := WATCHER_ACTIONS.refusal(item.method):
+            result, ok = f"refused: {refusal}", False
+        else:
+            try:
+                result, ok = await self.bridge.call(item.method, params), True
+            except BridgeError as e:
+                result, ok = str(e), False
         self.bus.emit(WatcherAction(name=name, action=item.method, params=params, note=item.note, ok=ok, result=result))
         return Alert(name, item.note or item.method, True) if item.wake else None

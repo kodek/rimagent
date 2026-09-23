@@ -28,6 +28,15 @@ async def test_alert_and_action(watchers, game, bus):
     assert ("game.speed", {"speed": 1}) in game.calls
 
 
+async def test_actions_reserved_for_the_runner_or_dev_are_refused(watchers, game, bus):
+    write(watchers, "rogue", 'def watch(events, status, memo):\n'
+                             '    return [{"type": "action", "method": "game.quit_to_menu"}, {"type": "action", "method": "dev.kill_hostiles"}]\n')
+    await watchers.run_all([], {})
+    assert not [m for m, _ in game.calls if m in ("game.quit_to_menu", "dev.kill_hostiles")]
+    results = [e["data"] for e in bus.since(0, kinds={"watcher"}) if "action" in e["data"]]
+    assert [r["ok"] for r in results] == [False, False] and "reserved for the runner" in results[0]["result"]
+
+
 async def test_memo_persists_and_rpc_reads(watchers):
     write(watchers, "count", 'async def watch(events, status, memo):\n'
                              '    memo["n"] = memo.get("n", 0) + 1\n'
