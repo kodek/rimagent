@@ -90,12 +90,12 @@ class LoopTools(AbstractCapability[Deps]):
                 {"warning": f"no policy has the domain {unknown}"} if unknown else {})
 
         @toolset.tool_plain
-        def loop_status() -> dict[str, Any]:
+        async def loop_status() -> dict[str, Any]:
             """The fast loop: on or off, Jev's health and spend, the directive, and each policy with its stage and decision counts."""
             return loop.snapshot()
 
         @toolset.tool_plain
-        def list_decisions(policy: str | None = None, show: Literal["all", "unlabelled", "disagreements", "escalated"] = "all",
+        async def list_decisions(policy: str | None = None, show: Literal["all", "unlabelled", "disagreements", "escalated"] = "all",
                            limit: int = 20) -> list[dict[str, Any]]:
             """Recent fast-loop decisions with Jev's answers. The labels of held-out decisions stay hidden: only the gate scores on them.
 
@@ -111,7 +111,7 @@ class LoopTools(AbstractCapability[Deps]):
             return out[:limit]
 
         @toolset.tool
-        def label_decisions(ctx: RunContext[Deps], labels: list[Label]) -> dict[str, Any]:
+        async def label_decisions(ctx: RunContext[Deps], labels: list[Label]) -> dict[str, Any]:
             """Say what the right answer was for fast-loop decisions: an option label, `escalate` (the director had to decide)
             or `none` (nothing to do). Judge with hindsight: what happened after it.
 
@@ -162,7 +162,7 @@ class LoopTools(AbstractCapability[Deps]):
                 raise ToolFailed(str(e)) from e
 
         @toolset.tool
-        def demote_policy(ctx: RunContext[Deps], name: str, to: Literal["shadow", "off"] = "shadow", why: str = "") -> str:
+        async def demote_policy(ctx: RunContext[Deps], name: str, to: Literal["shadow", "off"] = "shadow", why: str = "") -> str:
             """Stop a policy from acting (shadow: it still logs what it would do) or from running at all (off)."""
             try:
                 loop.set_stage(name, to, f"{ctx.deps.role.name}: {why}".strip(": "))

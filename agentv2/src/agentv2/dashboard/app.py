@@ -200,7 +200,7 @@ def create_app(bus: Bus, bridge: Bridge, brain: BrainView, controls: Controls) -
         return status
 
     @app.get("/api/loop")
-    def loop_view(limit: int = Query(60, ge=1, le=500)) -> dict[str, Any]:
+    async def loop_view(limit: int = Query(60, ge=1, le=500)) -> dict[str, Any]:
         loop = controls.loop
         decisions = [d.model_dump(include={"id", "t", "policy", "stage", "summary", "outcome", "label", "confidence", "reason", "ms", "truth",
                                            "truth_source"}) | {"truth": "(held out)" if d.truth and loop.store.heldout(d.id) else d.truth}

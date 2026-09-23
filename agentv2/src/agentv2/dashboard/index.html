@@ -190,6 +190,7 @@ footer .r{margin-left:auto}
   <button data-tab="scores">Scores</button>
   <button data-tab="base">Base</button>
   <button data-tab="steward">Steward</button>
+  <button data-tab="loop">Loop<span class="cnt" id="n-loop"></span></button>
   <button data-tab="map">Map</button>
   <button data-tab="ascii">ASCII</button>
 </nav>
@@ -238,6 +239,18 @@ footer .r{margin-left:auto}
       <span class="dimmer" id="steward-when" style="margin-left:auto"></span>
     </div>
     <div class="scroll" id="steward-view" style="padding:8px"><div class="empty">Refresh to load steward.status.</div></div>
+  </section>
+
+  <section class="tab col" id="tab-loop">
+    <div class="toolbar">
+      <span class="dim">The fast loop: the agent's Jev policies, under the director's directive</span>
+      <label title="Operator switch. Off = no policy runs; the director and the Steward go on" style="color:var(--teal)"><input type="checkbox" id="c-loop" onchange="control('loop',this.checked).then(loadLoop)"> loop on</label>
+      <button class="primary" onclick="loadLoop()">Refresh</button>
+      <label class="dim"><input type="checkbox" id="c-loop-auto" checked> auto every 10s</label>
+      <span id="loop-err" style="color:var(--err);font-family:var(--mono)"></span>
+      <span class="dimmer" id="loop-when" style="margin-left:auto"></span>
+    </div>
+    <div class="scroll" id="loop-view" style="padding:8px"><div class="empty">Refresh to load the fast loop.</div></div>
   </section>
 
   <section class="tab col" id="tab-ledger">
@@ -837,6 +850,49 @@ async function setRally(clear) {
   loadSteward();
 }
 setInterval(() => { if ($('c-steward-auto').checked && $('tab-steward').classList.contains('active')) loadSteward(); }, 20000);
+let nLoop = 0;
+async function loadLoop() {
+  $('loop-err').textContent = '';
+  try {
+    const j = await (await fetch('/api/loop')).json();
+    $('c-loop').checked = !!j.on;
+    const jev = j.jev;
+    let h = '<div class="dim">Jev ' + (jev ? `<span class="badge ${jev.available ? 'ok' : 'err'}">${jev.available ? 'available' : esc2(jev.reason)}</span> · ${fmtN(jev.calls_last_minute)} calls in the last minute · $${(jev.usd_last_hour || 0).toFixed(3)} in the last hour` +
+      (jev.last_ms != null ? ` · last answer ${fmtN(jev.last_ms)} ms` : '') : '<span class="badge err">no Jev key (jev.api_key or TYPESAFE_API_KEY)</span>') + ` · open claims ${fmtN(j.claims)}</div>`;
+    const d = j.directive;
+    h += '<h4 style="margin:10px 0 4px">Directive ' + (d ? `v${d.version} <span class="badge ${j.directive_valid ? 'ok' : 'err'}">${j.directive_valid ? 'valid' : 'expired'}</span>` : '<span class="badge warn">none: acting policies only watch</span>') + '</h4>';
+    if (d) h += `<div style="font-size:12px">${esc2(d.purpose)}<br>` + (d.priorities || []).map((p, i) => `${i + 1}. <b>${esc2(p.name)}</b>: ${esc2(p.statement)}`).join('<br>') +
+      ((d.never || []).length ? '<br>never: ' + d.never.map(esc2).join('; ') : '') + ((d.report_when || []).length ? '<br>report when: ' + d.report_when.map(esc2).join('; ') : '') + '</div>';
+    h += '<h4 style="margin:10px 0 4px">Policies <span class="dimmer">you can set any stage; the agent goes through promote_policy</span></h4><table><tr><th>policy</th><th>subject</th><th>stage</th><th>decisions of this version</th><th>problem</th></tr>';
+    for (const p of j.policies || []) {
+      const name = esc2(p.name).replace(/"/g, '&quot;').replace(/'/g, "\\'");
+      const stage = p.stage ? `<select onchange="control('policy_stage', null, {name: '${name}', stage: this.value}).then(loadLoop)">` +
+        ['off', 'shadow', 'canary', 'active'].map(s => `<option ${s === p.stage ? 'selected' : ''}>${s}</option>`).join('') + '</select>' : '<span class="badge err">invalid</span>';
+      const counts = Object.entries(p.decisions || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+      h += `<tr><td title="${esc2(p.description || '')}">${esc2(p.name)} <span class="dimmer">${esc2(p.digest)}</span></td><td>${esc2(p.subject || '')}</td><td>${stage}</td>` +
+        `<td>${esc2(counts || '–')}</td><td style="white-space:normal;color:var(--err)">${esc2(p.error || p.problem || '')}</td></tr>`;
+    }
+    h += '</table><h4 style="margin:10px 0 4px">Recent decisions <span class="dimmer">label = the right answer, from the director, a brain pass or the operator</span></h4>' +
+      '<table><tr><th>when</th><th>policy</th><th>stage</th><th>thing</th><th>outcome</th><th>chose</th><th>label</th><th>ms</th><th>why</th></tr>';
+    for (const x of j.decisions || []) {
+      const cls = x.outcome === 'acted' ? 'ok' : x.outcome === 'failed' ? 'err' : x.outcome.includes('escalat') ? 'warn' : 'teal';
+      h += `<tr><td>${fmtT(x.t)}</td><td>${esc2(x.policy)}</td><td>${esc2(x.stage)}</td><td style="white-space:normal">${esc2(x.summary)}</td><td><span class="badge ${cls}">${esc2(x.outcome)}</span></td>` +
+        `<td>${esc2(x.label ?? '')}${x.confidence != null ? ` <span class="dimmer">${x.confidence.toFixed(2)}</span>` : ''}</td><td>${esc2(x.truth ?? '')}${x.truth_source ? ` <span class="dimmer">${esc2(x.truth_source)}</span>` : ''}</td>` +
+        `<td>${x.ms != null ? fmtN(x.ms) : ''}</td><td style="white-space:normal">${esc2(x.reason || '')}</td></tr>`;
+    }
+    if (!(j.decisions || []).length) h += '<tr><td colspan=9 class="dimmer">no decisions yet</td></tr>';
+    $('loop-view').innerHTML = h + '</table>'; $('loop-when').textContent = new Date().toLocaleTimeString();
+  } catch (e) { $('loop-err').textContent = 'failed: ' + e; }
+}
+function addLoop(d, t) {
+  nLoop++; $('n-loop').textContent = nLoop;
+  if (!(d.text || d.outcome === 'acted' || d.outcome === 'escalated' || d.outcome === 'failed')) return;
+  const s = curStep; curStep = null;
+  liveAppend(sysLine('log', t, 'fast loop: ' + (d.text || `${d.policy} ${d.outcome}: ${d.summary}${d.label ? ' → ' + d.label : ''}${d.reason ? ' (' + d.reason + ')' : ''}`)));
+  curStep = s;
+}
+setInterval(() => { if ($('c-loop-auto').checked && $('tab-loop').classList.contains('active')) loadLoop(); }, 10000);
+document.querySelector('#tabs button[data-tab="loop"]').addEventListener('click', () => loadLoop());
 document.querySelector('#tabs button[data-tab="base"]').addEventListener('click', () => loadBase());
 async function loadOverview() {
   $('ascii-err').textContent = '';
@@ -867,6 +923,7 @@ function handle(ev) {
     case 'think_end': { const st = useStream(d); ensureStep(t); liveAppend(itemThinkEnd(d)); stepsByStream[st] = null; curStep = stepsByStream['play'] || null; break; }
     case 'ledger': addLedger(d, t); break;
     case 'watcher': addWatcher(d, t); break;
+    case 'loop': addLoop(d, t); break;
     case 'brain_change': addBrainChange(d, t); break;
     case 'episode_start': { const s = curStep; curStep = null; liveAppend(sysLine('episode', t, `episode ${d.episode} started · seed ${d.seed}`)); curStep = s; state.episode = d.episode; state.seed = d.seed; renderStatus(); break; }
     case 'episode_end': { const s = curStep; curStep = null; liveAppend(sysLine('episode', t, `episode ${d.episode} ended · score ${d.score}${d.assisted ? ' (assisted)' : ''} · ${d.reason || ''}`)); curStep = s; if (scoresLoaded) loadScores(); break; }

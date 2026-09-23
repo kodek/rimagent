@@ -53,6 +53,20 @@ async def test_controls_and_operator(client, game):
     assert (await c.post("/api/control", json={"action": "no_pause", "value": False})).json()["no_pause"] is False
 
 
+async def test_the_loop_view_and_the_operator_stage_switch(client):
+    c, rt = client
+    view = (await c.get("/api/loop")).json()
+    assert view["jev"] is None and view["directive"] is None and view["decisions"] == []
+    assert {p["name"]: p["stage"] for p in view["policies"]}["dialogs"] == "shadow"
+    assert (await c.post("/api/control", json={"action": "policy_stage", "name": "dialogs", "stage": "active"})).json()["ok"] is True
+    assert rt.loop.stage(rt.loop.policies()["dialogs"]) == "active"
+    assert (await c.post("/api/control", json={"action": "policy_stage", "name": "nope", "stage": "active"})).status_code == 404
+    assert (await c.post("/api/control", json={"action": "loop", "value": False})).json()["ok"] is True and rt.loop.on is False
+    tree = (await c.get("/api/brain/tree")).json()
+    assert {p["name"] for p in tree["policies"]} >= {"dialogs", "letters"}
+    assert "subject: dialogs" in (await c.get("/api/brain/file", params={"kind": "policy", "name": "dialogs"})).json()["text"]
+
+
 async def test_events_and_bridge_views(client):
     c, rt = client
     rt.bus.emit(Log(text="hi"))

@@ -222,6 +222,24 @@ async def test_wrong_labels_on_actions_demote_and_an_edit_starts_a_new_version_i
     assert "policy broken" in rt.loop.problems()
 
 
+async def test_the_director_reads_and_labels_decisions_with_tools(looped, game, bus):
+    rt, _, script = looped
+    direct(rt, game)
+    game.add_letter("Trade request", "Give 200 wood for 50 silver.", ["Accept", "Reject"])
+    await rt.runner.poller.poll_once(rt.runner.episode)
+    await rt.loop.tick_once()
+    d = decisions(rt, "letters")[0]
+    script.responses = [code("s = await loop_status()\nrows = await list_decisions(policy='letters', show='unlabelled')\n"
+                             f"await label_decisions(labels=[{{'id': {d.id}, 'truth': 'Reject', 'note': 'too cheap'}}])\n"
+                             "tried = await test_policy(name='letters')\n[s['on'], len(rows), tried]"),
+                        call("end_turn", {"notes": "labelled"})]
+    await rt.runner.step(Wake("check", False))
+    results = [e["data"] for e in bus.since(0, kinds={ToolResult.KIND}) if e["data"]["name"] in ("loop_status", "list_decisions", "label_decisions", "test_policy")]
+    assert len(results) == 4 and all(r["ok"] for r in results), results
+    labelled = rt.loop.store.get(d.id)
+    assert labelled.truth == "Reject" and labelled.truth_source == "director"
+
+
 async def test_the_director_sets_the_directive_with_a_tool(looped, game):
     rt, _, script = looped
     script.responses = [code("await set_directive(purpose='Survive', priorities=[{'name': 'food', 'statement': 'Keep 5 days of meals.'}], "
