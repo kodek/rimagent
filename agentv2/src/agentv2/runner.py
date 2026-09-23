@@ -7,7 +7,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 
-from . import situation
+from . import situation, world
 from .brain import Brain
 from .bridge import Bridge, BridgeError, GameStatus
 from .bus import Bus
@@ -45,7 +45,7 @@ class Runner:
     scores: Scores
     episode: Episode = field(default_factory=Episode, init=False)
     catalog: list[Method] = field(default_factory=list, init=False)
-    numbers: dict[str, float] = field(default_factory=dict, init=False)
+    base_shown: bool = field(default=False, init=False)
     last_day: int = field(default=-1, init=False)
     improve_task: asyncio.Task[str] | None = field(default=None, init=False)
     _alerts_read: float = field(default=0.0, init=False)
@@ -116,7 +116,7 @@ class Runner:
     def _reset(self) -> None:
         self.inbox.clear()
         self.wake.reset()
-        self.numbers = {}
+        self.base_shown = False
         self.poller.last_seq = 0
 
     async def resume(self, st: GameStatus, saved: Episode | None) -> None:
@@ -300,10 +300,15 @@ class Runner:
 
     async def step(self, wake: Wake) -> StepOutcome:
         events, alerts = self.inbox.take()
-        wakeup = situation.Wakeup(wake.trigger, events, alerts, list(self.inbox.operator), self.numbers,
-                                  self.brain.problems() | self.watchers.errors(), self.episode.sandbox)
-        report = situation.render(await situation.read(self.bridge), wakeup)
-        self.numbers = report.numbers
+        episode, snap = self.episode, await situation.read(self.bridge)
+        if snap.summary:
+            await world.sample(self.bridge, episode.tracked, snap.summary)
+        wakeup = situation.Wakeup(wake.trigger, events, alerts, list(self.inbox.operator), episode.view, episode.tracked,
+                                  self.brain.problems() | self.watchers.errors(), episode.sandbox, show_base=not self.base_shown)
+        report = situation.render(snap, wakeup)
+        if snap.summary:
+            episode.view, self.base_shown = snap.view, True
+            self.episodes.save(episode)
         self.bus.emit(Status.model_validate(report.numbers))
         self.bus.emit(Situation(trigger=wake.trigger, changes=report.changes, day=report.day, hour=report.hour, chars=len(report.text)))
         deps = self.director_deps()

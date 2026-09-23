@@ -37,6 +37,7 @@ from .deps import Deps, DirectorDeps
 from .history import BrainTools
 from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
 from .tools.bridge import BridgeToolset
+from .tools.tracked import TrackedValues
 from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd, operator
 from .tools.vision import vision
 from .watchers.tools import WatcherTools
@@ -71,6 +72,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             *brain.capabilities(),
             watcher_tools,
             history,
+            TrackedValues(),
             CodeMode(max_retries=budget),
             SandboxCalls(),
             telemetry(),

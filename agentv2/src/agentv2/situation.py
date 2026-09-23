@@ -1,6 +1,8 @@
-"""The situation report: the user prompt of every think step. Change first, then what needs an answer, then the colony."""
+"""The situation report: the user prompt of every think step. What woke the director and what needs an answer first,
+then what changed since its last step and what is wrong, then the colony."""
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -8,9 +10,12 @@ from typing import Any
 
 from .bridge import Bridge, BridgeError
 from .watchers import Alert
+from .world import Tracked, View, changes, show
 
-TRACKED = ("wealth", "food_days", "mood_avg", "threat_points", "research_done")
+STATUS_NUMBERS = ("wealth", "food_days", "mood_avg", "threat_points", "research_done")
 MAX_EVENTS = 60
+MAX_ROOMS = 14
+MAX_HOSTILES = 15
 
 
 @dataclass(frozen=True)
@@ -18,26 +23,34 @@ class Snapshot:
     """What the game says now."""
 
     summary: dict[str, Any]
+    base: dict[str, Any] = field(default_factory=dict)
     dialogs: Any = None
     letters: Any = None
-    error: str | None = None
+    threats: Any = None
+    errors: list[str] = field(default_factory=list)
 
     @property
     def numbers(self) -> dict[str, float]:
-        return {k: float(self.summary[k]) for k in TRACKED if isinstance(self.summary.get(k), (int, float))}
+        return {k: float(self.summary[k]) for k in STATUS_NUMBERS if isinstance(self.summary.get(k), (int, float))}
+
+    @property
+    def view(self) -> View:
+        return View.of(self.summary, self.base)
 
 
 @dataclass(frozen=True)
 class Wakeup:
-    """What the runner knows about this step."""
+    """What the runner knows about this step. `previous` is what the director saw at its last step."""
 
     trigger: str
     events: list[dict[str, Any]] = field(default_factory=list)
     alerts: list[Alert] = field(default_factory=list)
     operator: list[str] = field(default_factory=list)
-    previous: dict[str, float] = field(default_factory=dict)
+    previous: View | None = None
+    tracked: dict[str, Tracked] = field(default_factory=dict)
     problems: dict[str, str] = field(default_factory=dict)
     sandbox: bool = False
+    show_base: bool = True
 
 
 @dataclass
@@ -50,16 +63,18 @@ class Report:
 
 
 async def read(bridge: Bridge) -> Snapshot:
-    summary, error = await _read(bridge, "state.summary")
-    dialogs, _ = await _read(bridge, "state.dialogs")
-    letters, _ = await _read(bridge, "state.letters")
-    return Snapshot(summary if isinstance(summary, dict) else {}, dialogs, letters, error)
+    (summary, error), (base, base_error), (dialogs, _), (letters, _) = await asyncio.gather(
+        _read(bridge, "state.summary"), _read(bridge, "state.base"), _read(bridge, "state.dialogs"), _read(bridge, "state.letters"))
+    summary = summary if isinstance(summary, dict) else {}
+    threats = (await _read(bridge, "state.threats"))[0] if summary.get("hostiles") else None
+    return Snapshot(summary, base if isinstance(base, dict) else {}, dialogs, letters, threats, [e for e in (error, base_error) if e])
 
 
 def render(snap: Snapshot, wake: Wakeup) -> Report:
     parts = [text for section in SECTIONS if (text := section(snap, wake))]
     parts.append("Act now. Finish with end_turn (notes and a wake plan).")
-    return Report("\n\n".join(parts), snap.numbers, _changes(snap, wake), snap.summary.get("day"), snap.summary.get("hour"))
+    brief = ", ".join(_brief(label, t) for label, t in wake.tracked.items() if t.history)
+    return Report("\n\n".join(parts), snap.numbers, brief, snap.summary.get("day"), snap.summary.get("hour"))
 
 
 async def _read(bridge: Bridge, method: str) -> tuple[Any, str | None]:
@@ -69,14 +84,12 @@ async def _read(bridge: Bridge, method: str) -> tuple[Any, str | None]:
         return None, f"{method} unavailable: {e}"
 
 
-def _changes(snap: Snapshot, wake: Wakeup) -> str:
-    return ", ".join(_delta(k, v, wake.previous.get(k)) for k, v in snap.numbers.items())
-
-
-def _delta(name: str, now: float, before: float | None) -> str:
-    if before is None or abs(now - before) < 1e-9:
-        return f"{name} {now:g}"
-    return f"{name} {now:g} ({'+' if now > before else ''}{now - before:.4g})"
+def _brief(label: str, tracked: Tracked) -> str:
+    now = tracked.history[-1]
+    before = tracked.history[-2] if len(tracked.history) > 1 else None
+    if isinstance(now, float) and isinstance(before, float):
+        return f"{label} {now:g} ({'+' if now > before else ''}{now - before:.4g})"
+    return f"{label} {show(now)}"
 
 
 def _trigger(snap: Snapshot, wake: Wakeup) -> str:
@@ -99,8 +112,13 @@ def _sandbox(snap: Snapshot, wake: Wakeup) -> str | None:
 
 def _now(snap: Snapshot, wake: Wakeup) -> str:
     s = snap.summary
-    head = f"day {s.get('day')} {s.get('hour')}h, {s.get('season', '')}, colonists {s.get('colonists')}"
-    return f"## Now\n{head}\n{_changes(snap, wake) or snap.error or 'no numbers'}"
+    temp = f", {s['temp_outdoor']}C" if s.get("temp_outdoor") is not None else ""
+    head = f"day {s.get('day')} {s.get('hour')}h, {s.get('season', '')}, {s.get('weather', '')}{temp}; colonists {s.get('colonists')}"
+    if s.get("downed"):
+        head += f" ({s['downed']} downed)"
+    if s.get("danger") not in (None, "None"):
+        head += f"; danger {s['danger']}"
+    return "## Now\n" + "\n".join([head, *snap.errors])
 
 
 def _dialogs(snap: Snapshot, wake: Wakeup) -> str | None:
@@ -129,11 +147,58 @@ def _watcher_alerts(snap: Snapshot, wake: Wakeup) -> str | None:
     return "## Watcher alerts\n" + "\n".join(f"- {a.watcher}: {a.text}" for a in wake.alerts)
 
 
+def _threats(snap: Snapshot, wake: Wakeup) -> str | None:
+    hostiles = snap.threats.get("hostiles") if isinstance(snap.threats, dict) else snap.summary.get("hostiles")
+    hostiles = [h for h in hostiles or [] if isinstance(h, dict)]
+    if not hostiles:
+        return None
+    lines = [_hostile(h) for h in hostiles[:MAX_HOSTILES]]
+    if len(hostiles) > MAX_HOSTILES:
+        lines.append(f"- ... {len(hostiles) - MAX_HOSTILES} more (rw_state_threats)")
+    points = snap.threats.get("threat_points") if isinstance(snap.threats, dict) else snap.summary.get("threat_points")
+    return f"## THREATS: {len(hostiles)} hostile (threat points {points})\n" + "\n".join(lines)
+
+
+def _hostile(h: dict[str, Any]) -> str:
+    who = h.get("name") or h.get("label") or h.get("def") or h.get("id")
+    bits = [f"{h['faction']}" if h.get("faction") else "", f"weapon {h['weapon']}" if h.get("weapon") else "",
+            f"{h['dist_home']} cells from home" if h.get("dist_home") is not None else f"at {h.get('pos')}",
+            f"health {h['health']}" if h.get("health") is not None else "", str(h.get("mental") or ""), str(h.get("lord") or "")]
+    return f"- {who}: " + ", ".join(b for b in bits if b)
+
+
 def _game_alerts(snap: Snapshot, wake: Wakeup) -> str | None:
     alerts = [a for a in snap.summary.get("alerts") or [] if isinstance(a, dict)][:12]
     if not alerts:
         return None
     return "## Game alerts\n" + "\n".join(f"- [{a.get('priority')}] {a.get('label')}: {str(a.get('explanation', ''))[:160]}" for a in alerts)
+
+
+def _changes(snap: Snapshot, wake: Wakeup) -> str | None:
+    if wake.previous is None or not snap.summary:
+        return None
+    lines = changes(wake.previous, snap.view)
+    since = f"day {wake.previous.day} {wake.previous.hour}h"
+    return f"## Since your last step ({since})\n" + ("\n".join(f"- {line}" for line in lines) or "- nothing notable changed")
+
+
+def _tracked(snap: Snapshot, wake: Wakeup) -> str | None:
+    if not wake.tracked:
+        return None
+    return ("## Tracked values (oldest -> newest; change them with track_value / untrack_value)\n"
+            + "\n".join(t.line(label) for label, t in wake.tracked.items()))
+
+
+def _problems(snap: Snapshot, wake: Wakeup) -> str | None:
+    base, outside = snap.base, snap.summary.get("outside_storage") or {}
+    lines = [f"- {r.get('ref')} {r.get('role')}: {', '.join(map(str, r['problems']))}"
+             for r in base.get("rooms") or [] if isinstance(r, dict) and r.get("problems")][:10]
+    lines += [f"- TRAPPED: {t.get('pawn')} at {t.get('at')}: {t.get('note', '')}" for t in base.get("trapped_colonists") or [] if isinstance(t, dict)]
+    if furniture := base.get("furniture_not_in_any_room"):
+        lines.append(f"- furniture outside any room (open to the sky or walls missing): {furniture}")
+    if bad := {k: outside[k] for k in ("rotting", "unroofed_deteriorating", "corpses", "forbidden") if isinstance(outside, dict) and outside.get(k)}:
+        lines.append("- outside storage: " + ", ".join(f"{k} {v}" for k, v in bad.items()) + f" (free storage cells {outside.get('storage_cells_free')})")
+    return "## Problems\n" + "\n".join(lines) if lines else None
 
 
 def _colonists(snap: Snapshot, wake: Wakeup) -> str | None:
@@ -144,9 +209,13 @@ def _colonists(snap: Snapshot, wake: Wakeup) -> str | None:
 
 
 def _colonist(c: dict[str, Any]) -> str:
-    flags = " DOWNED" if c.get("downed") else ""
+    flags = " DOWNED" if c.get("downed") or c.get("job") == "downed" else ""
     flags += f" MENTAL: {c['mental_state']}" if c.get("mental_state") else ""
-    return f"- {c.get('name')} ({c.get('id')}) at {c.get('pos')}: mood {c.get('mood')}, health {c.get('health')}, {c.get('job')}{flags}"
+    flags += f" bleeding {c['bleeding']}" if c.get("bleeding") else ""
+    flags += " needs tending" if c.get("needs_tending") else ""
+    skills = f"; {c['top_skills']}" if c.get("top_skills") else ""
+    return (f"- {c.get('name')} ({c.get('id')}) at {c.get('pos')}: mood {c.get('mood')}, health {c.get('health')}, {c.get('job')}{skills}; "
+            f"weapon {c.get('weapon') or 'none'}{flags}")
 
 
 def _steward(snap: Snapshot, wake: Wakeup) -> str | None:
@@ -165,12 +234,35 @@ def _steward(snap: Snapshot, wake: Wakeup) -> str | None:
     return "## Steward (sets work priorities, keeps stock targets, runs the standing orders; you direct it)\n" + "\n".join(lines)
 
 
-def _stocks(snap: Snapshot, wake: Wakeup) -> str | None:
+def _base(snap: Snapshot, wake: Wakeup) -> str | None:
+    if not wake.show_base or not snap.base:
+        return None
+    base = snap.base
+    rooms = [r for r in base.get("rooms") or [] if isinstance(r, dict)]
+    lines = [_room(r) for r in rooms[:MAX_ROOMS]] or ["- no enclosed rooms yet"]
+    if len(rooms) > MAX_ROOMS:
+        lines.append(f"- ... {len(rooms) - MAX_ROOMS} more rooms (rw_state_base)")
+    if outside := base.get("structures_outside_rooms"):
+        lines.append("- outside rooms: " + ", ".join(f"{k} x{len(v) if isinstance(v, list) else str(v).split(' ')[0]}" for k, v in list(outside.items())[:12]))
+    anchors = [a for a in base.get("anchors") or [] if isinstance(a, dict)]
+    lines.append("- anchors: " + (", ".join(f"{a.get('name')} ({a.get('size')}, {a.get('from_home')})" for a in anchors[:16])
+                                  or "none yet; name rooms and sites with rw_anchor_set"))
+    lines.append(f"- blueprints pending {base.get('blueprints_pending')}, frames in progress {base.get('frames_in_progress')}")
     stocks = snap.summary.get("key_stocks")
-    return f"## Key stocks\n{json.dumps(stocks, ensure_ascii=False)[:1500]}" if stocks else None
+    if stocks:
+        lines.append(f"- key stocks (stored): {json.dumps(stocks, ensure_ascii=False)[:1500]}")
+    return "## The base (later reports show only what changed; rw_state_base reads it all)\n" + "\n".join(lines)
 
 
-def _problems(snap: Snapshot, wake: Wakeup) -> str | None:
+def _room(r: dict[str, Any]) -> str:
+    doors = r.get("doors") or []
+    leads = ", ".join(str(d.get("leads_to")) for d in doors if isinstance(d, dict)) or "none"
+    contents = ", ".join(f"{k} x{v if isinstance(v, int) else len(v)}" for k, v in (r.get("contents") or {}).items())
+    line = f"- {r.get('ref')} {r.get('role')} {r.get('size')}, free floor {r.get('free_floor')}, doors to {leads}, {r.get('temp')}C [{contents}]"
+    return line + (f" owners {r['owners']}" if r.get("owners") else "")
+
+
+def _brain_problems(snap: Snapshot, wake: Wakeup) -> str | None:
     if not wake.problems:
         return None
     return "## Brain problems (fix them)\n" + "\n".join(f"- {k}: {_last_line(v)}" for k, v in wake.problems.items())
@@ -182,5 +274,6 @@ def _last_line(text: str) -> str:
 
 
 SECTIONS: list[Callable[[Snapshot, Wakeup], str | None]] = [
-    _trigger, _operator, _sandbox, _now, _dialogs, _letters, _events, _watcher_alerts, _game_alerts, _colonists, _steward, _stocks, _problems,
+    _trigger, _operator, _sandbox, _now, _dialogs, _letters, _events, _watcher_alerts, _threats, _game_alerts, _changes, _tracked,
+    _problems, _colonists, _steward, _base, _brain_problems,
 ]

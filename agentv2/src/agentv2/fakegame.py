@@ -26,10 +26,16 @@ class FakeGame:
     paused: bool = False
     seed: str = "rimagent-1"
     colonists: list[dict[str, Any]] = field(default_factory=lambda: [
-        {"name": "Bob", "id": "Human1", "pos": [120, 118], "mood": 0.62, "health": 1.0, "job": "Cutting a tree", "downed": False},
-        {"name": "Ann", "id": "Human2", "pos": [122, 121], "mood": 0.55, "health": 0.9, "job": "Hauling", "downed": False},
-        {"name": "Cid", "id": "Human3", "pos": [118, 125], "mood": 0.71, "health": 1.0, "job": "Idle", "downed": False},
+        {"name": "Bob", "id": "Human1", "pos": [120, 118], "mood": 62, "health": 100, "job": "Cutting a tree", "top_skills": "Shooting 6!, Mining 4", "weapon": "Revolver"},
+        {"name": "Ann", "id": "Human2", "pos": [122, 121], "mood": 55, "health": 90, "job": "Hauling", "top_skills": "Cooking 7!!, Growing 5"},
+        {"name": "Cid", "id": "Human3", "pos": [118, 125], "mood": 71, "health": 100, "job": "Idle", "top_skills": "Construction 8!", "weapon": "Knife"},
     ])
+    rooms: list[dict[str, Any]] = field(default_factory=lambda: [
+        {"id": 1, "ref": "Room:1", "role": "Bedroom", "size": "6x5 (20 cells)", "free_floor": 12, "doors": [{"leads_to": "outside"}],
+         "contents": {"Bed": 3}, "temp": 18, "problems": []},
+    ])
+    hostiles: list[dict[str, Any]] = field(default_factory=list)
+    stocks: dict[str, int] = field(default_factory=lambda: {"WoodLog": 240, "Steel": 180})
     ledger: list[dict[str, Any]] = field(default_factory=list)
     saves: dict[str, dict[str, Any]] = field(default_factory=dict)
     alive: bool = True
@@ -127,11 +133,16 @@ class FakeGame:
             case "game.list_saves":
                 return [{"name": name, "modified": "now"} for name in self.saves]
             case "state.summary":
-                return {"day": self.day, "hour": self.hour, "colonists": len(self.colonists), "colonist_list": self.colonists, "wealth": 14_500,
-                        "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120, "alerts": [], "key_stocks": {"WoodLog": 240, "Steel": 180}}
+                return {"day": self.day, "hour": self.hour, "season": "Spring", "weather": "Clear", "temp_outdoor": 14, "colonists": len(self.colonists),
+                        "colonist_list": self.colonists, "wealth": 14_500, "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120,
+                        "alerts": [], "key_stocks": dict(self.stocks), "outside_storage": {"stacks": 4, "rotting": 0, "storage_cells_free": 30},
+                        "hostiles": [{k: h[k] for k in ("id", "name", "def", "pos", "faction") if k in h} for h in self.hostiles]}
             case "state.base":
-                return {"home_center": [120, 120], "rooms": [], "blueprints_pending": 0, "frames_in_progress": 0, "anchors": []}
-            case "state.dialogs" | "state.letters" | "state.alerts" | "state.threats":
+                return {"home_center": [120, 120], "rooms": self.rooms, "trapped_colonists": [], "furniture_not_in_any_room": None,
+                        "structures_outside_rooms": {}, "blueprints_pending": 0, "frames_in_progress": 0, "anchors": []}
+            case "state.threats":
+                return {"hostiles": self.hostiles, "threat_points": 120, "home_center": [120, 120]}
+            case "state.dialogs" | "state.letters" | "state.alerts":
                 return []
             case "steward.status":
                 return {"enabled": {"scorer": True, "stock": True}, "posture": None, "stock": [], "problems": [], "pawns": []}

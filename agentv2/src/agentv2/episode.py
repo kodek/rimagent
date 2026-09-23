@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import AliasChoices, BaseModel, Field
 
 from .bridge import GameStatus
+from .world import Tracked, View, default_tracked
 
 TIMELINE_KINDS = {"day", "colonist_died", "colonist_downed", "incident", "hostile_group", "hostile_group_gone", "letter", "mental_break",
                   "research_finished", "building_lost", "colonist_joined", "colonist_left", "quest"}
@@ -35,6 +36,8 @@ class Episode(BaseModel):
     ended: bool = False
     assisted: bool = False
     checkpoint: Checkpoint | None = None
+    view: View | None = None
+    tracked: dict[str, Tracked] = Field(default_factory=default_tracked)
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     pass_notes: list[str] = Field(default_factory=list)
 
@@ -59,7 +62,7 @@ class Episode(BaseModel):
         """The save of `checkpoint` was loaded: forget what happened after it."""
         cp = self.checkpoint
         assert cp is not None, "rewind needs a checkpoint"
-        self.deaths, self.raids = cp.deaths, cp.raids
+        self.deaths, self.raids, self.view = cp.deaths, cp.raids, None
         del self.timeline[cp.timeline:]
         self.timeline.append({"kind": "reloaded", "text": f"the game crashed; loaded the save of day {cp.day} {cp.hour}h", "day": st.day, "hour": st.hour})
         return cp
