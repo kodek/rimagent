@@ -38,6 +38,9 @@ class FakeGame:
     stocks: dict[str, int] = field(default_factory=lambda: {"WoodLog": 240, "Steel": 180})
     things: list[dict[str, Any]] = field(default_factory=list)
     bills: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    letters: list[dict[str, Any]] = field(default_factory=list)
+    dialogs: list[dict[str, Any]] = field(default_factory=list)
+    posture: dict[str, Any] | None = None
     ledger: list[dict[str, Any]] = field(default_factory=list)
     saves: dict[str, dict[str, Any]] = field(default_factory=dict)
     alive: bool = True
@@ -55,6 +58,23 @@ class FakeGame:
     def add_event(self, kind: str, text: str, **data: Any) -> None:
         self.ledger.append({"seq": len(self.ledger) + 1, "kind": kind, "text": text, "tick": self.tick, "day": self.day, "hour": self.hour, **data})
 
+    def add_letter(self, label: str, text: str = "", choices: list[str] | None = None, def_: str = "NewQuest", quest: int | None = None) -> int:
+        """A letter arrives, as LetterStack.ReceiveLetter does: on the stack and in the ledger. Only a choice letter has text."""
+        letter_id = 100 + sum(e["kind"] == "letter" for e in self.ledger)
+        letter: dict[str, Any] = {"id": letter_id, "label": label, "def": def_, "tick": self.tick}
+        if choices:
+            letter |= {"text": text, "choices": list(choices)} | ({"quest": quest} if quest is not None else {})
+        self.letters.append(letter)
+        data = {"label": label, "def": def_, "text": text if choices else "", "id": letter_id} | ({"quest": quest} if quest is not None and choices else {})
+        self.add_event("letter", label, data=data)
+        return letter_id
+
+    def open_dialog(self, text: str, choices: list[str], type_: str = "Dialog_NodeTree", title: str | None = None) -> None:
+        """A modal window opens (WindowStack.Add): the game pauses until it is answered."""
+        window = {"type": type_, "force_pause": True, "text": text, "choices": list(choices)} | ({"title": title} if title else {})
+        self.dialogs.append(window)
+        self.add_event("dialog", f"{type_}: {text[:160]}", data=_describe(window, -1))
+
     def crash(self) -> None:
         """The game process dies: the bridge stops answering, and the restarted game has a new ledger at the main menu."""
         self.alive, self.state, self.ledger = False, "menu", []
@@ -66,14 +86,22 @@ class FakeGame:
             self.add_event("day", f"day {self.day} begins")
 
     async def run_clock(self, hours_per_second: float = 0.5, raid_every_days: int = 3) -> None:
-        """Advance time like a running game: faster at higher speeds, stopped while paused; a raid every few days."""
+        """Advance time like a running game: faster at higher speeds, stopped while paused or while a modal dialog is open;
+        a raid every few days, a quest letter and a dialog on the days between."""
         while True:
             await asyncio.sleep(0.5)
-            if self.state == "playing" and not self.paused and self.speed > 0:
+            if self.state == "playing" and not self.paused and self.speed > 0 and not any(d["force_pause"] for d in self.dialogs):
                 day = self.day
                 self.advance(hours_per_second * 0.5 * self.speed)
-                if self.day != day and self.day % raid_every_days == 0:
+                if self.day == day:
+                    continue
+                if self.day % raid_every_days == 0:
                     self.add_event("hostile_group", "A pirate band of 3 raiders is approaching from the east.")
+                elif self.day % raid_every_days == 1:
+                    self.add_letter("Trade request", "A nearby settlement asks for 200 wood in exchange for 150 silver. Deadline: 5 days.",
+                                    ["Accept", "Reject"], quest=self.day)
+                else:
+                    self.open_dialog("A wanderer asks to join the colony. She is a skilled cook.", ["Accept", "Reject"])
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
@@ -140,16 +168,28 @@ class FakeGame:
                         "colonist_list": self.colonists, "wealth": 14_500, "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120,
                         "alerts": [], "key_stocks": dict(self.stocks), "outside_storage": {"stacks": 4, "rotting": 0, "storage_cells_free": 30},
                         "zones": [{"label": "rice", "type": "growing:Plant_Rice", "cells": 40, "at": [100, 100]}],
-                        "hostiles": [{k: h[k] for k in ("id", "name", "def", "pos", "faction") if k in h} for h in self.hostiles]}
+                        "hostiles": [{k: h[k] for k in ("id", "name", "def", "pos", "faction") if k in h} for h in self.hostiles],
+                        "steward": {"scorer": True, "stock": True, "posture": self.posture["label"] if self.posture else None, "stock_brief": [],
+                                    "problems": [], "orders_active": [], "rally": False}}
             case "state.base":
                 return {"home_center": [120, 120], "rooms": self.rooms, "trapped_colonists": [], "furniture_not_in_any_room": None,
                         "structures_outside_rooms": {}, "blueprints_pending": 0, "frames_in_progress": 0, "anchors": []}
             case "state.threats":
                 return {"hostiles": self.hostiles, "threat_points": 120, "home_center": [120, 120]}
-            case "state.dialogs" | "state.letters" | "state.alerts":
+            case "state.alerts":
                 return []
+            case "state.letters":
+                return [dict(letter) for letter in self.letters]
+            case "state.dialogs":
+                return [_describe(d, i) for i, d in enumerate(self.dialogs)]
+            case "ui.letter":
+                return self._answer_letter(p)
+            case "ui.dialog":
+                return self._answer_dialog(p)
+            case "steward.posture":
+                return self._set_posture(p)
             case "steward.status":
-                return {"enabled": {"scorer": True, "stock": True}, "posture": None, "stock": [], "problems": [], "pawns": []}
+                return {"enabled": {"scorer": True, "stock": True}, "posture": self.posture, "stock": [], "problems": [], "pawns": []}
             case "ui.draft" | "ui.goto":
                 if p.get("pawn") not in names:
                     raise KeyError(f"no pawn {p.get('pawn')!r}")
@@ -198,3 +238,68 @@ class FakeGame:
                 return {"done": True}
             case _:
                 return {}
+
+    def _answer_letter(self, p: dict[str, Any]) -> dict[str, Any]:
+        letter = next((x for x in self.letters if x["id"] == int(p["id"])), None)
+        if letter is None:
+            raise KeyError("no letter with that id (state.letters)")
+        if p.get("action") == "dismiss":
+            self.letters.remove(letter)
+            return {"dismissed": letter["id"]}
+        if not letter.get("choices"):
+            raise KeyError("letter has no choices")
+        chosen = _pick(letter["choices"], p.get("choice"))
+        self.letters.remove(letter)
+        return {"chose": chosen, "letter": letter["id"]}
+
+    def _answer_dialog(self, p: dict[str, Any]) -> dict[str, Any]:
+        if "i" in p:
+            if not 0 <= int(p["i"]) < len(self.dialogs):
+                raise KeyError("window index out of range")
+            window = self.dialogs[int(p["i"])]
+        elif self.dialogs:
+            window = self.dialogs[-1]
+        else:
+            raise KeyError("no open dialog")
+        if p.get("close"):
+            self.dialogs.remove(window)
+            return {"closed": window["type"]}
+        chosen = _pick(window["choices"], p.get("choice"))
+        self.dialogs.remove(window)
+        self.add_event("dialog_answered", f"chose '{chosen}'")
+        return {"chose": chosen, "next": None}
+
+    def _set_posture(self, p: dict[str, Any]) -> dict[str, Any] | None:
+        preset = p.get("preset") or (p.get("label") if p.get("label") in POSTURE_PRESETS else None)
+        if p.get("clear") or preset == "normal":
+            self.posture = None
+            return None
+        if preset is not None and preset not in POSTURE_PRESETS:
+            raise KeyError(f"unknown preset '{preset}'. Known: {'|'.join(POSTURE_PRESETS)}")
+        if preset is None and not any(p.get(k) for k in ("work", "weights", "targets")):
+            raise KeyError("give preset (defend|build|harvest|recover|normal), or label + work/weights/targets, or clear:true")
+        self.posture = {"label": p.get("label") or preset or "custom", "expires_in_hours": float(p.get("hours", 12)),
+                        "work": dict(p.get("work") or {}), "weights": dict(p.get("weights") or {}), "targets": dict(p.get("targets") or {})}
+        return self.posture
+
+
+POSTURE_PRESETS = ("normal", "defend", "build", "harvest", "recover")
+
+
+def _describe(window: dict[str, Any], index: int) -> dict[str, Any]:
+    """DialogRpc.Describe for a Dialog_NodeTree or a Dialog_MessageBox."""
+    out = {"i": index, "type": window["type"], "force_pause": window["force_pause"]} | ({"title": window["title"]} if "title" in window else {})
+    return out | {"text": window["text"], "choices": [{"i": i, "label": c, "disabled": False, "reason": None} for i, c in enumerate(window["choices"])]}
+
+
+def _pick(choices: list[str], choice: Any) -> str:
+    """A choice by index, by label (case-insensitive), or by a part of a label, as the mod matches it."""
+    if isinstance(choice, int):
+        if 0 <= choice < len(choices):
+            return choices[choice]
+    else:
+        label = str(choice or "").lower()
+        for match in ([c for c in choices if c.lower() == label], [c for c in choices if label in c.lower()]):
+            if match:
+                return match[0]
+    raise KeyError("no such choice. Available: " + " | ".join(choices))
