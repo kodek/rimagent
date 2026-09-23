@@ -10,7 +10,7 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
 
-from ..deps import Deps
+from ..deps import Deps, DirectorDeps
 
 
 @dataclass
@@ -28,10 +28,10 @@ class StepBudget(AbstractCapability[Deps]):
 
 
 @dataclass
-class Interrupts(AbstractCapability[Deps]):
+class Interrupts(AbstractCapability[DirectorDeps]):
     """Deliver urgent game events and operator messages that arrive while the model works, after the current tool call."""
 
-    async def after_tool_execute(self, ctx: RunContext[Deps], *, call: ToolCallPart, tool_def: ToolDefinition, args: Any, result: Any) -> Any:
+    async def after_tool_execute(self, ctx: RunContext[DirectorDeps], *, call: ToolCallPart, tool_def: ToolDefinition, args: Any, result: Any) -> Any:
         while ctx.deps.urgent:
             ctx.enqueue(ctx.deps.urgent.popleft(), priority="asap")
         return result

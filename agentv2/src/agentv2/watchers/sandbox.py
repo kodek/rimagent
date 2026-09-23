@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from pydantic_monty import AsyncMonty, MontyError, ResourceLimits
 
 from ..bridge import Bridge
-from ..catalog import is_read_only
+from ..policy import WATCHER_POLICY
 from .source import Watcher
 
 MAX_MEMORY = 64 * 1024 * 1024
@@ -78,6 +78,6 @@ class WatcherSandbox:
         return items, new_memo if isinstance(new_memo, dict) else {}
 
     async def _rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
-        if not is_read_only(method):
-            raise PermissionError(f"{method} changes the game; return an action instead")
+        if refusal := WATCHER_POLICY.refusal(method):
+            raise PermissionError(refusal)
         return await self.bridge.call(method, params or {})

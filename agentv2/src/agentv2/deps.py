@@ -1,17 +1,15 @@
-"""What every run gets as `ctx.deps`: the bridge, the bus, settings, the method catalog and the episode."""
+"""What every run gets as `ctx.deps`: the bridge, the bus, the method catalog, the episode and the role."""
 from __future__ import annotations
 
 import collections
 import re
 from dataclasses import dataclass, field
-from typing import Literal
 
 from .bridge import Bridge
 from .bus import Bus
 from .catalog import Method
-from .config import Settings
-
-Stream = Literal["play", "improve", "reflect"]
+from .policy import MethodPolicy
+from .roles import Role
 
 
 @dataclass
@@ -28,7 +26,7 @@ class Episode:
 
 @dataclass
 class Turn:
-    """What the tools of one think step decided, read by the runner after the run."""
+    """What the director's tools decided in one step, read by the runner after the run."""
     model_speed: int | None = None
     replies: list[str] = field(default_factory=list)
 
@@ -37,15 +35,19 @@ class Turn:
 class Deps:
     bridge: Bridge
     bus: Bus
-    settings: Settings
     catalog: list[Method]
     episode: Episode
-    stream: Stream = "play"
-    urgent: collections.deque[str] = field(default_factory=collections.deque)
-    turn: Turn = field(default_factory=Turn)
+    role: Role
 
-    def fork(self, stream: Stream) -> Deps:
-        return Deps(bridge=self.bridge, bus=self.bus, settings=self.settings, catalog=self.catalog, episode=self.episode, stream=stream)
+    @property
+    def policy(self) -> MethodPolicy:
+        return MethodPolicy(writes=self.role.writes_game, dev=self.episode.sandbox)
 
     def emit(self, kind: str, data: dict | None = None, *, ephemeral: bool = False) -> None:
-        self.bus.emit(kind, {"stream": self.stream, **(data or {})}, ephemeral=ephemeral)
+        self.bus.emit(kind, {"stream": self.role.stream, **(data or {})}, ephemeral=ephemeral)
+
+
+@dataclass
+class DirectorDeps(Deps):
+    turn: Turn = field(default_factory=Turn)
+    urgent: collections.deque[str] = field(default_factory=collections.deque)

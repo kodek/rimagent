@@ -77,9 +77,10 @@ async def _tools(_: argparse.Namespace) -> None:
     from .agents import build_agents
     from .brain import Brain, BrainLayout
     from .catalog import parse_catalog
-    from .deps import Deps, Episode
+    from .deps import DirectorDeps, Episode
     from .fakegame import FakeGame
     from .history import BrainGit, BrainTools, Scores
+    from .roles import DIRECTOR
     from .scripted import call, scripted_model
     from .watchers import Watchers
 
@@ -97,7 +98,7 @@ async def _tools(_: argparse.Namespace) -> None:
     async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
         agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
         problems = brain.problems()
-        deps = Deps(bridge=bridge, bus=bus, settings=settings, catalog=parse_catalog(await bridge.methods()), episode=Episode(1, "tools"))
+        deps = DirectorDeps(bridge=bridge, bus=bus, catalog=parse_catalog(await bridge.methods()), episode=Episode(1, "tools"), role=DIRECTOR)
         await agents.director.run("list", deps=deps)
     for tool in sorted(seen[0].function_tools, key=lambda t: t.name):
         print(f"{tool.name:34s} {(tool.description or '').splitlines()[0][:100]}")

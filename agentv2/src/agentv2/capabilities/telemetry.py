@@ -1,4 +1,4 @@
-"""Turn a run's event stream into bus events for the dashboard (live thinking, tool calls, Harness events)."""
+"""Forward each run's event stream to the bus for the dashboard: live thinking, tool calls, Harness events."""
 from __future__ import annotations
 
 import json
@@ -7,6 +7,7 @@ from collections.abc import AsyncIterable
 from typing import Any
 
 from pydantic_ai import RunContext
+from pydantic_ai.capabilities import ProcessEventStream
 from pydantic_ai.messages import (
     AgentStreamEvent,
     CapabilityEvent,
@@ -23,12 +24,11 @@ from pydantic_ai.messages import (
     ThinkingPartDelta,
     ToolReturnPart,
 )
-
 from pydantic_ai_harness.compaction import ContextUsageEvent
 from pydantic_ai_harness.filesystem import DirectoryCreatedEvent, FileEditedEvent, FileWrittenEvent
 
-from .brain import BrainLayout
-from .deps import Deps
+from ..brain import BrainLayout
+from ..deps import Deps
 
 RESULT_CLIP = 3000
 DELTA_FLUSH_S = 0.15
@@ -39,19 +39,23 @@ def clip(text: str, limit: int = RESULT_CLIP) -> str:
     return text if len(text) <= limit else text[:limit] + f"\n…(clipped {len(text) - limit} chars for the log; the model got all of it)"
 
 
-class Telemetry:
-    """An `event_stream_handler` for one run."""
+def telemetry() -> ProcessEventStream[Deps]:
+    return ProcessEventStream(_forward)
 
+
+async def _forward(ctx: RunContext[Deps], stream: AsyncIterable[AgentStreamEvent]) -> None:
+    forwarder = _Forwarder(ctx.deps)
+    async for event in stream:
+        forwarder.handle(event)
+    forwarder.flush()
+
+
+class _Forwarder:
     def __init__(self, deps: Deps) -> None:
         self.deps = deps
-        self.calls = 0
         self._started: dict[str, float] = {}
         self._pending: dict[str, str] = {}
         self._flushed = 0.0
-
-    async def __call__(self, ctx: RunContext[Deps], stream: AsyncIterable[AgentStreamEvent]) -> None:
-        async for event in stream:
-            self.handle(event)
 
     def handle(self, event: Any) -> None:
         emit = self.deps.emit
@@ -63,15 +67,14 @@ class Telemetry:
             case PartDeltaEvent(delta=TextPartDelta(content_delta=text)) if text:
                 self._delta("text", text)
             case PartEndEvent(part=ThinkingPart(content=text)):
-                self._flush()
+                self.flush()
                 if text.strip():
                     emit("reasoning", {"text": text})
             case PartEndEvent(part=TextPart(content=text)):
-                self._flush()
+                self.flush()
                 if text.strip():
                     emit("assistant", {"text": text})
             case FunctionToolCallEvent(part=part) | OutputToolCallEvent(part=part):
-                self.calls += isinstance(event, FunctionToolCallEvent)
                 self._started[part.tool_call_id] = time.monotonic()
                 emit("tool_call", {"name": part.tool_name, "args": part.args_as_dict(), "id": part.tool_call_id})
             case FunctionToolResultEvent(part=part):
@@ -94,9 +97,9 @@ class Telemetry:
     def _delta(self, part: str, text: str) -> None:
         self._pending[part] = self._pending.get(part, "") + text
         if time.monotonic() - self._flushed >= DELTA_FLUSH_S:
-            self._flush()
+            self.flush()
 
-    def _flush(self) -> None:
+    def flush(self) -> None:
         for part, text in self._pending.items():
             if text:
                 self.deps.emit("delta", {"part": part, "text": text}, ephemeral=True)

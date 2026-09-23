@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import RunContext, ToolOutput
 from pydantic_ai.toolsets import FunctionToolset
 
-from ..deps import Deps
+from ..deps import DirectorDeps
 
 
 class TurnEnd(BaseModel):
@@ -54,11 +54,11 @@ def finish(notes: str) -> Finished:
 PLAY_OUTPUT: list[ToolOutput[TurnEnd | EpisodeEnd]] = [ToolOutput(end_turn, name="end_turn"), ToolOutput(end_episode, name="end_episode")]
 PASS_OUTPUT: list[ToolOutput[Finished]] = [ToolOutput(finish, name="finish")]
 
-operator = FunctionToolset[Deps](id="operator")
+operator = FunctionToolset[DirectorDeps](id="operator")
 
 
 @operator.tool
-def reply_to_operator(ctx: RunContext[Deps], text: str) -> str:
+def reply_to_operator(ctx: RunContext[DirectorDeps], text: str) -> str:
     """Reply to the human operator watching the dashboard. Answer every operator message before you continue.
 
     Args:
