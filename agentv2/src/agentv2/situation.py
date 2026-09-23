@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .bridge import Bridge, BridgeError
+from .watchers import Alert
 
 TRACKED = ("wealth", "food_days", "mood_avg", "threat_points", "research_done")
 MAX_EVENTS = 60
@@ -63,7 +64,7 @@ async def build(
     bridge: Bridge,
     trigger: str,
     events: list[dict[str, Any]],
-    alerts: list[dict[str, Any]],
+    alerts: list[Alert],
     operator: list[str],
     previous: dict[str, float],
     brain_errors: dict[str, str],
@@ -93,7 +94,7 @@ async def build(
         more = f" (showing the last {MAX_EVENTS})" if len(events) > MAX_EVENTS else ""
         parts.append(f"## New events since your last step: {len(events)}{more}\n" + "\n".join(lines))
     if alerts:
-        parts.append("## Watcher alerts\n" + "\n".join(f"- {a.get('watcher')}: {a.get('text')}" for a in alerts))
+        parts.append("## Watcher alerts\n" + "\n".join(f"- {a.watcher}: {a.text}" for a in alerts))
     if summary.get("alerts"):
         parts.append("## Game alerts\n" + "\n".join(f"- [{a.get('priority')}] {a.get('label')}: {str(a.get('explanation', ''))[:160]}"
                                                     for a in summary["alerts"][:12] if isinstance(a, dict)))

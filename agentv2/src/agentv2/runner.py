@@ -28,7 +28,7 @@ from .deps import Deps, Episode, Turn
 from .history import BrainGit, BrainTools, GitError, Scores, score
 from .telemetry import Telemetry
 from .tools.turn import EpisodeEnd, TurnEnd
-from .watchers import Watchers
+from .watchers import Alert, Watchers
 
 TICKS_PER_HOUR = 2500
 TIMELINE_KINDS = {"day", "colonist_died", "colonist_downed", "incident", "hostile_group", "hostile_group_gone", "letter", "mental_break",
@@ -83,7 +83,7 @@ class Runner:
     def _reset_episode_state(self) -> None:
         self.last_seq = 0
         self.pending_events: list[dict[str, Any]] = []
-        self.pending_alerts: list[dict[str, Any]] = []
+        self.pending_alerts: list[Alert] = []
         self.operator_queue: list[str] = []
         self.timeline: list[dict[str, Any]] = []
         self.step_notes: list[str] = []
@@ -242,14 +242,14 @@ class Runner:
                 self.raids += e.get("kind") == "hostile_group"
             self.pending_events += events
             self.timeline += [e for e in events if e.get("kind") in TIMELINE_KINDS]
-        alerts: list[dict[str, Any]] = []
+        alerts: list[Alert] = []
         if events or time.monotonic() - self._watched >= self.s.watchers.poll_s:
             self._watched = time.monotonic()
             alerts = await self.watchers.run_all(events, st)
             self.pending_alerts += alerts
         if self.thinking and self.deps is not None:
             urgent = [f"{e.get('kind')}: {e.get('text', '')}" for e in events if e.get("kind") in self.s.play.critical_kinds]
-            urgent += [f"watcher {a['watcher']}: {a['text']}" for a in alerts if a.get("wake")]
+            urgent += [f"watcher {a.watcher}: {a.text}" for a in alerts if a.wake]
             if urgent:
                 self.deps.urgent.append("## URGENT, happened while you were working\n" + "\n".join(f"- {u}" for u in urgent)
                                         + "\nDeal with these first, then continue.")
@@ -315,8 +315,8 @@ class Runner:
             trigger, self.force = self.force, None
             return Wake(trigger, trigger.startswith("operator"))
         for alert in self.pending_alerts:
-            if alert.get("wake"):
-                return Wake(f"watcher alert: {alert.get('text')}", True)
+            if alert.wake:
+                return Wake(f"watcher alert: {alert.text}", True)
         recently = tick - self.last_step_end_tick < play.event_cooldown_hours * TICKS_PER_HOUR
         kinds = set(play.wake_on_kinds) | self.turn_wake_on
         for e in self.pending_events:

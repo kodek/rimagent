@@ -30,7 +30,8 @@ from .tools.bridge import BridgeToolset
 from .tools.code import CODE_MODE, sandbox
 from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd, operator
 from .tools.vision import vision
-from .watchers import WatcherTools, Watchers
+from .watchers import Watchers
+from .watchers.tools import WatcherTools
 
 DIRECTOR = """You are rimagent. You run a RimWorld colony by yourself through tools, and you keep improving your own brain:
 your doctrine (AGENTS.md), skills, watchers, capabilities and memory. Nobody else will help.
