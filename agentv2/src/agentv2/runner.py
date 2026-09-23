@@ -361,8 +361,8 @@ class Runner:
         alerts, self.pending_alerts = self.pending_alerts, []
         operator = list(self.operator_queue)
         caps = self.brain.run_capabilities()
-        report = await situation.build(self.bridge, wake.trigger, events, alerts, operator, self.numbers,
-                                       caps.errors | self.watchers.errors(), self.sandbox)
+        wakeup = situation.Wakeup(wake.trigger, events, alerts, operator, self.numbers, caps.errors | self.watchers.errors(), self.sandbox)
+        report = situation.render(await situation.read(self.bridge), wakeup)
         self.numbers = report.numbers
         self.bus.emit("status", report.numbers)
         self.bus.emit("situation", {"trigger": wake.trigger, "changes": report.changes, "day": report.day, "hour": report.hour, "chars": len(report.text)})
