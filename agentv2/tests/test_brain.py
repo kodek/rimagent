@@ -19,7 +19,7 @@ def brain(settings) -> Brain:
 
 def test_seed_brain_is_valid(brain):
     assert brain.problems() == {}
-    assert brain.skills.capability() is not None and not brain.has_authored()
+    assert brain.skills.capability() is not None and brain.has_authored()
     assert {s.name for s in brain.skills.infos()} >= {"defense-basics", "early-game-food", "work-priorities"}
     assert brain.layout.doctrine.read_text().startswith("# Doctrine")
 
@@ -39,7 +39,7 @@ def test_authored_capability_round_trip(brain):
     record = brain.creation.store.write("hello", code)
     assert record.last_error is None
     assert brain.has_authored()
-    assert brain.authored()[0]["name"] == "hello"
+    assert brain.authored()[-1]["name"] == "hello"
 
 
 def test_layout_refuses_names_outside_the_brain(brain):

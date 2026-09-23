@@ -36,6 +36,8 @@ class FakeGame:
     ])
     hostiles: list[dict[str, Any]] = field(default_factory=list)
     stocks: dict[str, int] = field(default_factory=lambda: {"WoodLog": 240, "Steel": 180})
+    things: list[dict[str, Any]] = field(default_factory=list)
+    bills: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     ledger: list[dict[str, Any]] = field(default_factory=list)
     saves: dict[str, dict[str, Any]] = field(default_factory=dict)
     alive: bool = True
@@ -136,6 +138,7 @@ class FakeGame:
                 return {"day": self.day, "hour": self.hour, "season": "Spring", "weather": "Clear", "temp_outdoor": 14, "colonists": len(self.colonists),
                         "colonist_list": self.colonists, "wealth": 14_500, "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120,
                         "alerts": [], "key_stocks": dict(self.stocks), "outside_storage": {"stacks": 4, "rotting": 0, "storage_cells_free": 30},
+                        "zones": [{"label": "rice", "type": "growing:Plant_Rice", "cells": 40, "at": [100, 100]}],
                         "hostiles": [{k: h[k] for k in ("id", "name", "def", "pos", "faction") if k in h} for h in self.hostiles]}
             case "state.base":
                 return {"home_center": [120, 120], "rooms": self.rooms, "trapped_colonists": [], "furniture_not_in_any_room": None,
@@ -162,16 +165,33 @@ class FakeGame:
                 match = [c for c in self.colonists if p.get("pawn") in (c["name"], c["id"])]
                 if not match:
                     raise KeyError(f"no pawn {p.get('pawn')!r}")
-                return {**match[0], "skills": {"Shooting": 6, "Construction": 5, "Growing": 4}, "traits": ["Industrious"]}
+                return {**match[0], "skills": {"Shooting": 6, "Construction": 5, "Growing": 4}, "traits": ["Industrious"], "break_thresholds": [35, 20, 5],
+                        "needs": {"Food": 70, "Rest": 40, "Joy": 30}, "thoughts": [{"label": "Ate without table", "mood": -3}, {"label": "Slept outside", "mood": -4}]}
             case "steward.orders":
                 return [{"id": o, "enabled": True, "summary": "idle", "acting_on": 0} for o in ("combat", "rescue", "unforbid", "fire")]
             case "map.find":
-                return [{"id": f"Tree{i}", "def": "Plant_TreeOak", "pos": [i % 250, i // 250]} for i in range(int(p.get("limit", 50)))]
+                things = [t for t in self.things if all(t.get(k) == p[k] for k in ("def", "kind") if k in p)]
+                if not things and p.get("kind") == "tree":
+                    things = [{"id": f"Tree{i}", "def": "Plant_TreeOak", "pos": [i % 250, i // 250]} for i in range(600)]
+                things = things[:int(p.get("limit", 50))]
+                return {"count": len(things), "near": [120, 120], "things": things}
+            case "engine.get":
+                return 5.0 if str(p.get("path", "")).endswith(".plant.growDays") else {}
+            case "state.designations":
+                return {}
             case "map.detail":
                 return {"centre": [120, 120], "grid": ".....\n..@..\n.....", "things": [{"id": "Bed1", "def": "Bed", "pos": [121, 119], "state": "built"}]}
             case "map.view" | "map.overview":
                 return {"grid": ".....\n..@..\n.....", "legend": "@ colonist"}
-            case "anchor.list" | "state.rooms" | "state.quests" | "state.designations" | "state.bills" | "state.storage":
+            case "state.bills":
+                return self.bills.get(p["thing"], [])
+            case "ui.add_bill":
+                self.bills.setdefault(p["thing"], []).append({"recipe": p["recipe"], "mode": p.get("mode"), "target": p.get("count")})
+                return {"added": p["recipe"]}
+            case "ui.bill" if p.get("action") == "delete":
+                del self.bills[p["thing"]][int(p["index"])]
+                return {"deleted": True}
+            case "anchor.list" | "state.rooms" | "state.quests" | "state.storage":
                 return []
             case _ if method.startswith(("ui.", "steward.", "anchor.", "game.")):
                 return {"done": True}

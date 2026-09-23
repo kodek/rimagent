@@ -1,0 +1,25 @@
+{
+  "capabilities": [
+    {
+      "name": "colony_reports",
+      "module_file": "colony_reports.py",
+      "class_name": "ColonyReports",
+      "status": "active",
+      "last_error": null
+    },
+    {
+      "name": "production",
+      "module_file": "production.py",
+      "class_name": "Production",
+      "status": "active",
+      "last_error": null
+    },
+    {
+      "name": "construction",
+      "module_file": "construction.py",
+      "class_name": "Construction",
+      "status": "active",
+      "last_error": null
+    }
+  ]
+}

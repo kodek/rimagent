@@ -113,7 +113,7 @@ async def test_calls_from_code_are_reported_under_their_run_code_call(stack, bus
 
 async def test_code_gets_whole_results_and_the_model_gets_them_cut(stack):
     trees = "await rw_map_find(kind='tree', limit=500)"
-    result = await run(stack, code(f"len({trees})"), code(trees), call("end_turn", {"notes": "x"}))
+    result = await run(stack, code(f"len(({trees})['things'])"), code(trees), call("end_turn", {"notes": "x"}))
     whole, cut = returns(result, "run_code")
     assert whole.model_response_str() == "500"
     assert "Tool output too large" in cut.model_response_str()
