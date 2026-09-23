@@ -19,7 +19,8 @@ Two halves, the mod as its own repo since 2026-09-16, split further into bridge 
 - `agentv2/` **agentv2** (Python, uv): a second agent, written from scratch on Pydantic AI + Pydantic AI Harness. Its own
   brain in `agentv2/brain/` (Harness Skills/Memory/CapabilityCreation/FileSystem/RepoContext; watchers run in the Monty
   sandbox), one asyncio loop, one continuous compacted conversation per game, its own dashboard (port 8771).
-  `cd agentv2 && uv run agentv2 fake -v` plays an in-process fake game; `uv run pytest -q`. See `agentv2/README.md`.
+  `cd agentv2 && uv run agentv2 fake -v` plays an in-process fake game; `uv run pytest -q`; `uv run agentv2 seed` fills
+  `knowledge/wiki/` (the v1 format) and adds `knowledge/wiki-index.sqlite` for its `kb_search`. See `agentv2/README.md`.
 - `brain/` what the agent authors: `skills/*.md` (frontmatter name/description/tags/always), `tools/*.py`,
   `watchers/*.py` (hot-loaded), `memory/notebook.md` (per colony), `memory/journal.md` (cross-game), `scores.jsonl`.
   The runner commits `brain/` per episode; the agent can `brain_revert`.
