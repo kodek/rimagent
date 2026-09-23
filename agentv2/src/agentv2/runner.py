@@ -3,6 +3,7 @@ One asyncio loop runs everything: the poller and the watchers, think steps, brai
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import time
 import traceback
@@ -110,9 +111,10 @@ class Runner:
             await self.new_game()
 
     def _next_episode_number(self) -> int:
-        """After the scored episodes and after the stored one, which is either scored or abandoned."""
+        """After the scored episodes, the stored one (scored or abandoned) and every colony notebook in the brain."""
         saved = self.episodes.load()
-        return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [saved.number if saved else 0]) + 1
+        notebooks = [int(m[1]) for d in self.brain.layout.memory_dir.iterdir() if (m := re.match(r"episode-(\d+)-", d.name))]
+        return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [saved.number if saved else 0] + notebooks) + 1
 
     def _reset(self) -> None:
         self.inbox.clear()

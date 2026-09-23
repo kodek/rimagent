@@ -39,7 +39,7 @@ def wikitext_to_markdown(title: str, wikitext: str) -> str:
              if str(t.name).strip().lower().startswith(("infobox", "stats")) for p in t.params
              if (value := p.value.strip_code().strip()) and len(value) < 200]
     text = code.strip_code(normalize=True, collapse=True)
-    text = re.sub(r"\{\{#.*?\}\}|</?[A-Za-z][^>]*>", "", text, flags=re.S)
+    text = re.sub(r"\{\{#.*?\}\}|</?[A-Za-z][^>]*>", "", text, flags=re.DOTALL)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     return f"# {title}\n\n" + "\n".join(stats) + ("\n\n" if stats else "") + text + "\n"
 

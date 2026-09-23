@@ -234,13 +234,16 @@ async def test_a_save_that_does_not_load_ends_the_episode(started, game):
     assert rt.runner.episode.number == 2 and game.seed == "rimagent-2"
 
 
-async def test_an_abandoned_episode_number_is_not_used_again(settings, bridge, bus, game):
+async def test_a_new_episode_number_comes_after_abandoned_episodes_and_old_notebooks(settings, bridge, bus, game):
     game.state = "menu"
     async with open_runtime(settings, bus, bridge, scripted_model(Script())) as rt:
         rt.runner.episodes.save(Episode(number=3, seed="rimagent-3"))
         await rt.runner.prepare()
         await rt.runner.ensure_game()
         assert rt.runner.episode.number == 4 and game.seed == "rimagent-4"
+        (rt.brain.layout.memory_dir / "episode-007-rimagent-2" / "main").mkdir(parents=True)
+        await rt.runner.new_game()
+        assert rt.runner.episode.number == 8
 
 
 async def test_the_runner_restarts_a_silent_game(started, game, settings, tmp_path):
