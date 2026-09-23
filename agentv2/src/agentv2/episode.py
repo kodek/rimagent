@@ -7,8 +7,21 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from .bridge import GameStatus
+
 TIMELINE_KINDS = {"day", "colonist_died", "colonist_downed", "incident", "hostile_group", "hostile_group_gone", "letter", "mental_break",
                   "research_finished", "building_lost", "colonist_joined", "colonist_left", "quest"}
+
+
+class Checkpoint(BaseModel):
+    """The episode when the game was last saved: loading that save rewinds the episode to it."""
+
+    tick: int
+    day: int
+    hour: int
+    deaths: int
+    raids: int
+    timeline: int
 
 
 class Episode(BaseModel):
@@ -20,6 +33,8 @@ class Episode(BaseModel):
     raids: int = 0
     last_improve_day: int = 0
     ended: bool = False
+    assisted: bool = False
+    checkpoint: Checkpoint | None = None
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     pass_notes: list[str] = Field(default_factory=list)
 
@@ -27,11 +42,27 @@ class Episode(BaseModel):
     def colony(self) -> str:
         return f"episode-{self.number:03d}-{re.sub(r'[^A-Za-z0-9_-]', '_', self.seed) or 'unseeded'}"
 
+    @property
+    def unfinished(self) -> bool:
+        return bool(self.seed) and not self.ended
+
     def tally(self, events: list[dict[str, Any]]) -> None:
         for e in events:
             self.deaths += e.get("kind") == "colonist_died"
             self.raids += e.get("kind") == "hostile_group"
         self.timeline += [e for e in events if e.get("kind") in TIMELINE_KINDS]
+
+    def saved(self, st: GameStatus) -> None:
+        self.checkpoint = Checkpoint(tick=st.tick, day=st.day, hour=st.hour, deaths=self.deaths, raids=self.raids, timeline=len(self.timeline))
+
+    def rewind(self, st: GameStatus) -> Checkpoint:
+        """The save of `checkpoint` was loaded: forget what happened after it."""
+        cp = self.checkpoint
+        assert cp is not None, "rewind needs a checkpoint"
+        self.deaths, self.raids = cp.deaths, cp.raids
+        del self.timeline[cp.timeline:]
+        self.timeline.append({"kind": "reloaded", "text": f"the game crashed; loaded the save of day {cp.day} {cp.hour}h", "day": st.day, "hour": st.hour})
+        return cp
 
 
 class EpisodeStore:

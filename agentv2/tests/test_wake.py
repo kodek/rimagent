@@ -52,3 +52,19 @@ def test_the_schedule_wakes_when_due():
     p.schedule(0, None, urgent=False, model_speed=None)
     assert p.check(11 * HOUR, [], [], None) is None
     assert p.check(12 * HOUR, [], [], None) == Wake("scheduled check-in", False)
+
+
+def test_a_failed_step_runs_again_soon_and_backs_off():
+    p = policy()
+    p.play.failed_step_retry_hours = 1
+    raid = Wake("event: hostile_group: raiders", True)
+    p.retry(0, raid)
+    assert p.next_tick == HOUR
+    assert p.check(HOUR, [], [], None) == Wake("again after a failed step: event: hostile_group: raiders", True)
+    p.retry(HOUR, Wake("again after a failed step: event: hostile_group: raiders", True))
+    assert p.next_tick == 3 * HOUR and p.failed == raid
+    for _ in range(5):
+        p.retry(0, raid)
+    assert p.next_tick == 12 * HOUR
+    p.schedule(0, None, urgent=False, model_speed=None)
+    assert p.failed is None and p.check(12 * HOUR, [], [], None) == Wake("scheduled check-in", False)

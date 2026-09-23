@@ -8,6 +8,8 @@ from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo
 
+from agentv2.bridge import BridgeError
+from agentv2.episode import Episode
 from agentv2.runtime import open_runtime
 from agentv2.scripted import call, code, scripted_model
 from agentv2.wake import TICKS_PER_HOUR, Wake
@@ -181,3 +183,104 @@ async def test_an_ended_episode_is_not_resumed(started, settings, bridge, bus, g
     rt.runner.episodes.save(rt.runner.episode)
     again = await restarted(settings, bridge, bus, script)
     assert again.runner.episode.number == 2 and game.seed == "rimagent-2"
+
+
+async def test_a_crashed_game_continues_from_its_save(started, game):
+    rt, _ = started
+    checkpoint = rt.runner.episode.checkpoint
+    assert checkpoint is not None and "agentv2-autosave" in game.saves
+    game.advance(30)
+    game.add_event("colonist_died", "Bob died")
+    await rt.runner.poller.poll_once(rt.runner.episode)
+    assert rt.runner.episode.deaths == 1
+    game.crash()
+    with pytest.raises(BridgeError):
+        await rt.runner.ensure_game()
+    game.alive = True
+    game.calls.clear()
+    await rt.runner.ensure_game()
+    episode = rt.runner.episode
+    assert game.state == "playing" and game.tick == checkpoint.tick
+    assert episode.number == 1 and episode.deaths == 0 and episode.timeline[-1]["kind"] == "reloaded"
+    assert rt.runner.poller.last_seq == len(game.ledger)
+    assert ("game.load", {"name": "agentv2-autosave"}) in game.calls and "steward.enable" in [m for m, _ in game.calls]
+    wake = rt.runner.inbox.take_forced()
+    assert wake is not None and f"save of day {checkpoint.day}" in wake.trigger
+
+
+async def test_the_main_menu_does_not_end_an_episode_that_has_a_save(started, game):
+    rt, _ = started
+    game.state = "menu"
+    await rt.runner.play_episode()
+    assert rt.runner.scores.history() == [] and rt.runner.episode.unfinished
+
+
+async def test_a_save_that_does_not_load_ends_the_episode(started, game):
+    rt, script = started
+    game.state = "menu"
+    original = rt.bridge.call
+
+    async def broken_load(method, params=None, timeout_ms=None):
+        if method == "game.load":
+            raise BridgeError("the save is corrupt")
+        return await original(method, params, timeout_ms)
+
+    rt.bridge.call = broken_load
+    script.responses = [call("finish", {"notes": "crash noted"})]
+    await rt.runner.ensure_game()
+    assert rt.runner.scores.history()[-1]["ended"] == "the game crashed and its save did not load"
+    assert rt.runner.episode.number == 2 and game.seed == "rimagent-2"
+
+
+async def test_an_abandoned_episode_number_is_not_used_again(settings, bridge, bus, game):
+    game.state = "menu"
+    async with open_runtime(settings, bus, bridge, scripted_model(Script())) as rt:
+        rt.runner.episodes.save(Episode(number=3, seed="rimagent-3"))
+        await rt.runner.prepare()
+        await rt.runner.ensure_game()
+        assert rt.runner.episode.number == 4 and game.seed == "rimagent-4"
+
+
+async def test_the_runner_restarts_a_silent_game(started, game, settings, tmp_path):
+    rt, _ = started
+    marker = tmp_path / "restarted"
+    settings.play.restart_command = ["touch", str(marker)]
+    settings.play.restart_after_s = 0
+    game.alive = False
+
+    async def game_comes_back() -> None:
+        while not marker.exists():
+            await asyncio.sleep(0.05)
+        game.alive = True
+
+    back = asyncio.create_task(game_comes_back())
+    await asyncio.wait_for(rt.runner.recover(), 10)
+    await back
+    assert marker.exists()
+
+
+async def test_operator_order_switches_and_the_research_queue_last_into_a_new_game(settings, bridge, bus, game):
+    settings.steward.orders_off = ["corpses"]
+    settings.steward.research_queue = ["Batteries"]
+    script = Script()
+    rt = await restarted(settings, bridge, bus, script)
+    await rt.controls.set_order("beds", False)
+    wake = rt.runner.inbox.take_forced()
+    assert wake is not None and "standing order beds" in wake.trigger
+    game.calls.clear()
+    await rt.runner.new_game()
+    orders = [p for m, p in game.calls if m == "steward.orders.set"]
+    assert orders == [{"id": "all", "enabled": True}, {"id": "beds", "enabled": False}, {"id": "corpses", "enabled": False}]
+    assert ("steward.research", {"queue": ["Batteries"]}) in game.calls
+    await rt.controls.set_order("all", False)
+    game.calls.clear()
+    await rt.runner.game.apply_steward()
+    assert [p for m, p in game.calls if m == "steward.orders.set"] == [{"id": "all", "enabled": False}]
+
+
+async def test_a_failed_step_is_tried_again_after_an_hour(started, game):
+    rt, script = started
+    script.responses = [ModelHTTPError(503, "down")]
+    outcome = await rt.runner.step(Wake("event: hostile_group: raiders", True))
+    assert outcome.error and rt.runner.wake.next_tick == game.tick + TICKS_PER_HOUR
+    assert rt.runner.wake.check(game.tick + TICKS_PER_HOUR, [], [], None) == Wake("again after a failed step: event: hostile_group: raiders", True)

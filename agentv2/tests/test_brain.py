@@ -5,6 +5,7 @@ import json
 import pytest
 
 from agentv2.brain import Brain, BrainLayout
+from agentv2.bridge import GameStatus
 from agentv2.bus import Bus, JsonlLog
 from agentv2.episode import Episode, EpisodeStore
 from agentv2.events import Delta, Status
@@ -78,3 +79,13 @@ def test_bus_keeps_persistent_events_and_streams_ephemeral_ones(tmp_path):
     assert bus.state == {"phase": "playing", "day": 3, "deaths": 1}
     assert [queue.get_nowait()["data"] for _ in range(3)][1] == {"stream": "play", "part": "thinking", "text": "thinking…"}
     assert [json.loads(line)["data"] for line in (tmp_path / "events.jsonl").read_text().splitlines()] == [{"day": 3, "phase": "playing"}, {"deaths": 1}]
+
+
+def test_a_reload_rewinds_the_episode_to_its_checkpoint():
+    episode = Episode(number=1, seed="s")
+    episode.tally([{"kind": "hostile_group", "text": "first raid"}])
+    episode.saved(GameStatus(state="playing", tick=90_000, day=1, hour=12))
+    episode.tally([{"kind": "colonist_died", "text": "Bob"}, {"kind": "hostile_group", "text": "second raid"}])
+    cp = episode.rewind(GameStatus(state="playing", tick=90_000, day=1, hour=12))
+    assert (cp.day, cp.hour) == (1, 12) and (episode.deaths, episode.raids) == (0, 1)
+    assert [e["kind"] for e in episode.timeline] == ["hostile_group", "reloaded"]

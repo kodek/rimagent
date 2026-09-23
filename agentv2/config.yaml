@@ -4,6 +4,7 @@ llm:
   model: qwen3.6-27b
   api_key: unused
   context_window: 262144                          # the server's max_model_len, for the context gauge
+  timeout_s: 300                                  # one model request; the OpenAI client retries a failed request twice
 bridge:
   url: http://127.0.0.1:8765
 play:
@@ -13,7 +14,11 @@ play:
   wake_hours: 12            # scheduled step interval (in-game hours) when end_turn gives none
   min_wake_hours: 4
   max_requests: 30          # model requests per think step; then only end_turn is offered
+  failed_step_retry_hours: 1  # a step that fails (model or network error) runs again this many in-game hours later
   max_days: 60
+  save_name: agentv2-autosave   # saved at the start of a game, on resume and each in-game day; a crashed game continues from it
+  restart_command: []       # e.g. [../script/restart-game.sh]: run (from agentv2/) when RimBridge is silent for restart_after_s
+  restart_after_s: 180
   first_improve_day: 1
   improve_every_days: 3
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
@@ -24,6 +29,8 @@ watchers:
   timeout_s: 1              # sandbox time limit per watcher call
 steward:
   enabled: true
+  orders_off: []            # standing orders to keep off, e.g. [corpses]; the dashboard switches add to it until the agent stops
+  research_queue: []        # research defNames queued with steward.research at the start of each game
 dashboard:
   host: 127.0.0.1         # 0.0.0.0 serves it on the LAN (no authentication)
   port: 8771

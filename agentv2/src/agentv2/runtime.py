@@ -48,7 +48,8 @@ async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Mode
     brain = Brain(layout, settings.knowledge_dir)
     scores, git = Scores(layout.scores), BrainGit(layout.root)
     steps = SqliteStepStore(database=settings.runs / "steps.sqlite", max_snapshots_per_run=4)
-    flags = RuntimeFlags(danger_think_speed=settings.play.danger_think_speed, steward=settings.steward.enabled)
+    flags = RuntimeFlags(danger_think_speed=settings.play.danger_think_speed, steward=settings.steward.enabled,
+                         orders_off=set(settings.steward.orders_off))
     inbox = Inbox()
     async with Watchers(layout.watchers_dir, bridge, bus, settings.watchers.timeout_s) as watchers:
         agents = build_agents(model, settings, brain, WatcherTools(watchers), BrainTools(scores, git, layout), steps)

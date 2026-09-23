@@ -72,7 +72,10 @@ class Controls:
                                  False)
 
     async def set_order(self, order_id: str, value: bool) -> Any:
-        return await self.game.set_order(order_id, value)
+        result = await self.game.set_order(order_id, value)
+        self.inbox.forced = Wake(f"the operator switched the standing order {order_id} " + (
+            "on: the mod handles it again" if value else "off: do what it did yourself (rw_steward_orders_explain)"), False)
+        return result
 
     async def set_rally(self, rect: list[int] | None) -> Any:
         return await self.game.set_rally(rect)

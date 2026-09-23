@@ -71,6 +71,7 @@ class LedgerPoller:
             self.bus.emit(Status.model_validate(st.model_dump(exclude_unset=True)))
         if not st.playing or not episode.seed:
             return
+        episode.assisted |= st.assisted
         data = await self.bridge.events(self.last_seq, 500)
         events: list[dict[str, Any]] = data.get("events") or []
         if events:

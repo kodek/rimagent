@@ -89,6 +89,10 @@ class Runner:
 
     async def ensure_game(self) -> None:
         st = await self.bridge.status()
+        if st.state == "loading":
+            while (await self.bridge.status()).state == "loading":
+                await asyncio.sleep(2)
+            return
         if st.playing:
             if not self.episode.seed:
                 saved = self.episodes.load()
@@ -98,14 +102,16 @@ class Runner:
                 else:
                     await self.resume(st, saved)
             return
-        if st.state == "loading":
-            while (await self.bridge.status()).state == "loading":
-                await asyncio.sleep(2)
-            return
-        await self.new_game()
+        episode = self.episode if self.episode.unfinished else self.episodes.load()
+        if episode and episode.unfinished and episode.checkpoint and await self._has_save():
+            await self.reload(episode)
+        else:
+            await self.new_game()
 
     def _next_episode_number(self) -> int:
-        return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [0]) + 1
+        """After the scored episodes and after the stored one, which is either scored or abandoned."""
+        saved = self.episodes.load()
+        return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [saved.number if saved else 0]) + 1
 
     def _reset(self) -> None:
         self.inbox.clear()
@@ -126,6 +132,7 @@ class Runner:
         self.bus.emit(EpisodeStart(episode=self.episode.number, seed=seed, resumed=True, day=self.episode.start_day, restored_messages=restored))
         self.bus.emit(Status(episode=self.episode.number, seed=seed, deaths=self.episode.deaths, raids=self.episode.raids))
         await self.game.apply_steward()
+        await self.save_game(st)
         self.inbox.forced = Wake("agent (re)started mid-game", False)
 
     async def new_game(self) -> None:
@@ -142,19 +149,92 @@ class Runner:
         if self.flags.sandbox:
             await self.game.apply_sandbox(self.episode, True)
         await self.game.apply_steward()
+        await self.game.queue_research()
         self.bus.emit(EpisodeStart(episode=number, seed=seed, sandbox=self.flags.sandbox))
         self.bus.emit(Status(deaths=0, raids=0))
         self.episodes.save(self.episode)
+        await self.save_game(st)
         self.inbox.forced = Wake("new game started", False)
 
-    async def recover(self) -> None:
-        self.bus.emit(Status(phase="loading"))
-        for _ in range(40):
-            if self.flags.stop or await self.bridge.health():
-                break
+    async def reload(self, episode: Episode) -> None:
+        """Continue an unfinished episode from its save, after a game crash or restart."""
+        name = self.settings.play.save_name
+        self.bus.emit(Status(phase="loading", episode=episode.number, seed=episode.seed))
+        self.bus.emit(Log(text=f"loading {name} to continue episode {episode.number}"))
+        try:
+            await self.bridge.call("game.load", {"name": name})
             await asyncio.sleep(3)
-        await self.bridge.wait_alive()
-        await self.load_catalog()
+            st = await self.bridge.wait_for("playing", 600)
+        except BridgeError as e:
+            self.bus.emit(Error(text=f"loading {name}: {e}"))
+            episode.checkpoint = None
+            self.episode = episode
+            await self.end_episode("the game crashed and its save did not load")
+            return
+        self._reset()
+        cp = episode.rewind(st)
+        self.episode = episode
+        self.poller.last_seq, self.last_day = st.seq, st.day
+        self.flags.sandbox = episode.sandbox
+        if episode.sandbox:
+            await self.game.apply_sandbox(episode, True)
+        await self.game.apply_steward()
+        self.episodes.save(episode)
+        self.bus.emit(EpisodeStart(episode=episode.number, seed=episode.seed, resumed=True, reloaded=name, day=st.day))
+        self.bus.emit(Status(episode=episode.number, seed=episode.seed, deaths=episode.deaths, raids=episode.raids))
+        self.inbox.forced = Wake(f"the game crashed and was loaded from its save of day {cp.day} {cp.hour}h: all that happened after "
+                                 "that save is undone, so read the colony again before you act", False)
+
+    async def save_game(self, st: GameStatus) -> None:
+        if not self.settings.play.autosave:
+            return
+        try:
+            await self.bridge.call("game.save", {"name": self.settings.play.save_name})
+        except BridgeError as e:
+            self.bus.emit(Error(text=f"save: {e}"))
+            return
+        self.episode.saved(st)
+        self.episodes.save(self.episode)
+
+    async def _has_save(self) -> bool:
+        saves = await self.bridge.call("game.list_saves") or []
+        return any(s.get("name") == self.settings.play.save_name for s in saves)
+
+    async def recover(self) -> None:
+        """Wait until RimBridge answers again; run `play.restart_command` while it stays silent."""
+        play = self.settings.play
+        self.bus.emit(Status(phase="loading"))
+        silent_since = time.monotonic()
+        while not self.flags.stop:
+            health = await self.bridge.health()
+            if health and health.get("mainThreadAlive"):
+                try:
+                    await self.load_catalog()
+                    return
+                except BridgeError as e:
+                    self.bus.emit(Error(text=f"method catalog: {e}"))
+            if play.restart_command and time.monotonic() - silent_since >= play.restart_after_s:
+                await self.restart_game()
+                silent_since = time.monotonic()
+            await asyncio.sleep(3)
+
+    async def restart_game(self) -> None:
+        command = self.settings.play.restart_command
+        self.bus.emit(Log(text=f"RimBridge did not answer for {self.settings.play.restart_after_s:.0f}s; restarting the game: {' '.join(command)}"))
+        try:
+            proc = await asyncio.create_subprocess_exec(*command, cwd=self.settings.root, stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.STDOUT)
+        except OSError as e:
+            self.bus.emit(Error(text=f"restart command: {e}"))
+            return
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), 120)
+        except TimeoutError:
+            proc.kill()
+            self.bus.emit(Error(text="restart command: no exit after 120 s; killed"))
+            return
+        if proc.returncode:
+            self.bus.emit(Error(text=f"restart command exited with {proc.returncode}: {out.decode(errors='replace')[-300:]}"))
 
     # ------------------------------------------------------------------ the episode
 
@@ -168,6 +248,9 @@ class Runner:
                 if st.state == "loading":
                     await asyncio.sleep(2)
                     continue
+                if self.episode.checkpoint and await self._has_save():
+                    self.bus.emit(Log(text="the game is at the main menu; the episode continues from its save"))
+                    return
                 await self.end_episode("the game left the play state")
                 return
             if st.colonists == 0 and st.day > self.episode.start_day:
@@ -181,7 +264,7 @@ class Runner:
                 await self.end_episode(f"reached max_days ({play.max_days})")
                 return
             if st.day != self.last_day:
-                await self.day_rollover(st.day)
+                await self.day_rollover(st)
             if self.flags.paused:
                 await asyncio.sleep(1)
                 continue
@@ -194,14 +277,10 @@ class Runner:
                 await self.end_episode(outcome.episode_end)
                 return
 
-    async def day_rollover(self, day: int) -> None:
-        self.last_day = day
+    async def day_rollover(self, st: GameStatus) -> None:
+        day = self.last_day = st.day
         self.episodes.save(self.episode)
-        if self.settings.play.autosave:
-            try:
-                await self.bridge.call("game.save", {"name": "agentv2-autosave"})
-            except BridgeError as e:
-                self.bus.emit(Error(text=f"autosave: {e}"))
+        await self.save_game(st)
         play, episode = self.settings.play, self.episode
         first = episode.last_improve_day == episode.start_day and day - episode.start_day >= play.first_improve_day
         due = first or day - episode.last_improve_day >= play.improve_every_days
@@ -238,13 +317,16 @@ class Runner:
             self.bus.emit(Status(phase="playing", model_speed=chosen))
         if deps.turn.replies:
             self.inbox.operator.clear()
-        elif self.inbox.operator:
+        elif self.inbox.operator and not outcome.error:
             self.inbox.forced = Wake("operator message", True)
         try:
             tick = (await self.bridge.status()).tick
         except BridgeError:
             tick = self.poller.status.tick
-        self.wake.schedule(tick, outcome.end, urgent=wake.urgent, model_speed=chosen)
+        if outcome.error:
+            self.wake.retry(tick, wake)
+        else:
+            self.wake.schedule(tick, outcome.end, urgent=wake.urgent, model_speed=chosen)
         self.bus.emit(Status(next_wake_tick=self.wake.next_tick))
         return outcome
 
@@ -266,7 +348,7 @@ class Runner:
             self.bus.emit(Error(text=f"final read: {e}"))
         days = max(st.day, self.last_day) - episode.start_day
         colonists = int(summary.get("colonists", st.colonists) or 0)
-        assisted = st.assisted or episode.sandbox
+        assisted = st.assisted or episode.assisted or episode.sandbox
         total = score(days, colonists, episode.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0),
                       int(summary.get("research_done", 0) or 0), episode.raids)
         self.bus.emit(Log(text=f"episode {episode.number} over: {reason}; days={days} colonists={colonists} deaths={episode.deaths} score={total}"))

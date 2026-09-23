@@ -29,6 +29,7 @@ class Status(Event):
     next_wake_tick: int | None = None
     model_speed: int | None = None
     steward: bool | None = None
+    orders_off: list[str] | None = None
     sandbox: bool | None = None
 
 
@@ -157,6 +158,7 @@ class EpisodeStart(Event):
     seed: str
     sandbox: bool | None = None
     resumed: bool | None = None
+    reloaded: str | None = None
     day: int | None = None
     restored_messages: int | None = None
 

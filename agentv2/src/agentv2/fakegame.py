@@ -31,6 +31,8 @@ class FakeGame:
         {"name": "Cid", "id": "Human3", "pos": [118, 125], "mood": 0.71, "health": 1.0, "job": "Idle", "downed": False},
     ])
     ledger: list[dict[str, Any]] = field(default_factory=list)
+    saves: dict[str, dict[str, Any]] = field(default_factory=dict)
+    alive: bool = True
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     methods: list[dict[str, str]] = field(default_factory=lambda: json.loads(resources.files("agentv2").joinpath("fake_methods.json").read_text()))
 
@@ -44,6 +46,10 @@ class FakeGame:
 
     def add_event(self, kind: str, text: str, **data: Any) -> None:
         self.ledger.append({"seq": len(self.ledger) + 1, "kind": kind, "text": text, "tick": self.tick, "day": self.day, "hour": self.hour, **data})
+
+    def crash(self) -> None:
+        """The game process dies: the bridge stops answering, and the restarted game has a new ledger at the main menu."""
+        self.alive, self.state, self.ledger = False, "menu", []
 
     def advance(self, hours: float) -> None:
         before = self.day
@@ -65,6 +71,8 @@ class FakeGame:
         return httpx.MockTransport(self._handle)
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        if not self.alive:
+            raise httpx.ConnectError("the fake game is down", request=request)
         path = request.url.path
         if path == "/health":
             return httpx.Response(200, json={"ok": True, "mainThreadAlive": True, "frames": 1})
@@ -106,10 +114,18 @@ class FakeGame:
             case "game.new_game":
                 self.state, self.seed, self.tick, self.ledger = "playing", str(p.get("seed", "x")), 60_000, []
                 return {"started": True}
-            case "game.save" | "steward.enable" | "steward.orders.set" | "game.dev_mode":
+            case "game.save":
+                self.saves[str(p["name"])] = {"tick": self.tick, "seed": self.seed, "colonists": [dict(c) for c in self.colonists]}
+                return {"saved": p["name"]}
+            case "game.load":
+                save = self.saves[str(p["name"])]
+                self.state, self.tick, self.seed, self.colonists = "playing", save["tick"], save["seed"], [dict(c) for c in save["colonists"]]
+                self.add_event("game", f"loaded save {p['name']}")
+                return {"loading": p["name"]}
+            case "steward.enable" | "steward.orders.set" | "game.dev_mode":
                 return {"ok": True}
             case "game.list_saves":
-                return [{"name": "rimagent-autosave", "modified": "now"}]
+                return [{"name": name, "modified": "now"} for name in self.saves]
             case "state.summary":
                 return {"day": self.day, "hour": self.hour, "colonists": len(self.colonists), "colonist_list": self.colonists, "wealth": 14_500,
                         "food_days": 6.5, "mood_avg": 62, "research_done": 3, "threat_points": 120, "alerts": [], "key_stocks": {"WoodLog": 240, "Steel": 180}}

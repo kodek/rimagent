@@ -24,11 +24,14 @@ class WakePolicy:
     last_end_tick: int = 0
     wake_on: set[str] = field(default_factory=set)
     seen_alerts: dict[str, int] = field(default_factory=dict)
+    failed: Wake | None = None
+    failures: int = 0
 
     def reset(self) -> None:
-        self.next_tick = self.last_end_tick = 0
+        self.next_tick = self.last_end_tick = self.failures = 0
         self.wake_on = set()
         self.seen_alerts = {}
+        self.failed = None
 
     def check(self, tick: int, alerts: list[Alert], events: list[dict[str, Any]], game_alerts: list[dict[str, Any]] | None) -> Wake | None:
         """`game_alerts` is None when they were not read this time."""
@@ -46,7 +49,7 @@ class WakePolicy:
         if game_alerts is not None and (wake := self._game_alert(tick, game_alerts)):
             return wake
         if tick >= self.next_tick:
-            return Wake("scheduled check-in", False)
+            return Wake(f"again after a failed step: {self.failed.trigger}", self.failed.urgent) if self.failed else Wake("scheduled check-in", False)
         return None
 
     def schedule(self, tick: int, end: TurnEnd | None, *, urgent: bool, model_speed: int | None) -> None:
@@ -55,6 +58,14 @@ class WakePolicy:
         self.wake_on = set(end.wake_on) if end else set()
         self.last_end_tick = tick
         self.next_tick = tick + int(max(floor, min(self.play.max_wake_hours, hours)) * TICKS_PER_HOUR)
+        self.failed, self.failures = None, 0
+
+    def retry(self, tick: int, wake: Wake) -> None:
+        """A step failed: run it again soon, then less often while the failures go on."""
+        self.failures += 1
+        hours = min(self.play.wake_hours, self.play.failed_step_retry_hours * 2 ** (self.failures - 1))
+        self.failed = self.failed or wake
+        self.next_tick = tick + int(hours * TICKS_PER_HOUR)
 
     def _game_alert(self, tick: int, alerts: list[dict[str, Any]]) -> Wake | None:
         wake, live = None, set()

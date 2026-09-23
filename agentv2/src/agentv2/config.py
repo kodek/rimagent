@@ -16,6 +16,7 @@ class LLMSettings(BaseModel):
     model: str = "qwen3.6-27b"
     api_key: str = "unused"
     context_window: int = 262_144
+    timeout_s: float = 300.0
 
 
 class BridgeSettings(BaseModel):
@@ -38,8 +39,12 @@ class PlaySettings(BaseModel):
     wake_on_kinds: list[str] = Field(default_factory=lambda: [
         "letter", "incident", "quest", "research_finished", "steward", "orders"])
     max_requests: int = 30
+    failed_step_retry_hours: float = 1.0
     max_days: int = 60
     autosave: bool = True
+    save_name: str = "agentv2-autosave"
+    restart_command: list[str] = Field(default_factory=list)
+    restart_after_s: float = 180.0
     first_improve_day: int = 1
     improve_every_days: int = 3
     seeds: list[str] = Field(default_factory=lambda: ["rimagent-1", "rimagent-2", "rimagent-3", "rimagent-4", "rimagent-5"])
@@ -64,6 +69,8 @@ class StewardSettings(BaseModel):
     scorer: bool = True
     stock: bool = True
     orders: bool = True
+    orders_off: list[str] = Field(default_factory=list)
+    research_queue: list[str] = Field(default_factory=list)
 
 
 class DashboardSettings(BaseModel):
