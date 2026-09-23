@@ -1,7 +1,6 @@
 """What every run gets as `ctx.deps`: the bridge, the bus, the method catalog, the episode and the role."""
 from __future__ import annotations
 
-import collections
 from dataclasses import dataclass, field
 
 from .bridge import Bridge
@@ -39,4 +38,3 @@ class Deps:
 @dataclass
 class DirectorDeps(Deps):
     turn: Turn = field(default_factory=Turn)
-    urgent: collections.deque[str] = field(default_factory=collections.deque)

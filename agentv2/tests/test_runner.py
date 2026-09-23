@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import subprocess
 
 import pytest
@@ -65,7 +66,7 @@ async def test_the_conversation_continues_across_steps(started):
     await rt.runner.step(Wake("first wake", False))
     await rt.runner.step(Wake("second wake", False))
     assert "first wake" in prompts(script.received[1]) and "second wake" in prompts(script.received[1])
-    assert rt.director.notes == ["first", "second"]
+    assert await rt.director.notes(rt.runner.episode.colony) == ["first", "second"]
 
 
 async def test_a_failed_step_keeps_its_history(started):
@@ -113,6 +114,31 @@ async def test_urgent_event_reaches_the_model_mid_step(started, game):
     assert "URGENT" in prompts(script.received[1]) and "Bob is down" in prompts(script.received[1])
 
 
+async def test_the_operator_ends_the_episode_mid_step(started):
+    rt, script = started
+    gate = asyncio.Event()
+    script.responses = [call("rw_state_summary")] * 3
+    original = rt.bridge.call
+
+    async def slow_summary(method, params=None, timeout_ms=None):
+        if method == "state.summary" and rt.director.active is not None:
+            gate.set()
+            await asyncio.sleep(0.3)
+        return await original(method, params, timeout_ms)
+
+    rt.bridge.call = slow_summary
+    step = asyncio.create_task(rt.runner.step(Wake("long step", False)))
+    await gate.wait()
+    await rt.controls.end_episode()
+    outcome = await step
+    assert outcome.error and "RunCancelled" in outcome.error
+    assert rt.runner.inbox.end == "the operator ended the episode"
+    rt.bridge.call = original
+    script.responses = [call("end_turn", {"notes": "after the cancel"})]
+    assert (await rt.runner.step(Wake("next step", False))).notes == "after the cancel"
+    assert "long step" in prompts(script.received[-1]) and "next step" in prompts(script.received[-1])
+
+
 async def test_end_episode_reflects_scores_commits_and_starts_a_new_game(started, game, root):
     rt, script = started
     script.responses = [call("journal_write_memory", {"content": "raids come early"}), call("finish", {"notes": "lesson written"})]
@@ -137,7 +163,7 @@ async def test_a_restarted_agent_resumes_the_conversation_and_the_episode(starte
     assert again.runner.episode.number == 1 and again.runner.episode.raids == 1
     assert [e["text"] for e in again.runner.episode.timeline] == ["raiders"]
     assert again.runner.episode.pass_notes == ["[improvement pass day 1] wrote a watcher"]
-    assert "before restart" in prompts(again.director.history)
+    assert "before restart" in prompts(await again.director.history(again.runner.episode.colony))
 
 
 async def test_a_failing_reflection_still_ends_the_episode(started):

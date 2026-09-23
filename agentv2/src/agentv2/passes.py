@@ -34,7 +34,7 @@ class BrainPasses:
 
     async def improve(self, deps: Deps, day: int) -> str:
         episode = deps.episode
-        notes = self.director.notes
+        notes = await self.director.notes(episode.colony)
         prompt = (f"# Improvement pass, day {day} of episode {episode.number}\n\n## Your tool use since the last pass (calls, failures)\n"
                   f"{self.usage_stats()}\n\n## Recent step notes\n" + _bullets(notes[-30:])
                   + "\n\n## Earlier passes\n" + _bullets(episode.pass_notes[-5:]) + f"\n\n## Scores\n{self.scores.text(8)}")
@@ -44,7 +44,7 @@ class BrainPasses:
 
     async def reflect(self, deps: Deps, reason: str, days: int, total: float) -> str:
         episode = deps.episode
-        notes = self.director.notes
+        notes = await self.director.notes(episode.colony)
         timeline = "\n".join(f"[{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in episode.timeline)[-14_000:]
         prompt = (f"# Episode {episode.number} reflection (seed {episode.seed})\n\nThis game is over ({reason}) after {days} days. Score {total}.\n\n"
                   f"## Timeline\n{timeline}\n\n## Your step notes\n" + _bullets(notes[-40:])

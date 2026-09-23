@@ -18,6 +18,7 @@ from pydantic_ai_harness import (
     ToolOutputLimits,
     WarnNearLimits,
 )
+from pydantic_ai_harness.conversation_search import ConversationSearch, SnapshotHistorySource
 from pydantic_ai_harness.repair_tool_arguments import RepairToolArguments
 from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.tool_output_limits import Band, LocalFileStore, Spill, Truncate, indented_json
@@ -26,7 +27,7 @@ from .brain import Brain
 from .capabilities.access import method_access
 from .capabilities.arguments import CoerceArguments
 from .capabilities.speed import TrackSpeed
-from .capabilities.step import Interrupts, StepBudget
+from .capabilities.step import StepBudget
 from .capabilities.telemetry import telemetry
 from .config import Settings
 from .deps import Deps, DirectorDeps
@@ -87,7 +88,6 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
         capabilities=[
             *common(),
             TrackSpeed(),
-            Interrupts(),
             compaction,
             ReportContextUsage(context_window=settings.llm.context_window),
             StepPersistence(store=steps, agent_name=DIRECTOR.name),
@@ -104,7 +104,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             retries={"tools": 3, "output": 3},
             end_strategy="graceful",
             toolsets=toolsets,
-            capabilities=common(),
+            capabilities=[*common(), ConversationSearch(SnapshotHistorySource(steps), scope="conversation")],
         )
 
     return Agents(director=director, improver=brain_pass(IMPROVER), reflector=brain_pass(REFLECTOR))

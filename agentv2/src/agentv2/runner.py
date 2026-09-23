@@ -122,7 +122,7 @@ class Runner:
         else:
             self.episode = Episode(number=self._next_episode_number(), seed=seed, start_day=st.day, sandbox=st.god_mode)
         self.poller.last_seq, self.last_day = st.seq, st.day
-        restored = await self.director.restore(self.episode.colony)
+        restored = len(await self.director.history(self.episode.colony))
         self.bus.emit(EpisodeStart(episode=self.episode.number, seed=seed, resumed=True, day=self.episode.start_day, restored_messages=restored))
         self.bus.emit(Status(episode=self.episode.number, seed=seed, deaths=self.episode.deaths, raids=self.episode.raids))
         await self.game.apply_steward()
@@ -139,7 +139,6 @@ class Runner:
         self._reset()
         self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.flags.sandbox, last_improve_day=st.day)
         self.last_day = st.day
-        self.director.reset()
         if self.flags.sandbox:
             await self.game.apply_sandbox(self.episode, True)
         await self.game.apply_steward()

@@ -56,6 +56,7 @@ class Controls:
 
     async def end_episode(self) -> None:
         self.inbox.end = "the operator ended the episode"
+        self.director.cancel()
 
     async def set_no_pause(self, value: bool) -> None:
         self.flags.danger_think_speed = 1 if value else 0
@@ -78,6 +79,7 @@ class Controls:
 
     async def kill(self) -> None:
         self.flags.stop = True
+        self.director.cancel()
 
     async def say(self, text: str) -> None:
         self.operator.record(time.strftime("%Y-%m-%d %H:%M"), text)

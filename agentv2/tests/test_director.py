@@ -116,7 +116,7 @@ async def test_brain_passes_only_read_the_game(stack, game):
     result = await stack.rt.agents.improver.run("improve", deps=stack.rt.runner.deps(IMPROVER))
     names = {t.name for t in stack.seen[0].function_tools}
     assert result.output.notes == "done"
-    assert "rw_state_summary" in names
+    assert "rw_state_summary" in names and "search_conversation_history" in names
     assert "rw_ui_draft" not in names and "look" not in names and "reply_to_operator" not in names
     assert "ui.draft changes the game" in returns(result, "run_code")[0].model_response_str()
     assert not any(method == "ui.draft" for method, _ in game.calls)
