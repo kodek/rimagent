@@ -330,3 +330,16 @@ async def test_scratch_files_last_for_the_game_and_the_passes_only_read_them(sta
     assert not (settings.scratch / "pass.txt").exists() and (settings.scratch / "beds.json").exists()
     await rt.runner.new_game()
     assert list(settings.scratch.iterdir()) == []
+
+
+async def test_a_new_game_does_not_replay_the_ledger_of_the_last_one(started, game):
+    rt, script = started
+    game.add_event("colonist_died", "Bob died")
+    game.add_event("hostile_group", "raiders")
+    await rt.runner.poller.poll_once(rt.runner.episode)
+    assert (rt.runner.episode.deaths, rt.runner.episode.raids) == (1, 1)
+    script.responses = [call("finish", {"notes": "x"})]
+    await rt.runner.end_episode("test over")
+    await rt.runner.poller.poll_once(rt.runner.episode)
+    assert (rt.runner.episode.number, rt.runner.episode.deaths, rt.runner.episode.raids) == (2, 0, 0)
+    assert [e["kind"] for e in rt.runner.inbox.events] == []

@@ -22,7 +22,7 @@ SEED_BRAIN = Path(__file__).resolve().parents[1] / "brain"
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    shutil.copytree(SEED_BRAIN, tmp_path / "brain", ignore=shutil.ignore_patterns(".memory-store.sqlite3*", "__pycache__"))
+    shutil.copytree(SEED_BRAIN, tmp_path / "brain", ignore=shutil.ignore_patterns(".memory-store.sqlite3*", "__pycache__", "episode-*"))
     (tmp_path / "config.yaml").write_text("play:\n  max_days: 2\n", encoding="utf-8")
     for args in (["init", "-q"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed"]):
         subprocess.run(["git", *args], cwd=tmp_path, check=True)

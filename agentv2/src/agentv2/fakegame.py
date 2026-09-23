@@ -120,7 +120,8 @@ class FakeGame:
                 self.paused = bool(p.get("paused", True))
                 return {"paused": self.paused}
             case "game.new_game":
-                self.state, self.seed, self.tick, self.ledger = "playing", str(p.get("seed", "x")), 60_000, []
+                self.state, self.seed, self.tick = "playing", str(p.get("seed", "x")), 60_000
+                self.add_event("game", "new game started")
                 return {"started": True}
             case "game.save":
                 self.saves[str(p["name"])] = {"tick": self.tick, "seed": self.seed, "colonists": [dict(c) for c in self.colonists]}

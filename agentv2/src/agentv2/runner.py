@@ -150,7 +150,7 @@ class Runner:
         shutil.rmtree(self.settings.scratch, ignore_errors=True)
         self.settings.scratch.mkdir(parents=True)
         self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.flags.sandbox, last_improve_day=st.day)
-        self.last_day = st.day
+        self.poller.last_seq, self.last_day = st.seq, st.day
         if self.flags.sandbox:
             await self.game.apply_sandbox(self.episode, True)
         await self.game.apply_steward()
