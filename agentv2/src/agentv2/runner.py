@@ -50,6 +50,7 @@ class Runner:
     base_shown: bool = field(default=False, init=False)
     last_day: int = field(default=-1, init=False)
     improve_task: asyncio.Task[str] | None = field(default=None, init=False)
+    start_new_game: bool = field(default=False, init=False)
     _alerts_read: float = field(default=0.0, init=False)
 
     def deps(self, role: Role) -> Deps:
@@ -90,6 +91,12 @@ class Runner:
         self.bus.emit(Log(text=f"{len(self.catalog)} RimBridge methods as tools"))
 
     async def ensure_game(self) -> None:
+        if self.start_new_game:
+            self.start_new_game = False
+            if saved := self.episodes.load():
+                self.bus.emit(Log(text=f"episode {saved.number} is left without a score: a new game starts"))
+            await self.new_game()
+            return
         st = await self.bridge.status()
         if st.state == "loading":
             while (await self.bridge.status()).state == "loading":
@@ -121,6 +128,7 @@ class Runner:
         self.wake.reset()
         self.base_shown = False
         self.poller.last_seq = 0
+        self.poller.lost_contact = False
 
     async def resume(self, st: GameStatus, saved: Episode | None) -> None:
         seed = st.seed or "resumed"
@@ -253,8 +261,8 @@ class Runner:
                 if st.state == "loading":
                     await asyncio.sleep(2)
                     continue
-                if self.episode.checkpoint and await self._has_save():
-                    self.bus.emit(Log(text="the game is at the main menu; the episode continues from its save"))
+                if self.poller.lost_contact and self.episode.checkpoint and await self._has_save():
+                    self.bus.emit(Log(text="the game came back after a crash: the episode continues from its save"))
                     return
                 await self.end_episode("the game left the play state")
                 return

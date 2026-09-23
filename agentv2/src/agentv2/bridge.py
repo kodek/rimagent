@@ -13,6 +13,10 @@ class BridgeError(Exception):
     pass
 
 
+class BridgeUnreachable(BridgeError):
+    """No answer from RimBridge: the game is down, starting or hung, or the network failed."""
+
+
 class GameStatus(BaseModel):
     """`game.status`: the fields the runner reads are typed; the others pass through to the dashboard."""
 
@@ -55,7 +59,7 @@ class Bridge:
         try:
             response = await self._client.post("/rpc", json=payload, timeout=(timeout_ms or self.timeout_s * 1000) / 1000 + 5)
         except httpx.HTTPError as e:
-            raise BridgeError(f"bridge unreachable: {e}") from e
+            raise BridgeUnreachable(f"bridge unreachable: {e}") from e
         try:
             return response.json()
         except ValueError as e:
@@ -80,7 +84,7 @@ class Bridge:
         try:
             response = await self._client.get("/screenshot", params=params, timeout=35)
         except httpx.HTTPError as e:
-            raise BridgeError(f"bridge unreachable: {e}") from e
+            raise BridgeUnreachable(f"bridge unreachable: {e}") from e
         if not response.headers.get("content-type", "").startswith("image/"):
             raise BridgeError(response.text[:300])
         return response.content
@@ -112,6 +116,9 @@ class Bridge:
     async def _get_result(self, path: str, **kwargs: Any) -> Any:
         try:
             response = await self._client.get(path, **kwargs)
+        except httpx.HTTPError as e:
+            raise BridgeUnreachable(f"{path}: {e}") from e
+        try:
             return response.json()["result"]
-        except (httpx.HTTPError, ValueError, KeyError) as e:
+        except (ValueError, KeyError) as e:
             raise BridgeError(f"{path}: {e}") from e

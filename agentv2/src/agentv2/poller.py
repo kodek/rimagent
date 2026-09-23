@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from .bridge import Bridge, BridgeError, GameStatus
+from .bridge import Bridge, BridgeError, BridgeUnreachable, GameStatus
 from .bus import Bus
 from .config import Settings
 from .episode import Episode
@@ -41,7 +41,7 @@ class Inbox:
 
 class LedgerPoller:
     def __init__(self, bridge: Bridge, bus: Bus, watchers: Watchers, inbox: Inbox, settings: Settings,
-                 on_urgent: Callable[[list[str]], Awaitable[None]]) -> None:
+                 on_urgent: Callable[[list[str]], Awaitable[None]], on_menu: Callable[[], None]) -> None:
         self.bridge = bridge
         self.bus = bus
         self.watchers = watchers
@@ -49,6 +49,8 @@ class LedgerPoller:
         self.poll_s = settings.watchers.poll_s
         self.critical_kinds = set(settings.play.critical_kinds)
         self.on_urgent = on_urgent
+        self.on_menu = on_menu
+        self.lost_contact = False
         self.status = GameStatus()
         self.last_seq = 0
         self._status_emitted = 0.0
@@ -58,6 +60,8 @@ class LedgerPoller:
         while not stopped():
             try:
                 await self.poll_once(episode())
+            except BridgeUnreachable:
+                self.lost_contact = True
             except BridgeError:
                 pass
             except Exception as e:  # noqa: BLE001 - the poller reports and keeps polling; the main loop owns recovery
@@ -69,6 +73,8 @@ class LedgerPoller:
         if time.monotonic() - self._status_emitted >= 1.0:
             self._status_emitted = time.monotonic()
             self.bus.emit(Status.model_validate(st.model_dump(exclude_unset=True)))
+        if st.state == "menu":
+            self.on_menu()
         if not st.playing or not episode.seed:
             return
         episode.assisted |= st.assisted

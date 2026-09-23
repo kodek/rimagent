@@ -13,6 +13,7 @@ uv run agentv2 llm "hello"          # check the model endpoint
 uv run agentv2 tools                # list the director's tools (no game, no model)
 uv run agentv2 fake -v              # play an in-process fake game: no RimWorld needed
 uv run agentv2 play -v              # play RimWorld through RimBridge (the mod must be loaded)
+uv run agentv2 play --new-game      # start a new game; the stored episode stays without a score
 uv run agentv2 think                # one director step against the running game, then the game waits paused
 uv run agentv2 seed                 # download the RimWorld wiki into ../knowledge and index it (--limit 50 to try)
 uv run pytest -q                    # tests (scripted model and fake game; no network)
@@ -54,10 +55,11 @@ One asyncio loop runs everything: the game poller, the watchers, the think steps
   then less often. `steward.orders_off` and the operator's order switches stay in force for new games and reloads;
   `steward.research_queue` is queued at the start of each game.
 - **Crash recovery**: the runner saves the game (`play.save_name`) at the start of a game, on resume and each in-game day,
-  and the episode keeps a checkpoint of that save. When the game is at the main menu with an unfinished episode, the
-  runner loads the save, rewinds the episode to the checkpoint, applies the steward switches again and tells the director
-  that all after the save is undone. When RimBridge is silent for `play.restart_after_s`, it runs `play.restart_command`
-  (e.g. `[../script/restart-game.sh]`) and waits.
+  and the episode keeps a checkpoint of that save. When the game is at the main menu with an unfinished episode after
+  the runner lost contact with RimBridge, or when the runner starts, the runner loads the save, rewinds the episode to
+  the checkpoint, applies the steward switches again and tells the director that all after the save is undone. A quit
+  to the main menu while RimBridge answers ends the episode. The main menu stops a running step. When RimBridge is
+  silent for `play.restart_after_s`, the runner runs `play.restart_command` (e.g. `[../script/restart-game.sh]`).
 - **Situation report** (`situation.py`, `world.py`): what woke the director and what needs an answer (operator, dialogs,
   letters, events, watcher alerts, threats from `state.threats`, game alerts), then what changed since its last step
   (rooms, problems fixed or new, colonists downed or in a mental state, mood and health, stocks, builds that do not move),

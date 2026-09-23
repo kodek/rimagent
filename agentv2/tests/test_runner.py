@@ -210,11 +210,56 @@ async def test_a_crashed_game_continues_from_its_save(started, game):
     assert wake is not None and f"save of day {checkpoint.day}" in wake.trigger
 
 
-async def test_the_main_menu_does_not_end_an_episode_that_has_a_save(started, game):
-    rt, _ = started
+async def test_a_quit_to_the_main_menu_ends_the_episode(started, game):
+    rt, script = started
+    script.responses = [call("finish", {"notes": "quit"})]
     game.state = "menu"
     await rt.runner.play_episode()
-    assert rt.runner.scores.history() == [] and rt.runner.episode.unfinished
+    assert rt.runner.scores.history()[-1]["ended"] == "the game left the play state"
+    assert rt.runner.episode.number == 2 and game.state == "playing" and ("game.load", {"name": "agentv2-autosave"}) not in game.calls
+
+
+async def test_the_main_menu_after_lost_contact_reloads_the_save(started, game):
+    rt, _ = started
+    stop = asyncio.Event()
+    polling = asyncio.create_task(rt.runner.poller.run(lambda: rt.runner.episode, stop.is_set))
+    game.crash()
+    while not rt.runner.poller.lost_contact:
+        await asyncio.sleep(0.05)
+    game.alive = True
+    await rt.runner.play_episode()
+    assert rt.runner.scores.history() == []
+    await rt.runner.ensure_game()
+    stop.set()
+    await polling
+    assert ("game.load", {"name": "agentv2-autosave"}) in game.calls and rt.runner.episode.number == 1 and not rt.runner.poller.lost_contact
+
+
+async def test_a_step_stops_when_the_game_goes_to_the_main_menu(started, game, bus):
+    rt, script = started
+    script.responses = [code("await rw_state_summary()")] * 3
+    original = rt.bridge.call
+
+    async def quit_mid_step(method, params=None, timeout_ms=None):
+        result = await original(method, params, timeout_ms)
+        if method == "state.summary" and rt.director.active is not None:
+            game.state = "menu"
+            await rt.runner.poller.poll_once(rt.runner.episode)
+        return result
+
+    rt.bridge.call = quit_mid_step
+    outcome = await rt.runner.step(Wake("scheduled check-in", False))
+    assert outcome.error and "RunCancelled" in outcome.error
+    assert any(e["data"].get("text") == "the game is at the main menu: the running step stops" for e in bus.since(0, kinds={"log"}))
+
+
+async def test_new_game_leaves_the_stored_episode_without_a_score(started, game):
+    rt, _ = started
+    rt.runner.start_new_game = True
+    await rt.runner.ensure_game()
+    assert rt.runner.episode.number == 2 and game.seed == "rimagent-2" and rt.runner.scores.history() == []
+    await rt.runner.ensure_game()
+    assert rt.runner.episode.number == 2
 
 
 async def test_a_save_that_does_not_load_ends_the_episode(started, game):

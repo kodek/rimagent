@@ -59,6 +59,7 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
                 print(f"dashboard: {url} (listening on {host}:{port})")
                 if settings.dashboard.open_browser:
                     asyncio.get_running_loop().call_later(2, webbrowser.open, url)
+            rt.runner.start_new_game = args.new_game
             await rt.runner.run()
     finally:
         for task in tasks:
@@ -153,6 +154,7 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("--max-days", type=int)
         p.add_argument("--seeds")
         p.add_argument("--no-dashboard", action="store_true")
+        p.add_argument("--new-game", action="store_true", help="start a new game; the stored episode stays without a score")
         p.add_argument("-v", "--verbose", action="store_true")
     sub.add_parser("tools", help="list the director's tools")
     think = sub.add_parser("think", help="one director step against the running game (for debugging), then pause the game")

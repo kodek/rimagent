@@ -17,6 +17,7 @@ from .controls import Controls
 from .dashboard.brain_view import BrainView
 from .director import DirectorSession, urgent_message
 from .episode import EpisodeStore
+from .events import Log
 from .flags import RuntimeFlags
 from .game import GameSwitches
 from .history import BrainGit, BrainTools, Scores
@@ -61,7 +62,12 @@ async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Mode
             if director.interrupt(urgent_message(items)):
                 await game.set_speed(flags.danger_think_speed)
 
-        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent)
+        def on_menu() -> None:
+            if director.active is not None:
+                bus.emit(Log(text="the game is at the main menu: the running step stops"))
+                director.cancel()
+
+        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent, on_menu)
         runner = Runner(settings, bus, bridge, flags, inbox, EpisodeStore(settings.runs / "episode.json"), poller, WakePolicy(settings.play),
                         game, director, passes, brain, watchers, scores)
         controls = Controls(flags, inbox, director, game, brain.operator, bus, lambda: runner.episode)
