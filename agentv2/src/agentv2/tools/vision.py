@@ -1,14 +1,15 @@
-"""`look`: a map screenshot with a coordinate grid and numbered marks on buildings (Set-of-Mark), sent as an image."""
+"""A map screenshot with a coordinate grid and numbered marks on buildings (Set-of-Mark), for `look` and the dashboard."""
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 from pydantic_ai import BinaryContent, RunContext, ToolFailed, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
-from ..bridge import BridgeError
+from ..bridge import Bridge, BridgeError
 from ..deps import Deps
 
 WIDTH_PX, HEIGHT_PX = 1024, 768
@@ -63,6 +64,28 @@ def annotate(png: bytes, cx: int, cz: int, cells_wide: float, things: list[dict[
     return out.getvalue(), table
 
 
+@dataclass(frozen=True)
+class MarkedMap:
+    image: bytes
+    centre: tuple[int, int]
+    marks: dict[int, dict[str, Any]]
+
+
+async def marked_map(bridge: Bridge, x: int | None = None, z: int | None = None, w: float = 60, around: str | None = None,
+                     marks: bool = True) -> MarkedMap:
+    if around:
+        centre = (await bridge.call("map.detail", {"around": around, "w": 4, "h": 4}))["centre"]
+    elif x is not None and z is not None:
+        centre = [x, z]
+    else:
+        centre = (await bridge.call("state.base"))["home_center"]
+    cx, cz = int(centre[0]), int(centre[1])
+    png = await bridge.screenshot(cx, cz, w, WIDTH_PX, HEIGHT_PX)
+    detail = await bridge.call("map.detail", {"x": cx, "z": cz, "w": min(60, int(w)), "h": min(60, int(w * HEIGHT_PX / WIDTH_PX) + 2)})
+    image, table = annotate(png, cx, cz, w, detail.get("things") or [], marks)
+    return MarkedMap(image, (cx, cz), table)
+
+
 vision = FunctionToolset[Deps](id="vision")
 
 
@@ -78,21 +101,12 @@ async def look(ctx: RunContext[Deps], x: int | None = None, z: int | None = None
         around: Thing id, pawn or anchor to centre on.
         marks: Draw numbered marks on things.
     """
-    bridge = ctx.deps.bridge
     try:
-        if around:
-            centre = (await bridge.call("map.detail", {"around": around, "w": 4, "h": 4}))["centre"]
-        elif x is not None and z is not None:
-            centre = [x, z]
-        else:
-            centre = (await bridge.call("state.base"))["home_center"]
-        cx, cz = int(centre[0]), int(centre[1])
-        png = await bridge.screenshot(cx, cz, w, WIDTH_PX, HEIGHT_PX)
-        detail = await bridge.call("map.detail", {"x": cx, "z": cz, "w": min(60, int(w)), "h": min(60, int(w * HEIGHT_PX / WIDTH_PX) + 2)})
+        seen = await marked_map(ctx.deps.bridge, x, z, w, around, marks)
     except BridgeError as e:
         raise ToolFailed(str(e)) from e
-    image, table = annotate(png, cx, cz, w, detail.get("things") or [], marks)
     return ToolReturn(
-        return_value={"centre": [cx, cz], "cells_wide": w, "marks": table, "note": "grid lines every 5 cells; yellow labels are x (top) and z (left)"},
-        content=[BinaryContent(data=image, media_type="image/png")],
+        return_value={"centre": list(seen.centre), "cells_wide": w, "marks": seen.marks,
+                      "note": "grid lines every 5 cells; yellow labels are x (top) and z (left)"},
+        content=[BinaryContent(data=seen.image, media_type="image/png")],
     )

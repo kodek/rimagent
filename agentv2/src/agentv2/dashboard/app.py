@@ -15,7 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ..bridge import BridgeError
 from ..runner import Controls, Runner
-from ..tools.vision import annotate
+from ..tools.vision import marked_map
 
 PAGE = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 _ACTIONS = {"pause": "pause", "resume": "resume", "think": "think_now", "end_episode": "end_episode", "no_pause": "set_no_pause",
@@ -192,14 +192,10 @@ def create_app(runner: Runner) -> FastAPI:
     @app.get("/screenshot_marked.png")
     async def screenshot_marked(x: int | None = None, z: int | None = None, w: float = 80) -> Response:
         try:
-            centre = [x, z] if x is not None and z is not None else (await call("state.base"))["home_center"]
-            cx, cz = int(centre[0]), int(centre[1])
-            png = await asyncio.wait_for(bridge.screenshot(cx, cz, w), 35.0)
-            detail = await call("map.detail", {"x": cx, "z": cz, "w": min(60, int(w)), "h": min(60, int(w * 768 / 1024) + 2)})
+            seen = await asyncio.wait_for(marked_map(bridge, x, z, w), 40.0)
         except (BridgeError, TimeoutError) as e:
             return JSONResponse({"error": str(e)}, status_code=503)
-        marked, _ = annotate(png, cx, cz, w, detail.get("things") or [])
-        return Response(content=marked, media_type="image/png", headers={"Cache-Control": "no-store"})
+        return Response(content=seen.image, media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/say")
     async def say(req: Request) -> Any:
