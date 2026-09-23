@@ -17,7 +17,6 @@ from pydantic_ai_harness import (
     ReportContextUsage,
     StepPersistence,
     SummarizingCompaction,
-    TieredCompaction,
     ToolOutputLimits,
     WarnNearLimits,
 )
@@ -29,6 +28,7 @@ from pydantic_ai_harness.tool_output_limits import Band, LocalFileStore, Spill, 
 from .brain import Brain
 from .capabilities.access import method_access
 from .capabilities.arguments import CoerceArguments
+from .capabilities.compaction import CompactAtLimit
 from .capabilities.sandbox_calls import SandboxCalls, outside_sandbox
 from .capabilities.skill_hints import skill_hints
 from .capabilities.speed import TrackSpeed
@@ -69,13 +69,13 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
 
     settings.scratch.mkdir(parents=True, exist_ok=True)
 
-    def common(scratch: Literal["read-write", "read-only"]) -> list[AbstractCapability[Deps]]:
+    def common(scratch: Literal["read-write", "read-only"], *, inject_memory: bool) -> list[AbstractCapability[Deps]]:
         return [
             StepBudget(budget),
             RepairToolArguments(),
             CoerceArguments(),
             method_access(),
-            *brain.capabilities(),
+            *brain.capabilities(inject_memory=inject_memory),
             watcher_tools,
             history,
             TrackedValues(),
@@ -88,13 +88,14 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             WarnNearLimits(max_iterations=budget),
         ]
 
-    at = settings.context.compact_at_tokens
-    compaction = TieredCompaction(
+    to = settings.context.compact_to_tokens
+    compaction = CompactAtLimit(
         tiers=[
-            ClearToolResults(max_tokens=at, keep_pairs=settings.context.keep_tool_pairs, exclude_tools=frozenset({"load_capability"})),
-            SummarizingCompaction(max_tokens=at, keep_messages=settings.context.keep_messages),
+            ClearToolResults(max_tokens=to, keep_pairs=settings.context.keep_tool_pairs, exclude_tools=frozenset({"load_capability"})),
+            SummarizingCompaction(max_tokens=to, keep_messages=settings.context.keep_messages),
         ],
-        target_tokens=at,
+        target_tokens=to,
+        limit_tokens=settings.context.compact_at_tokens,
     )
     director = Agent(
         model,
@@ -106,7 +107,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
         end_strategy="graceful",
         toolsets=[*toolsets, operator, vision],
         capabilities=[
-            *common("read-write"),
+            *common("read-write", inject_memory=False),
             TrackSpeed(),
             skill_hints(),
             compaction,
@@ -125,7 +126,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             retries={"tools": 3, "output": 3},
             end_strategy="graceful",
             toolsets=toolsets,
-            capabilities=[*common("read-only"), ConversationSearch(SnapshotHistorySource(steps), scope="conversation")],
+            capabilities=[*common("read-only", inject_memory=True), ConversationSearch(SnapshotHistorySource(steps), scope="conversation")],
         )
 
     return Agents(director=director, improver=brain_pass(IMPROVER), reflector=brain_pass(REFLECTOR))

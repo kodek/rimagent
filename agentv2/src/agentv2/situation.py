@@ -16,6 +16,7 @@ STATUS_NUMBERS = ("wealth", "food_days", "mood_avg", "threat_points", "research_
 MAX_EVENTS = 60
 MAX_ROOMS = 14
 MAX_HOSTILES = 15
+MAX_MEMORY_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,8 @@ class Wakeup:
     problems: dict[str, str] = field(default_factory=dict)
     sandbox: bool = False
     show_base: bool = True
+    notebook: str | None = None
+    journal: str | None = None
 
 
 @dataclass
@@ -268,6 +271,23 @@ def _room(r: dict[str, Any]) -> str:
     return line + (f" owners {r['owners']}" if r.get("owners") else "")
 
 
+def _notebook(snap: Snapshot, wake: Wakeup) -> str | None:
+    if wake.notebook is None:
+        return None
+    return "## Your colony notebook (as it is now; notebook_* tools change it)\n" + (_tail(wake.notebook, MAX_MEMORY_CHARS) or "(empty)")
+
+
+def _journal(snap: Snapshot, wake: Wakeup) -> str | None:
+    if not wake.journal:
+        return None
+    return "## Journal: lessons from earlier games (the latest part; journal_* tools read and change it)\n" + _tail(wake.journal, MAX_MEMORY_CHARS)
+
+
+def _tail(text: str, limit: int) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else "..." + text[-limit:]
+
+
 def _brain_problems(snap: Snapshot, wake: Wakeup) -> str | None:
     if not wake.problems:
         return None
@@ -281,5 +301,5 @@ def _last_line(text: str) -> str:
 
 SECTIONS: list[Callable[[Snapshot, Wakeup], str | None]] = [
     _trigger, _operator, _sandbox, _now, _dialogs, _letters, _events, _watcher_alerts, _threats, _game_alerts, _changes, _tracked,
-    _problems, _colonists, _steward, _base, _brain_problems,
+    _problems, _colonists, _steward, _base, _journal, _notebook, _brain_problems,
 ]

@@ -24,7 +24,8 @@ play:
   improve_every_days: 3
   seeds: [rimagent-1, rimagent-2, rimagent-3, rimagent-4, rimagent-5]
 context:
-  compact_at_tokens: 120000 # the game-long conversation is compacted (old tool results cleared, then summarized) above this
+  compact_at_tokens: 200000 # compact only above this size (keeps the model server's prefix cache: until then the history only grows at its end)
+  compact_to_tokens: 80000  # and then down to this size: old tool results cleared, then a summary if necessary
 watchers:
   poll_s: 5                 # watchers run on every new ledger event, and at least this often
   timeout_s: 1              # sandbox time limit per watcher call

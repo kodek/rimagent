@@ -55,7 +55,8 @@ class PlaySettings(BaseModel):
 
 
 class ContextSettings(BaseModel):
-    compact_at_tokens: int = 120_000
+    compact_at_tokens: int = 200_000
+    compact_to_tokens: int = 80_000
     keep_tool_pairs: int = 12
     keep_messages: int = 30
 

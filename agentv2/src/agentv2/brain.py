@@ -172,13 +172,13 @@ class Brain:
         self.operator = OperatorLog(layout.operator_log)
         self.creation = CapabilityCreation(directory=layout.capabilities_dir, guidance=AUTHORING_GUIDE)
 
-    def capabilities(self) -> list[AbstractCapability[Deps]]:
+    def capabilities(self, *, inject_memory: bool = True) -> list[AbstractCapability[Deps]]:
         """The brain capabilities every agent carries; the skill catalog and authored capabilities are re-read every run."""
         caps: list[AbstractCapability[Deps]] = [
             RepoContext(workspace_dir=self.layout.root, home_dir=self.layout.root, expose_inventory_tool=False),
             self._filesystem(),
-            self._notebook(),
-            self._journal(),
+            self._notebook(inject_memory),
+            self._journal(inject_memory),
             self.creation,
             DynamicCapability(self._per_run),
         ]
@@ -220,18 +220,20 @@ class Brain:
             id="brain_files",
         )
 
-    def _notebook(self) -> AbstractCapability[Deps]:
+    def _notebook(self, inject: bool) -> AbstractCapability[Deps]:
         return Memory(
             FileStore(self.layout.memory_dir),
             namespace=_colony,
+            inject_memory=inject,
             heading="Colony notebook (this game only)",
             id="notebook",
         ).prefix_tools("notebook")
 
-    def _journal(self) -> AbstractCapability[Deps]:
+    def _journal(self, inject: bool) -> AbstractCapability[Deps]:
         return Memory(
             FileStore(self.layout.memory_dir),
             agent_name="journal",
+            inject_memory=inject,
             heading="Journal (durable lessons across games)",
             max_lines=120,
             id="journal",

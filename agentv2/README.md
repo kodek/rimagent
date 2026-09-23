@@ -87,7 +87,8 @@ One asyncio loop runs everything: the game poller, the watchers, the think steps
 | RimWorld wiki and decompiled source | Harness `FileSystem`, read-only, on `../knowledge` (tools prefixed `kb_`), when it exists; `kb_search` ranks wiki excerpts with SQLite FTS5 (BM25) over `knowledge/wiki-index.sqlite` (`knowledge.py`) |
 | Watchers (reflexes without the model) | agent-written scripts run in the Monty sandbox (`watchers/`) |
 | Large tool results | Harness `ToolOutputLimits` (spill to disk, page with `read_tool_result`) |
-| Long games | Harness `TieredCompaction` (clear old tool results, then summarize), `ReportContextUsage`, `StepPersistence` |
+| Long games | `CompactAtLimit` (`capabilities/compaction.py`), a Harness `TieredCompaction` (clear old tool results, then summarize) that starts only above `context.compact_at_tokens` and goes down to `context.compact_to_tokens`; `ReportContextUsage`, `StepPersistence` |
+| Prompt cache | Between compactions a step only adds messages at the end of the history, so the model server reuses its prefix cache (a hybrid Qwen model reuses only an exact earlier prompt). The director has no Memory injection (`inject_memory=False`); the situation report carries the notebook (first report and after a change) and the journal (first report) |
 | Recall in the brain passes | Harness `ConversationSearch` over the director's `StepPersistence` snapshots |
 | Step budget | `WarnNearLimits` plus `StepBudget`: after `max_requests` requests only `end_turn` is offered |
 | Live transcript | core `ProcessEventStream` forwards each run's events to the bus (`capabilities/telemetry.py`) |

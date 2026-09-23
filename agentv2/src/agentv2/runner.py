@@ -8,6 +8,7 @@ import shutil
 import time
 import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from . import situation, world
 from .brain import Brain
@@ -48,6 +49,7 @@ class Runner:
     episode: Episode = field(default_factory=Episode, init=False)
     catalog: list[Method] = field(default_factory=list, init=False)
     base_shown: bool = field(default=False, init=False)
+    notebook_shown: str | None = field(default=None, init=False)
     last_day: int = field(default=-1, init=False)
     improve_task: asyncio.Task[str] | None = field(default=None, init=False)
     start_new_game: bool = field(default=False, init=False)
@@ -127,6 +129,7 @@ class Runner:
         self.inbox.clear()
         self.wake.reset()
         self.base_shown = False
+        self.notebook_shown = None
         self.poller.last_seq = 0
         self.poller.lost_contact = False
 
@@ -317,8 +320,12 @@ class Runner:
         episode, snap = self.episode, await situation.read(self.bridge)
         if snap.summary:
             await world.sample(self.bridge, episode.tracked, snap.summary)
+        notebook = _read(self.brain.layout.notebook(episode.colony))
         wakeup = situation.Wakeup(wake.trigger, events, alerts, list(self.inbox.operator), episode.view, episode.tracked,
-                                  self.brain.problems() | self.watchers.errors(), episode.sandbox, show_base=not self.base_shown)
+                                  self.brain.problems() | self.watchers.errors(), episode.sandbox, show_base=not self.base_shown,
+                                  notebook=notebook if not self.base_shown or notebook != self.notebook_shown else None,
+                                  journal=_read(self.brain.layout.journal()) if not self.base_shown else None)
+        self.notebook_shown = notebook
         report = situation.render(snap, wakeup)
         if snap.summary:
             episode.view, self.base_shown = snap.view, True
@@ -384,3 +391,7 @@ class Runner:
         self.episode = Episode(number=episode.number)
         if not self.flags.stop:
             await self.new_game()
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.exists() else ""
