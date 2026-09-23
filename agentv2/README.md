@@ -24,12 +24,13 @@ The decompiled game source (`../knowledge/source-1.6`) is not downloaded: `seed`
 The dashboard is at http://127.0.0.1:8771. Set `dashboard.host: 0.0.0.0` to serve it on the LAN; it has no authentication.
 
 Configuration: `config.yaml`, then `config.local.yaml` (gitignored), then the variables `AGENTV2_LLM_BASE_URL`,
-`AGENTV2_LLM_MODEL`, `AGENTV2_LLM_API_KEY` and `AGENTV2_BRIDGE_URL`.
+`AGENTV2_LLM_MODEL`, `AGENTV2_LLM_API_KEY`, `AGENTV2_LLM_THINKING` and `AGENTV2_BRIDGE_URL`.
 
 ## The model
 
 Any OpenAI-compatible Chat Completions server (the default is the local sglang server with Qwen). agentv2 sends no
-sampling or thinking parameters: the server defaults apply. The OpenAI client retries a failed request twice, and
+sampling parameters: the server defaults apply. `llm.thinking: false` (or `AGENTV2_LLM_THINKING=false`) turns Qwen
+thinking off through the chat template (`chat_template_kwargs.enable_thinking`); unset, the server decides. The OpenAI client retries a failed request twice, and
 `llm.timeout_s` bounds one request. Reasoning text (`reasoning_content`) arrives as Pydantic AI
 `ThinkingPart`s and streams to the dashboard. The only model setting is the profile flag
 `openai_chat_supports_multiple_system_messages=False`, because the Qwen chat template accepts one system message only.

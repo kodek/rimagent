@@ -17,6 +17,7 @@ class LLMSettings(BaseModel):
     api_key: str = "unused"
     context_window: int = 262_144
     timeout_s: float = 300.0
+    thinking: bool | None = None
 
 
 class BridgeSettings(BaseModel):
@@ -107,6 +108,7 @@ _ENV = {
     "AGENTV2_LLM_BASE_URL": ("llm", "base_url"),
     "AGENTV2_LLM_MODEL": ("llm", "model"),
     "AGENTV2_LLM_API_KEY": ("llm", "api_key"),
+    "AGENTV2_LLM_THINKING": ("llm", "thinking"),
     "AGENTV2_BRIDGE_URL": ("bridge", "url"),
 }
 
@@ -125,7 +127,7 @@ def load(root: Path = ROOT) -> Settings:
         if path.exists():
             data = _merge(data, yaml.safe_load(path.read_text(encoding="utf-8")) or {})
     for var, (section, key) in _ENV.items():
-        if var in os.environ:
+        if os.environ.get(var):
             data.setdefault(section, {})[key] = os.environ[var]
     settings = Settings.model_validate({**data, "root": root})
     if "knowledge_dir" not in data:

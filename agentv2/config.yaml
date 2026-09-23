@@ -5,6 +5,7 @@ llm:
   api_key: unused
   context_window: 262144                          # the server's max_model_len, for the context gauge
   timeout_s: 300                                  # one model request; the OpenAI client retries a failed request twice
+  thinking: null                                  # true/false switch Qwen thinking (chat template enable_thinking); null = server default
 bridge:
   url: http://127.0.0.1:8765
 play:
