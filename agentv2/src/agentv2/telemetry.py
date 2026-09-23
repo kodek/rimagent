@@ -27,6 +27,7 @@ from pydantic_ai.messages import (
 from pydantic_ai_harness.compaction import ContextUsageEvent
 from pydantic_ai_harness.filesystem import DirectoryCreatedEvent, FileEditedEvent, FileWrittenEvent
 
+from .brain import BrainLayout
 from .deps import Deps
 
 RESULT_CLIP = 3000
@@ -84,7 +85,7 @@ class Telemetry:
                 emit("context", {"used_tokens": event.used_tokens, "window_tokens": event.window_tokens, "fraction": event.fraction})
             case FileWrittenEvent() | FileEditedEvent() | DirectoryCreatedEvent() if event.capability_id == "brain_files":
                 action = {FileWrittenEvent: "write", FileEditedEvent: "edit", DirectoryCreatedEvent: "mkdir"}[type(event)]
-                emit("brain_change", {"kind": _brain_kind(event.path), "name": event.path, "action": action})
+                emit("brain_change", {"kind": BrainLayout.kind_of(event.path), "name": event.path, "action": action})
             case CapabilityEvent(kind=kind) if kind not in QUIET:
                 emit("harness", {"kind": kind, "data": _payload(event)})
             case _:
@@ -101,11 +102,6 @@ class Telemetry:
                 self.deps.emit("delta", {"part": part, "text": text}, ephemeral=True)
         self._pending.clear()
         self._flushed = time.monotonic()
-
-
-def _brain_kind(path: str) -> str:
-    head = path.split("/", 1)[0]
-    return {"skills": "skill", "watchers": "watcher", "capabilities": "capability"}.get(head, "doctrine" if path == "AGENTS.md" else "file")
 
 
 def _payload(event: CapabilityEvent) -> dict[str, Any]:

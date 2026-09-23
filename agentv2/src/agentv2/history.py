@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from pydantic_ai import RunContext, ToolFailed
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.toolsets import AgentToolset, FunctionToolset
 
+from .brain import BrainLayout
 from .deps import Deps
 
 
@@ -84,11 +86,11 @@ class BrainTools(AbstractCapability[Deps]):
 
     scores: Scores
     git: BrainGit
+    layout: BrainLayout
 
     def get_toolset(self) -> AgentToolset[Deps]:
         toolset = FunctionToolset[Deps](id="brain_history")
-        git, scores = self.git, self.scores
-        brain = git.brain
+        git, scores, layout = self.git, self.scores, self.layout
 
         @toolset.tool_plain
         def score_history(last: int = 12) -> str:
@@ -115,12 +117,12 @@ class BrainTools(AbstractCapability[Deps]):
         @toolset.tool
         def delete_skill(ctx: RunContext[Deps], name: str) -> str:
             """Delete a skill (its folder under skills/). Git keeps the old version."""
-            return _delete(ctx, brain / "skills" / name / "SKILL.md", "skill", name)
+            return _delete(ctx, layout.skill, "skill", name)
 
         @toolset.tool
         def delete_watcher(ctx: RunContext[Deps], name: str) -> str:
             """Delete a watcher (watchers/<name>.py). Git keeps the old version."""
-            return _delete(ctx, brain / "watchers" / f"{name}.py", "watcher", name)
+            return _delete(ctx, layout.watcher, "watcher", name)
 
         return toolset
 
@@ -132,8 +134,12 @@ async def _git_call(coro: Any) -> Any:
         raise ToolFailed(str(e)) from e
 
 
-def _delete(ctx: RunContext[Deps], path: Path, kind: str, name: str) -> str:
-    if "/" in name or name.startswith(".") or not path.is_file():
+def _delete(ctx: RunContext[Deps], locate: Callable[[str], Path], kind: str, name: str) -> str:
+    try:
+        path = locate(name)
+    except ValueError:
+        path = None
+    if path is None or not path.is_file():
         raise ToolFailed(f"no {kind} named {name!r}")
     path.unlink()
     if kind == "skill" and not any(path.parent.iterdir()):

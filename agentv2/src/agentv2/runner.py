@@ -19,7 +19,7 @@ from pydantic_ai_harness.step_persistence import continue_run
 
 from . import situation
 from .agents import Agents, build_agents
-from .brain import Brain, RunCapabilities
+from .brain import AUTHORED, Brain, BrainLayout
 from .bridge import Bridge, BridgeError, GameStatus
 from .bus import Bus
 from .catalog import parse_catalog
@@ -55,10 +55,10 @@ class Runner:
         self.bus = bus
         self.bridge = bridge
         self.model = model
-        self.brain = Brain(settings.brain, settings.knowledge_dir)
-        self.scores = Scores(self.brain.scores)
-        self.git = BrainGit(self.brain.root)
-        self.watchers = Watchers(self.brain.watchers_dir, bridge, bus, settings.watchers.timeout_s)
+        self.brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
+        self.scores = Scores(self.brain.layout.scores)
+        self.git = BrainGit(self.brain.layout.root)
+        self.watchers = Watchers(self.brain.layout.watchers_dir, bridge, bus, settings.watchers.timeout_s)
         self.episode_file = settings.runs / "episode.json"
         self.catalog: list = []
         self.episode = Episode()
@@ -122,7 +122,7 @@ class Runner:
 
     async def prepare(self) -> None:
         """Build the agents and read the method catalog. Call inside `async with runner.watchers`."""
-        self.agents = build_agents(self.model, self.s, self.brain, self.watchers, BrainTools(self.scores, self.git))
+        self.agents = build_agents(self.model, self.s, self.brain, self.watchers, BrainTools(self.scores, self.git, self.brain.layout))
         self.bus.emit("log", {"text": f"waiting for RimBridge at {self.bridge.url}"})
         await self.bridge.wait_alive()
         await self.load_catalog()
@@ -360,8 +360,7 @@ class Runner:
         events, self.pending_events = self.pending_events, []
         alerts, self.pending_alerts = self.pending_alerts, []
         operator = list(self.operator_queue)
-        caps = self.brain.run_capabilities()
-        wakeup = situation.Wakeup(wake.trigger, events, alerts, operator, self.numbers, caps.errors | self.watchers.errors(), self.sandbox)
+        wakeup = situation.Wakeup(wake.trigger, events, alerts, operator, self.numbers, self.brain.problems() | self.watchers.errors(), self.sandbox)
         report = situation.render(await situation.read(self.bridge), wakeup)
         self.numbers = report.numbers
         self.bus.emit("status", report.numbers)
@@ -372,7 +371,7 @@ class Runner:
         self.thinking = True
         self.bus.emit("status", {"phase": "thinking"})
         try:
-            outcome = await self.think(report.text, wake, caps)
+            outcome = await self.think(report.text, wake)
         finally:
             self.thinking = False
             chosen = self.deps.turn.model_speed
@@ -395,31 +394,31 @@ class Runner:
         self.next_wake_tick = tick + int(max(floor, min(play.max_wake_hours, hours)) * TICKS_PER_HOUR)
         return outcome
 
-    async def think(self, prompt: str, wake: Wake, caps: RunCapabilities) -> StepOutcome:
+    async def think(self, prompt: str, wake: Wake) -> StepOutcome:
         assert self.deps is not None
         self.step_no += 1
         telemetry = Telemetry(self.deps)
         self.deps.emit("think_start", {"trigger": wake.trigger, "step": self.step_no, "urgent": wake.urgent, "prompt_chars": len(prompt)})
         started = time.monotonic()
-        outcome, usage = await self._run_director(prompt, caps, telemetry)
+        outcome, usage = await self._run_director(prompt, telemetry)
         self.deps.emit("think_end", {"notes": outcome.notes, "calls": telemetry.calls, "elapsed": round(time.monotonic() - started, 1),
                                      "wake": outcome.end.model_dump() if outcome.end else None, "end_episode": outcome.episode_end,
                                      "requests": usage.get("requests"), "tokens": usage.get("total_tokens")})
         return outcome
 
-    async def _run_director(self, prompt: str, caps: RunCapabilities, telemetry: Telemetry) -> tuple[StepOutcome, dict[str, Any]]:
+    async def _run_director(self, prompt: str, telemetry: Telemetry, authored: bool = True) -> tuple[StepOutcome, dict[str, Any]]:
         assert self.deps is not None
         limits = UsageLimits(request_limit=self.s.play.max_requests + 5)
         with capture_run_messages() as captured:
             try:
                 result = await self.agents.director.run(prompt, deps=self.deps, message_history=self.history or None,
-                                                        capabilities=[*caps.skills, *caps.authored], conversation_id=self.episode.colony,
-                                                        event_stream_handler=telemetry, usage_limits=limits)
+                                                        conversation_id=self.episode.colony, event_stream_handler=telemetry, usage_limits=limits,
+                                                        metadata={AUTHORED: authored})
             except UserError as e:
-                if not caps.authored:
+                if not authored or not self.brain.has_authored():
                     raise
                 self.bus.emit("error", {"text": f"an authored capability broke the step; running without authored capabilities: {e}"})
-                return await self._run_director(prompt, RunCapabilities(caps.skills, [], caps.errors), telemetry)
+                return await self._run_director(prompt, telemetry, authored=False)
             except AgentRunError as e:
                 self.history = list(captured) or self.history
                 error = f"{type(e).__name__}: {e}"
@@ -462,19 +461,18 @@ class Runner:
         assert self.deps is not None
         deps = self.deps.fork("improve" if which == "improver" else "reflect")
         agent = self.agents.improver if which == "improver" else self.agents.reflector
-        caps = self.brain.run_capabilities()
         deps.emit("think_start", {"trigger": commit, "step": 0, "urgent": False, "prompt_chars": len(prompt)})
         started = time.monotonic()
         telemetry = Telemetry(deps)
         limits = UsageLimits(request_limit=self.s.play.max_requests + 5)
         try:
             try:
-                result = await agent.run(prompt, deps=deps, capabilities=[*caps.skills, *caps.authored], event_stream_handler=telemetry, usage_limits=limits)
+                result = await agent.run(prompt, deps=deps, event_stream_handler=telemetry, usage_limits=limits, metadata={AUTHORED: True})
             except UserError as e:
-                if not caps.authored:
+                if not self.brain.has_authored():
                     raise
                 self.bus.emit("error", {"text": f"{which}: an authored capability broke the pass; running without authored capabilities: {e}"})
-                result = await agent.run(prompt, deps=deps, capabilities=caps.skills, event_stream_handler=telemetry, usage_limits=limits)
+                result = await agent.run(prompt, deps=deps, event_stream_handler=telemetry, usage_limits=limits, metadata={AUTHORED: False})
             notes = result.output.notes
         except Exception as e:  # noqa: BLE001 - a failed pass is reported; the game and the episode go on
             notes = f"(pass failed: {type(e).__name__}: {e})"
@@ -524,7 +522,7 @@ class Runner:
         timeline = "\n".join(f"[{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in self.timeline)[-14_000:]
         prompt = (f"# Episode {self.episode.number} reflection (seed {self.episode.seed})\n\nThis game is over ({reason}) after {days} days. Score {total}.\n\n## Timeline\n{timeline}\n\n"
                   "## Your step notes\n" + "\n".join(f"- {n}" for n in self.step_notes[-40:] if n)
-                  + f"\n\n## What the operator said\n{self.brain.operator_log.read_text(encoding='utf-8')[-3000:] if self.brain.operator_log.exists() else '(nothing)'}"
+                  + f"\n\n## What the operator said\n{self.brain.operator.tail(3000)}"
                   + f"\n\n## Scores\n{self.scores.text(12)}")
         notes = await self._brain_pass("reflector", prompt, f"episode {self.episode.number} ({self.episode.seed}): {reason}; score {total}")
         try:
@@ -619,7 +617,7 @@ class Controls:
         self.r.stop = True
 
     async def say(self, text: str) -> None:
-        self.r.brain.record_operator(time.strftime("%Y-%m-%d %H:%M"), text)
+        self.r.brain.operator.record(time.strftime("%Y-%m-%d %H:%M"), text)
         self.r.bus.emit("operator", {"text": text})
         self.r.operator_queue.append(text)
         if self.r.thinking and self.r.deps is not None:

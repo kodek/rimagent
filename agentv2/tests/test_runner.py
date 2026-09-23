@@ -66,7 +66,7 @@ async def test_operator_message_wakes_and_gets_a_reply(started, bus):
     assert "build a freezer" in prompts(script.received[0])
     assert runner.operator_queue == []
     assert any(e["kind"] == "reply" for e in bus.since(0))
-    assert "build a freezer" in runner.brain.operator_log.read_text()
+    assert "build a freezer" in runner.brain.operator.path.read_text()
 
 
 async def test_urgent_event_reaches_the_model_mid_step(started, game):
@@ -100,7 +100,7 @@ async def test_end_episode_reflects_scores_commits_and_starts_a_new_game(started
     assert runner.episode.number == 2 and game.seed == "rimagent-2"
     log = subprocess.run(["git", "log", "--oneline"], cwd=root, capture_output=True, text=True).stdout
     assert "episode 1 (rimagent-1): test over" in log
-    assert "raids come early" in runner.brain.memory_file("journal", "").read_text()
+    assert "raids come early" in runner.brain.layout.journal().read_text()
 
 
 async def test_a_restarted_agent_resumes_the_conversation(started, settings, bridge, bus):
@@ -133,3 +133,14 @@ async def test_an_ended_episode_is_not_resumed(started, settings, bridge, bus, g
         await again.prepare()
         await again.ensure_game()
     assert again.episode.number == 2 and game.seed == "rimagent-2"
+
+
+async def test_a_broken_authored_capability_is_left_out(started, bus):
+    runner, script = started
+    runner.brain.creation.store.write("broken", "from dataclasses import dataclass\nfrom pydantic_ai.capabilities import AbstractCapability\n"
+                                               "from pydantic_ai.exceptions import UserError\n@dataclass\nclass Broken(AbstractCapability):\n"
+                                               "    async def before_run(self, ctx):\n        raise UserError('broken on purpose')\n")
+    script.responses = [call("end_turn", {"notes": "played anyway"})]
+    outcome = await runner.step(Wake("x", False))
+    assert outcome.notes == "played anyway"
+    assert any("authored capability broke" in e["data"].get("text", "") for e in bus.since(0, kinds={"error"}))

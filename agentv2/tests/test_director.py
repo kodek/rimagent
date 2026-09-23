@@ -8,7 +8,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ThinkingPart, Tool
 from pydantic_ai.models.function import AgentInfo
 
 from agentv2.agents import Agents, build_agents
-from agentv2.brain import Brain
+from agentv2.brain import Brain, BrainLayout
 from agentv2.catalog import parse_catalog
 from agentv2.deps import Deps, Episode
 from agentv2.history import BrainGit, BrainTools, Scores
@@ -41,18 +41,16 @@ async def stack(settings, bridge, bus):
         received.append(list(messages))
         return script.pop(0)
 
-    brain = Brain(settings.brain, settings.knowledge_dir)
-    async with Watchers(brain.watchers_dir, bridge, bus) as watchers:
-        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.scores), BrainGit(brain.root)))
+    brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
+    async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
+        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
         deps = Deps(bridge=bridge, bus=bus, settings=settings, catalog=parse_catalog(await bridge.methods()), episode=Episode(1, "rimagent-1"))
         yield Stack(agents, deps, brain, seen, script, received, watchers)
 
 
 async def run(stack: Stack, *responses: ModelResponse, prompt: str = "situation", history=None):
     stack.script[:] = list(responses)
-    caps = stack.brain.run_capabilities()
-    return await stack.agents.director.run(prompt, deps=stack.deps, message_history=history, capabilities=[*caps.skills, *caps.authored],
-                                           event_stream_handler=Telemetry(stack.deps))
+    return await stack.agents.director.run(prompt, deps=stack.deps, message_history=history, event_stream_handler=Telemetry(stack.deps))
 
 
 def test_coerce_undoes_json_strings():
@@ -121,7 +119,7 @@ async def test_skill_catalog_and_loading(stack):
 
 async def test_notebook_is_per_colony(stack, settings):
     await run(stack, call("notebook_write_memory", {"content": "steel at [126,115]"}), call("end_turn", {"notes": "x"}))
-    assert "steel at [126,115]" in stack.brain.memory_file("notebook", stack.deps.episode.colony).read_text()
+    assert "steel at [126,115]" in stack.brain.layout.notebook(stack.deps.episode.colony).read_text()
 
 
 async def test_history_carries_across_steps(stack):
@@ -134,7 +132,7 @@ async def test_history_carries_across_steps(stack):
 async def test_step_budget_leaves_only_end_turn(stack, settings):
     settings.play.max_requests = 2
     stack.agents = build_agents(stack.agents.director.model, settings, stack.brain, stack.watchers,
-                                BrainTools(Scores(stack.brain.scores), BrainGit(stack.brain.root)))
+                                BrainTools(Scores(stack.brain.layout.scores), BrainGit(stack.brain.layout.root), stack.brain.layout))
     result = await run(stack, call("rw_state_summary"), call("rw_state_summary"), call("end_turn", {"notes": "budget"}))
     assert result.output.notes == "budget"
     assert [len(info.function_tools) > 0 for info in stack.seen] == [True, True, False]
@@ -149,4 +147,4 @@ async def test_brain_file_tools_emit_their_events(stack, bus):
     assert all(e["data"].get("ok", True) for e in events if e["kind"] == "tool_result")
     changes = [(e["data"]["kind"], e["data"]["name"], e["data"]["action"]) for e in events if e["kind"] == "brain_change"]
     assert changes == [("skill", "skills/new-skill", "mkdir"), ("skill", "skills/new-skill/SKILL.md", "write")]
-    assert "new-skill" in {s.name for s in stack.brain.skills()}
+    assert "new-skill" in {s.name for s in stack.brain.skills.infos()}

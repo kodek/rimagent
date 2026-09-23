@@ -75,7 +75,7 @@ async def _tools(_: argparse.Namespace) -> None:
     from pydantic_ai.models.function import AgentInfo
 
     from .agents import build_agents
-    from .brain import Brain
+    from .brain import Brain, BrainLayout
     from .catalog import parse_catalog
     from .deps import Deps, Episode
     from .fakegame import FakeGame
@@ -87,22 +87,22 @@ async def _tools(_: argparse.Namespace) -> None:
     game = FakeGame()
     bridge = Bridge("http://fakegame", transport=game.transport())
     bus = Bus()
-    brain = Brain(settings.brain, settings.knowledge_dir)
+    brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
     seen: list[AgentInfo] = []
 
     def respond(_: list[Any], info: AgentInfo) -> ModelResponse:
         seen.append(info)
         return call("end_turn", {"notes": "listing tools"})
 
-    async with Watchers(brain.watchers_dir, bridge, bus) as watchers:
-        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.scores), BrainGit(brain.root)))
-        caps = brain.run_capabilities()
+    async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
+        agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
+        problems = brain.problems()
         deps = Deps(bridge=bridge, bus=bus, settings=settings, catalog=parse_catalog(await bridge.methods()), episode=Episode(1, "tools"))
-        await agents.director.run("list", deps=deps, capabilities=[*caps.skills, *caps.authored])
+        await agents.director.run("list", deps=deps)
     for tool in sorted(seen[0].function_tools, key=lambda t: t.name):
         print(f"{tool.name:34s} {(tool.description or '').splitlines()[0][:100]}")
     print(f"\n{len(seen[0].function_tools)} tools; output tools: {', '.join(t.name for t in seen[0].output_tools)}")
-    for name, error in caps.errors.items():
+    for name, error in problems.items():
         print(f"brain problem: {name}: {error}")
 
 

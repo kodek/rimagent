@@ -34,10 +34,6 @@ def _chars(path: Path) -> int | None:
     return len(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
-def _unsafe(name: str | None) -> bool:
-    return not name or "/" in name or "\\" in name or ".." in name or name.startswith(".")
-
-
 def create_app(runner: Runner) -> FastAPI:
     app = FastAPI(title="agentv2 dashboard", docs_url=None, redoc_url=None)
     bus, bridge, brain, controls = runner.bus, runner.bridge, runner.brain, Controls(runner)
@@ -46,18 +42,18 @@ def create_app(runner: Runner) -> FastAPI:
         return await asyncio.wait_for(bridge.call(method, params or {}), timeout)
 
     def brain_file(kind: str, name: str | None) -> Path:
-        colony = runner.episode.colony
-        fixed = {"doctrine": brain.doctrine, "notebook": brain.memory_file("notebook", colony),
-                 "journal": brain.memory_file("journal", colony), "operator": brain.operator_log}
+        layout = brain.layout
+        fixed = {"doctrine": layout.doctrine, "notebook": layout.notebook(runner.episode.colony), "journal": layout.journal(),
+                 "operator": layout.operator_log}
         if kind in fixed:
             return fixed[kind]
-        if _unsafe(name):
-            raise HTTPException(400, "bad name")
-        paths = {"skill": brain.skills_dir / str(name) / "SKILL.md", "watcher": brain.watchers_dir / f"{name}.py",
-                 "capability": brain.capabilities_dir / f"{name}.py"}
-        if kind not in paths:
+        named = {"skill": layout.skill, "watcher": layout.watcher, "capability": layout.capability}
+        if kind not in named:
             raise HTTPException(400, f"unknown kind {kind!r}")
-        return paths[kind]
+        try:
+            return named[kind](name or "")
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -105,14 +101,14 @@ def create_app(runner: Runner) -> FastAPI:
 
     @app.get("/api/brain/tree")
     def api_brain_tree() -> dict[str, Any]:
-        colony = runner.episode.colony
+        colony, layout = runner.episode.colony, brain.layout
         return {
-            "skills": [{"name": s.name, "description": s.description, "chars": s.chars, "error": s.error} for s in brain.skills()],
+            "skills": [{"name": s.name, "description": s.description, "chars": s.chars, "error": s.error} for s in brain.skills.infos()],
             "watchers": runner.watchers.listing(),
             "capabilities": brain.authored(),
             "colony": colony if runner.episode.seed else None,
-            "memory": {"doctrine": _chars(brain.doctrine), "notebook": _chars(brain.memory_file("notebook", colony)),
-                       "journal": _chars(brain.memory_file("journal", colony)), "operator": _chars(brain.operator_log)},
+            "memory": {"doctrine": _chars(layout.doctrine), "notebook": _chars(layout.notebook(colony)),
+                       "journal": _chars(layout.journal()), "operator": _chars(layout.operator_log)},
         }
 
     @app.get("/api/brain/file")

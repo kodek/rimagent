@@ -3,7 +3,7 @@
 brain/
   AGENTS.md                 doctrine, loaded into every run by RepoContext; the agent may edit it
   skills/<name>/SKILL.md    Agent Skills, loaded on demand (Skills + load_capability)
-  watchers/<name>.py        reflexes run in the Monty sandbox without the model (see watchers.py)
+  watchers/<name>.py        reflexes run in the Monty sandbox without the model (see watchers/)
   capabilities/             agent-authored capabilities (CapabilityCreation), active from the next step
   memory/                   Memory FileStore: a notebook per colony, and the cross-game journal
   operator.md               what the human operator said (read-only for the agent)
@@ -17,13 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from pydantic_ai import RunContext
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities import AbstractCapability, CombinedCapability, DynamicCapability
 from pydantic_ai_harness import CapabilityCreation, Memory, RepoContext, Skills
-from pydantic_ai_harness.capability_creation import CapabilityStore
 from pydantic_ai_harness.memory import FileStore
 
 from .capabilities.files import NamedFileSystem
 from .deps import Deps
+
+AUTHORED = "authored_capabilities"
+"""Run metadata key: False runs without the agent-authored capabilities."""
 
 AUTHORING_GUIDE = '''You can give yourself new tools and hooks with `author_capability(name, code)`. The code defines exactly one
 subclass of `pydantic_ai.capabilities.AbstractCapability` that constructs with no arguments. It is validated now and becomes
@@ -62,11 +64,60 @@ KNOWLEDGE_GUIDE = '''kb_* tools read the offline RimWorld knowledge base: `wiki/
 (the decompiled game source). Use kb_grep to search, kb_find_files for names, kb_read_file to read.'''
 
 
-@dataclass(frozen=True)
-class RunCapabilities:
-    skills: list[AbstractCapability[Any]]
-    authored: list[AbstractCapability[Any]]
-    errors: dict[str, str]
+class BrainLayout:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.skills_dir = root / "skills"
+        self.watchers_dir = root / "watchers"
+        self.capabilities_dir = root / "capabilities"
+        self.memory_dir = root / "memory"
+        self.doctrine = root / "AGENTS.md"
+        self.operator_log = root / "operator.md"
+        self.scores = root / "scores.jsonl"
+
+    def make_dirs(self) -> None:
+        for d in (self.skills_dir, self.watchers_dir, self.capabilities_dir, self.memory_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+    def skill(self, name: str) -> Path:
+        return self.skills_dir / _checked(name) / "SKILL.md"
+
+    def watcher(self, name: str) -> Path:
+        return self.watchers_dir / f"{_checked(name)}.py"
+
+    def capability(self, name: str) -> Path:
+        return self.capabilities_dir / f"{_checked(name)}.py"
+
+    def notebook(self, colony: str) -> Path:
+        return self.memory_dir / colony / "main" / "MEMORY.md"
+
+    def journal(self) -> Path:
+        return self.memory_dir / "journal" / "MEMORY.md"
+
+    @staticmethod
+    def kind_of(path: str) -> str:
+        head = path.split("/", 1)[0]
+        return {"skills": "skill", "watchers": "watcher", "capabilities": "capability"}.get(head, "doctrine" if path == "AGENTS.md" else "file")
+
+
+def _checked(name: str) -> str:
+    if not name or "/" in name or "\\" in name or ".." in name or name.startswith("."):
+        raise ValueError(f"bad brain file name {name!r}")
+    return name
+
+
+class OperatorLog:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def record(self, stamp: str, text: str) -> None:
+        with self.path.open("a", encoding="utf-8") as fh:
+            if fh.tell() == 0:
+                fh.write("# What the human operator said\n")
+            fh.write(f"\n- [{stamp}] {text.strip()}\n")
+
+    def tail(self, chars: int) -> str:
+        return self.path.read_text(encoding="utf-8")[-chars:] if self.path.exists() else "(nothing)"
 
 
 @dataclass(frozen=True)
@@ -77,115 +128,102 @@ class SkillInfo:
     error: str | None = None
 
 
-class Brain:
-    def __init__(self, root: Path, knowledge: Path | None = None) -> None:
-        self.root = root
-        self.knowledge = knowledge
-        self.skills_dir = root / "skills"
-        self.watchers_dir = root / "watchers"
-        self.capabilities_dir = root / "capabilities"
-        self.memory_dir = root / "memory"
-        self.doctrine = root / "AGENTS.md"
-        self.operator_log = root / "operator.md"
-        self.scores = root / "scores.jsonl"
-        for d in (self.skills_dir, self.watchers_dir, self.capabilities_dir, self.memory_dir):
-            d.mkdir(parents=True, exist_ok=True)
-        self.creation = CapabilityCreation(directory=self.capabilities_dir, guidance=AUTHORING_GUIDE)
+class SkillCatalog:
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
 
-    @property
-    def store(self) -> CapabilityStore:
-        return self.creation.store
-
-    def capabilities(self, *, write: bool = True) -> list[AbstractCapability[Deps]]:
-        """The brain capabilities every agent carries. The knowledge base is included when it exists."""
-        caps: list[AbstractCapability[Deps]] = [
-            RepoContext(workspace_dir=self.root, home_dir=self.root, expose_inventory_tool=False),
-            self.filesystem(write=write),
-            self.notebook(),
-            self.journal(),
-        ]
-        if write:
-            caps.append(self.creation)
-        if self.knowledge and self.knowledge.is_dir():
-            caps.append(NamedFileSystem(root_dir=self.knowledge, tools=["read_file", "list_directory", "find_files", "grep"],
-                                        max_read_lines=400, prefix="kb", id="knowledge_files"))
-        return caps
-
-    def filesystem(self, *, write: bool = True) -> AbstractCapability[Deps]:
-        tools = ["read_file", "list_directory", "find_files", "search_files"]
-        if write:
-            tools += ["write_file", "edit_file", "create_directory"]
-        return NamedFileSystem(
-            root_dir=self.root,
-            denied_patterns=["memory", "memory/*", ".git*", "*/__pycache__/*"],
-            protected_patterns=["scores.jsonl", "operator.md", "capabilities", "capabilities/*", ".gitignore"],
-            tools=tools,
-            content_hashes=False,
-            prefix="brain",
-            id="brain_files",
-        )
-
-    def notebook(self) -> AbstractCapability[Deps]:
-        return Memory(
-            FileStore(self.memory_dir),
-            namespace=_colony,
-            heading="Colony notebook (this game only)",
-            id="notebook",
-        ).prefix_tools("notebook")
-
-    def journal(self) -> AbstractCapability[Deps]:
-        return Memory(
-            FileStore(self.memory_dir),
-            agent_name="journal",
-            heading="Journal (durable lessons across games)",
-            max_lines=120,
-            id="journal",
-        ).prefix_tools("journal")
-
-    def guides(self) -> str:
-        parts = [BRAIN_GUIDE]
-        if self.knowledge and self.knowledge.is_dir():
-            parts.append(KNOWLEDGE_GUIDE)
-        return "\n\n".join(parts)
-
-    def run_capabilities(self) -> RunCapabilities:
-        """Per-run capabilities, re-read every step: the skill catalog and the agent's own capabilities, with their errors."""
-        infos = self.skills()
-        good = [s.name for s in infos if not s.error]
-        errors = {f"skill {s.name}": s.error for s in infos if s.error}
-        errors |= {f"capability {r.name}": r.last_error for r in self.store.list_all() if r.last_error}
-        return RunCapabilities(
-            skills=[Skills(self.skills_dir, include=good)] if good else [],
-            authored=[c.prefix_tools("my") for c in self.store.load_active()],
-            errors=errors,
-        )
-
-    def skills(self) -> list[SkillInfo]:
+    def infos(self) -> list[SkillInfo]:
         out = []
-        for d in sorted(p for p in self.skills_dir.iterdir() if p.is_dir()):
+        for d in sorted(p for p in self.directory.iterdir() if p.is_dir()):
             path = d / "SKILL.md"
             if not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8")
             try:
-                Skills(self.skills_dir, include=[d.name])
+                Skills(self.directory, include=[d.name])
             except Exception as e:  # noqa: BLE001 - an agent-written skill must not break the others; the error is reported to it
                 out.append(SkillInfo(d.name, "", len(text), f"{type(e).__name__}: {e}"))
                 continue
             out.append(SkillInfo(d.name, _description(text), len(text)))
         return out
 
-    def record_operator(self, stamp: str, text: str) -> None:
-        with self.operator_log.open("a", encoding="utf-8") as fh:
-            if fh.tell() == 0:
-                fh.write("# What the human operator said\n")
-            fh.write(f"\n- [{stamp}] {text.strip()}\n")
+    def capability(self) -> Skills[Any] | None:
+        good = [s.name for s in self.infos() if not s.error]
+        return Skills(self.directory, include=good) if good else None
 
-    def memory_file(self, which: str, colony: str) -> Path:
-        return self.memory_dir / "journal" / "MEMORY.md" if which == "journal" else self.memory_dir / colony / "main" / "MEMORY.md"
+
+class Brain:
+    def __init__(self, layout: BrainLayout, knowledge: Path | None = None) -> None:
+        layout.make_dirs()
+        self.layout = layout
+        self.knowledge = knowledge if knowledge and knowledge.is_dir() else None
+        self.skills = SkillCatalog(layout.skills_dir)
+        self.operator = OperatorLog(layout.operator_log)
+        self.creation = CapabilityCreation(directory=layout.capabilities_dir, guidance=AUTHORING_GUIDE)
+
+    def capabilities(self) -> list[AbstractCapability[Deps]]:
+        """The brain capabilities every agent carries; the skill catalog and authored capabilities are re-read every run."""
+        caps: list[AbstractCapability[Deps]] = [
+            RepoContext(workspace_dir=self.layout.root, home_dir=self.layout.root, expose_inventory_tool=False),
+            self._filesystem(),
+            self._notebook(),
+            self._journal(),
+            self.creation,
+            DynamicCapability(self._per_run),
+        ]
+        if self.knowledge:
+            caps.append(NamedFileSystem(root_dir=self.knowledge, tools=["read_file", "list_directory", "find_files", "grep"],
+                                        max_read_lines=400, prefix="kb", id="knowledge_files"))
+        return caps
+
+    def guides(self) -> str:
+        return "\n\n".join([BRAIN_GUIDE, KNOWLEDGE_GUIDE] if self.knowledge else [BRAIN_GUIDE])
+
+    def problems(self) -> dict[str, str]:
+        errors = {f"skill {s.name}": s.error for s in self.skills.infos() if s.error}
+        return errors | {f"capability {r.name}": r.last_error for r in self.creation.store.list_all() if r.last_error}
+
+    def has_authored(self) -> bool:
+        return any(r.status == "active" for r in self.creation.store.list_all())
 
     def authored(self) -> list[dict[str, Any]]:
-        return [json.loads(r.model_dump_json()) for r in self.store.list_all()]
+        return [json.loads(r.model_dump_json()) for r in self.creation.store.list_all()]
+
+    def _per_run(self, ctx: RunContext[Deps]) -> AbstractCapability[Deps] | None:
+        caps: list[AbstractCapability[Any]] = []
+        if skills := self.skills.capability():
+            caps.append(skills)
+        if (ctx.metadata or {}).get(AUTHORED, True):
+            caps += [c.prefix_tools("my") for c in self.creation.store.load_active()]
+        return CombinedCapability(caps) if caps else None
+
+    def _filesystem(self) -> AbstractCapability[Deps]:
+        return NamedFileSystem(
+            root_dir=self.layout.root,
+            denied_patterns=["memory", "memory/*", ".git*", "*/__pycache__/*"],
+            protected_patterns=["scores.jsonl", "operator.md", "capabilities", "capabilities/*", ".gitignore"],
+            tools=["read_file", "list_directory", "find_files", "search_files", "write_file", "edit_file", "create_directory"],
+            content_hashes=False,
+            prefix="brain",
+            id="brain_files",
+        )
+
+    def _notebook(self) -> AbstractCapability[Deps]:
+        return Memory(
+            FileStore(self.layout.memory_dir),
+            namespace=_colony,
+            heading="Colony notebook (this game only)",
+            id="notebook",
+        ).prefix_tools("notebook")
+
+    def _journal(self) -> AbstractCapability[Deps]:
+        return Memory(
+            FileStore(self.layout.memory_dir),
+            agent_name="journal",
+            heading="Journal (durable lessons across games)",
+            max_lines=120,
+            id="journal",
+        ).prefix_tools("journal")
 
 
 def _colony(ctx: RunContext[Deps]) -> str:

@@ -1,37 +1,47 @@
 from __future__ import annotations
 
-from agentv2.brain import Brain
+import pytest
+
+from agentv2.brain import Brain, BrainLayout
 from agentv2.bus import Bus
 from agentv2.history import Scores, score
 
 
-def test_seed_brain_is_valid(settings):
-    brain = Brain(settings.brain)
-    caps = brain.run_capabilities()
-    assert caps.errors == {}
-    assert len(caps.skills) == 1 and caps.authored == []
-    assert {s.name for s in brain.skills()} >= {"defense-basics", "early-game-food", "work-priorities"}
-    assert brain.doctrine.read_text().startswith("# Doctrine")
+@pytest.fixture
+def brain(settings) -> Brain:
+    return Brain(BrainLayout(settings.brain))
 
 
-def test_a_bad_skill_is_reported_and_the_others_still_load(settings):
-    brain = Brain(settings.brain)
-    bad = brain.skills_dir / "broken"
+def test_seed_brain_is_valid(brain):
+    assert brain.problems() == {}
+    assert brain.skills.capability() is not None and not brain.has_authored()
+    assert {s.name for s in brain.skills.infos()} >= {"defense-basics", "early-game-food", "work-priorities"}
+    assert brain.layout.doctrine.read_text().startswith("# Doctrine")
+
+
+def test_a_bad_skill_is_reported_and_the_others_still_load(brain):
+    bad = brain.layout.skills_dir / "broken"
     bad.mkdir()
     (bad / "SKILL.md").write_text("no frontmatter here\n", encoding="utf-8")
-    caps = brain.run_capabilities()
-    assert list(caps.errors) == ["skill broken"]
-    assert len(caps.skills) == 1
+    assert list(brain.problems()) == ["skill broken"]
+    skills = brain.skills.capability()
+    assert skills is not None and "broken" not in (skills.include or set())
 
 
-def test_authored_capability_round_trip(settings):
-    brain = Brain(settings.brain)
+def test_authored_capability_round_trip(brain):
     code = ("from dataclasses import dataclass\nfrom pydantic_ai.capabilities import AbstractCapability\n"
             "@dataclass\nclass Hello(AbstractCapability):\n    def get_instructions(self):\n        return 'hello'\n")
-    record = brain.store.write("hello", code)
+    record = brain.creation.store.write("hello", code)
     assert record.last_error is None
-    assert len(brain.run_capabilities().authored) == 1
+    assert brain.has_authored()
     assert brain.authored()[0]["name"] == "hello"
+
+
+def test_layout_refuses_names_outside_the_brain(brain):
+    for name in ("../AGENTS", "a/b", ".hidden", ""):
+        with pytest.raises(ValueError):
+            brain.layout.skill(name)
+    assert BrainLayout.kind_of("skills/x/SKILL.md") == "skill" and BrainLayout.kind_of("AGENTS.md") == "doctrine"
 
 
 def test_scores(settings):
