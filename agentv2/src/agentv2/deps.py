@@ -2,26 +2,14 @@
 from __future__ import annotations
 
 import collections
-import re
 from dataclasses import dataclass, field
 
 from .bridge import Bridge
 from .bus import Bus
 from .catalog import Method
+from .episode import Episode
 from .policy import MethodPolicy
 from .roles import Role
-
-
-@dataclass
-class Episode:
-    number: int = 0
-    seed: str = ""
-    start_day: int = 0
-    sandbox: bool = False
-
-    @property
-    def colony(self) -> str:
-        return f"episode-{self.number:03d}-{re.sub(r'[^A-Za-z0-9_-]', '_', self.seed) or 'unseeded'}"
 
 
 @dataclass

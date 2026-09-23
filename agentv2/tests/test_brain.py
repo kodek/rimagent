@@ -4,6 +4,7 @@ import pytest
 
 from agentv2.brain import Brain, BrainLayout
 from agentv2.bus import Bus
+from agentv2.episode import Episode, EpisodeStore
 from agentv2.history import Scores, score
 
 
@@ -49,6 +50,17 @@ def test_scores(settings):
     scores.record({"episode": 1, "seed": "s", "score": score(10, 3, 0, 15_000, 60, 4, 1)})
     assert scores.history()[0]["score"] == 100 + 180 + 2.5 + 30 + 32 + 40
     assert "episode | seed" in scores.text()
+
+
+def test_episode_store_reads_the_old_file_format(tmp_path):
+    path = tmp_path / "episode.json"
+    path.write_text('{"episode": 3, "seed": "s", "start_day": 2, "deaths": 1, "raids": 0, "last_improve_day": 4, "ended": false}')
+    episode = EpisodeStore(path).load()
+    assert episode is not None and episode == Episode(number=3, seed="s", start_day=2, deaths=1, last_improve_day=4)
+    episode.tally([{"kind": "hostile_group", "text": "raid"}, {"kind": "message", "text": "noise"}])
+    EpisodeStore(path).save(episode)
+    again = EpisodeStore(path).load()
+    assert again is not None and again.raids == 1 and [e["kind"] for e in again.timeline] == ["hostile_group"]
 
 
 def test_bus_keeps_persistent_events_and_streams_ephemeral_ones():

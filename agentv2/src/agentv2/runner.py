@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import collections
-import json
 import time
 import traceback
 from dataclasses import dataclass
@@ -24,15 +23,14 @@ from .bridge import Bridge, BridgeError, GameStatus
 from .bus import Bus
 from .catalog import parse_catalog
 from .config import Settings
-from .deps import Deps, DirectorDeps, Episode, Turn
+from .deps import Deps, DirectorDeps, Turn
+from .episode import Episode, EpisodeStore
 from .history import BrainGit, BrainTools, GitError, Scores, score
 from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
 from .tools.turn import EpisodeEnd, Finished, TurnEnd
 from .watchers import Alert, Watchers
 
 TICKS_PER_HOUR = 2500
-TIMELINE_KINDS = {"day", "colonist_died", "colonist_downed", "incident", "hostile_group", "hostile_group_gone", "letter", "mental_break",
-                  "research_finished", "building_lost", "colonist_joined", "colonist_left", "quest"}
 
 
 @dataclass
@@ -59,7 +57,7 @@ class Runner:
         self.scores = Scores(self.brain.layout.scores)
         self.git = BrainGit(self.brain.layout.root)
         self.watchers = Watchers(self.brain.layout.watchers_dir, bridge, bus, settings.watchers.timeout_s)
-        self.episode_file = settings.runs / "episode.json"
+        self.episodes = EpisodeStore(settings.runs / "episode.json")
         self.catalog: list = []
         self.episode = Episode()
         self.deps: DirectorDeps | None = None
@@ -85,16 +83,13 @@ class Runner:
         self.pending_events: list[dict[str, Any]] = []
         self.pending_alerts: list[Alert] = []
         self.operator_queue: list[str] = []
-        self.timeline: list[dict[str, Any]] = []
         self.step_notes: list[str] = []
         self.numbers: dict[str, float] = {}
-        self.deaths = self.raids = 0
         self.next_wake_tick = 0
         self.last_step_end_tick = 0
         self.turn_wake_on: set[str] = set()
         self.seen_alerts: dict[str, int] = {}
         self.last_day = -1
-        self.last_improve_day = 0
         self.improve_seq = self.bus.last_seq
 
     # ------------------------------------------------------------------ lifecycle
@@ -138,9 +133,9 @@ class Runner:
         st = await self.bridge.status()
         if st.playing:
             if not self.episode.seed:
-                saved = json.loads(self.episode_file.read_text()) if self.episode_file.exists() else {}
-                if saved.get("ended") and saved.get("seed") == st.seed:
-                    self.episode = Episode(number=int(saved.get("episode", 0)))
+                saved = self.episodes.load()
+                if saved and saved.ended and saved.seed == st.seed:
+                    self.episode = Episode(number=saved.number)
                     await self.new_game()
                 else:
                     await self.resume(st, saved)
@@ -154,16 +149,14 @@ class Runner:
     def _next_episode_number(self) -> int:
         return max([int(r.get("episode") or 0) for r in self.scores.history(10_000)] + [0]) + 1
 
-    async def resume(self, st: GameStatus, saved: dict[str, Any]) -> None:
+    async def resume(self, st: GameStatus, saved: Episode | None) -> None:
         seed = st.seed or "resumed"
-        same = saved.get("seed") == seed
         self._reset_episode_state()
         self.sandbox = st.god_mode
-        self.episode = Episode(number=int(saved.get("episode", 0)) if same else self._next_episode_number(), seed=seed,
-                               start_day=int(saved.get("start_day", 0)) if same else st.day, sandbox=self.sandbox)
-        if same:
-            self.deaths, self.raids = int(saved.get("deaths", 0)), int(saved.get("raids", 0))
-            self.last_improve_day = int(saved.get("last_improve_day", self.episode.start_day))
+        if saved and saved.seed == seed:
+            self.episode = saved.model_copy(update={"sandbox": st.god_mode})
+        else:
+            self.episode = Episode(number=self._next_episode_number(), seed=seed, start_day=st.day, sandbox=st.god_mode)
         self.last_seq, self.last_day = st.seq, st.day
         self._new_deps()
         self.history = await self.restore_conversation()
@@ -185,22 +178,16 @@ class Runner:
         await asyncio.sleep(3)
         st = await self.bridge.wait_for("playing", 600)
         self._reset_episode_state()
-        self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.sandbox)
-        self.last_day = self.last_improve_day = self.episode.start_day
+        self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.sandbox, last_improve_day=st.day)
+        self.last_day = st.day
         self.history = []
         self._new_deps()
         if self.sandbox:
             await self.apply_sandbox(True)
         await self.apply_steward()
         self.bus.emit("episode_start", {"episode": number, "seed": seed, "sandbox": self.sandbox})
-        self.save_episode()
+        self.episodes.save(self.episode)
         self.force = "new game started"
-
-    def save_episode(self, ended: bool = False) -> None:
-        self.episode_file.parent.mkdir(parents=True, exist_ok=True)
-        self.episode_file.write_text(json.dumps({"episode": self.episode.number, "seed": self.episode.seed, "start_day": self.episode.start_day,
-                                                 "deaths": self.deaths, "raids": self.raids, "last_improve_day": self.last_improve_day,
-                                                 "ended": ended}))
 
     async def recover(self) -> None:
         self.bus.emit("status", {"phase": "loading"})
@@ -228,7 +215,7 @@ class Runner:
         self.status = st
         if time.monotonic() - self._status_emitted >= 1.0:
             self._status_emitted = time.monotonic()
-            self.bus.emit("status", {**st.model_dump(exclude_unset=True), "episode": self.episode.number, "seed": self.episode.seed, "deaths": self.deaths, "raids": self.raids,
+            self.bus.emit("status", {**st.model_dump(exclude_unset=True), "episode": self.episode.number, "seed": self.episode.seed, "deaths": self.episode.deaths, "raids": self.episode.raids,
                                      "phase": "thinking" if self.thinking else "playing", "next_wake_tick": self.next_wake_tick, "steward": self.steward})
         if not st.playing or not self.episode.seed:
             return
@@ -238,10 +225,8 @@ class Runner:
             self.last_seq = int(data.get("last_seq", self.last_seq))
             for e in events:
                 self.bus.emit("ledger", e)
-                self.deaths += e.get("kind") == "colonist_died"
-                self.raids += e.get("kind") == "hostile_group"
+            self.episode.tally(events)
             self.pending_events += events
-            self.timeline += [e for e in events if e.get("kind") in TIMELINE_KINDS]
         alerts: list[Alert] = []
         if events or time.monotonic() - self._watched >= self.s.watchers.poll_s:
             self._watched = time.monotonic()
@@ -295,17 +280,17 @@ class Runner:
 
     async def day_rollover(self, day: int) -> None:
         self.last_day = day
-        self.save_episode()
+        self.episodes.save(self.episode)
         if self.s.play.autosave:
             try:
                 await self.bridge.call("game.save", {"name": "agentv2-autosave"})
             except BridgeError as e:
                 self.bus.emit("error", {"text": f"autosave: {e}"})
         play = self.s.play
-        since_start, since_improve = day - self.episode.start_day, day - self.last_improve_day
-        first = self.last_improve_day == self.episode.start_day and since_start >= play.first_improve_day
+        since_start, since_improve = day - self.episode.start_day, day - self.episode.last_improve_day
+        first = self.episode.last_improve_day == self.episode.start_day and since_start >= play.first_improve_day
         if (first or since_improve >= play.improve_every_days) and not (self.improve_task and not self.improve_task.done()):
-            self.last_improve_day = day
+            self.episode.last_improve_day = day
             self.improve_task = asyncio.create_task(self.improve(day), name="improve")
             self.improve_task.add_done_callback(self._report_failure)
 
@@ -493,10 +478,10 @@ class Runner:
 
     async def improve(self, day: int) -> None:
         prompt = (f"# Improvement pass, day {day} of episode {self.episode.number}\n\n## Your tool use since the last pass (calls, failures)\n"
-                  f"{self._usage_stats()}\n\n## Recent step notes\n" + "\n".join(f"- {n}" for n in self.step_notes[-30:] if n)
-                  + f"\n\n## Scores\n{self.scores.text(8)}")
+                  f"{self._usage_stats()}\n\n## Recent step notes\n" + _bullets(self.step_notes[-30:])
+                  + "\n\n## Earlier passes\n" + _bullets(self.episode.pass_notes[-5:]) + f"\n\n## Scores\n{self.scores.text(8)}")
         notes = await self._brain_pass(IMPROVER, self.agents.improver, prompt, f"episode {self.episode.number} day {day}: improvement pass")
-        self.step_notes.append(f"[improvement pass day {day}] {notes}")
+        self.episode.pass_notes.append(f"[improvement pass day {day}] {notes}")
 
     async def end_episode(self, reason: str) -> None:
         self.bus.emit("status", {"phase": "reflecting"})
@@ -512,12 +497,12 @@ class Runner:
         days = max(st.day, self.last_day) - self.episode.start_day
         colonists = int(summary.get("colonists", st.colonists) or 0)
         assisted = st.assisted or self.sandbox
-        total = score(days, colonists, self.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0),
-                      int(summary.get("research_done", 0) or 0), self.raids)
-        self.bus.emit("log", {"text": f"episode {self.episode.number} over: {reason}; days={days} colonists={colonists} deaths={self.deaths} score={total}"})
-        timeline = "\n".join(f"[{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in self.timeline)[-14_000:]
+        total = score(days, colonists, self.episode.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0),
+                      int(summary.get("research_done", 0) or 0), self.episode.raids)
+        self.bus.emit("log", {"text": f"episode {self.episode.number} over: {reason}; days={days} colonists={colonists} deaths={self.episode.deaths} score={total}"})
+        timeline = "\n".join(f"[{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in self.episode.timeline)[-14_000:]
         prompt = (f"# Episode {self.episode.number} reflection (seed {self.episode.seed})\n\nThis game is over ({reason}) after {days} days. Score {total}.\n\n## Timeline\n{timeline}\n\n"
-                  "## Your step notes\n" + "\n".join(f"- {n}" for n in self.step_notes[-40:] if n)
+                  "## Your step notes\n" + _bullets(self.step_notes[-40:]) + "\n\n## Improvement passes\n" + _bullets(self.episode.pass_notes)
                   + f"\n\n## What the operator said\n{self.brain.operator.tail(3000)}"
                   + f"\n\n## Scores\n{self.scores.text(12)}")
         notes = await self._brain_pass(REFLECTOR, self.agents.reflector, prompt, f"episode {self.episode.number} ({self.episode.seed}): {reason}; score {total}")
@@ -526,10 +511,11 @@ class Runner:
         except GitError as e:
             self.bus.emit("error", {"text": f"brain head: {e}"})
             sha = ""
-        self.scores.record({"episode": self.episode.number, "seed": self.episode.seed, "days": days, "colonists": colonists, "deaths": self.deaths,
-                            "raids": self.raids, "wealth": summary.get("wealth"), "mood": summary.get("mood_avg"), "research": summary.get("research_done"),
+        self.scores.record({"episode": self.episode.number, "seed": self.episode.seed, "days": days, "colonists": colonists, "deaths": self.episode.deaths,
+                            "raids": self.episode.raids, "wealth": summary.get("wealth"), "mood": summary.get("mood_avg"), "research": summary.get("research_done"),
                             "score": total, "assisted": assisted, "brain_sha": sha, "ended": reason, "notes": notes[:500]})
-        self.save_episode(ended=True)
+        self.episode.ended = True
+        self.episodes.save(self.episode)
         await self.commit_brain(f"episode {self.episode.number}: score")
         self.bus.emit("episode_end", {"episode": self.episode.number, "score": total, "reason": reason, "assisted": assisted, "brain_sha": sha, "days": days})
         self.episode = Episode(number=self.episode.number)
@@ -553,6 +539,10 @@ class Runner:
         if on:
             await self.bridge.call("dev.unlock_all_research")
         self.bus.emit("status", {"sandbox": on})
+
+
+def _bullets(lines: list[str]) -> str:
+    return "\n".join(f"- {n}" for n in lines if n) or "(none)"
 
 
 class Controls:

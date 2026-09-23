@@ -103,16 +103,21 @@ async def test_end_episode_reflects_scores_commits_and_starts_a_new_game(started
     assert "raids come early" in runner.brain.layout.journal().read_text()
 
 
-async def test_a_restarted_agent_resumes_the_conversation(started, settings, bridge, bus):
+async def test_a_restarted_agent_resumes_the_conversation_and_the_episode(started, settings, bridge, bus, game):
     runner, script = started
+    game.add_event("hostile_group", "raiders")
+    await runner.poll_once()
+    runner.episode.pass_notes.append("[improvement pass day 1] wrote a watcher")
     script.responses = [call("end_turn", {"notes": "remember me"})]
     await runner.step(Wake("before restart", False))
-    runner.save_episode()
+    runner.episodes.save(runner.episode)
     again = Runner(settings, bus, bridge, scripted_model(script))
     async with again.watchers:
         await again.prepare()
         await again.ensure_game()
-    assert again.episode.number == 1
+    assert again.episode.number == 1 and again.episode.raids == 1
+    assert [e["text"] for e in again.episode.timeline] == ["raiders"]
+    assert again.episode.pass_notes == ["[improvement pass day 1] wrote a watcher"]
     assert "before restart" in prompts(again.history)
 
 
@@ -127,7 +132,8 @@ async def test_a_failing_reflection_still_ends_the_episode(started, game):
 async def test_an_ended_episode_is_not_resumed(started, settings, bridge, bus, game):
     runner, script = started
     script.responses = [call("finish", {"notes": "x"})]
-    runner.save_episode(ended=True)
+    runner.episode.ended = True
+    runner.episodes.save(runner.episode)
     again = Runner(settings, bus, bridge, scripted_model(script))
     async with again.watchers:
         await again.prepare()

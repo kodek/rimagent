@@ -12,7 +12,8 @@ from agentv2.agents import Agents, build_agents
 from agentv2.brain import Brain, BrainLayout
 from agentv2.catalog import parse_catalog
 from agentv2.capabilities.arguments import CoerceArguments, coerce
-from agentv2.deps import Deps, DirectorDeps, Episode
+from agentv2.deps import Deps, DirectorDeps
+from agentv2.episode import Episode
 from agentv2.history import BrainGit, BrainTools, Scores
 from agentv2.roles import DIRECTOR, IMPROVER
 from agentv2.scripted import call, scripted_model
@@ -45,7 +46,7 @@ async def stack(settings, bridge, bus):
     brain = Brain(BrainLayout(settings.brain), settings.knowledge_dir)
     async with Watchers(brain.layout.watchers_dir, bridge, bus) as watchers:
         agents = build_agents(scripted_model(respond), settings, brain, watchers, BrainTools(Scores(brain.layout.scores), BrainGit(brain.layout.root), brain.layout))
-        deps = DirectorDeps(bridge=bridge, bus=bus, catalog=parse_catalog(await bridge.methods()), episode=Episode(1, "rimagent-1"), role=DIRECTOR)
+        deps = DirectorDeps(bridge=bridge, bus=bus, catalog=parse_catalog(await bridge.methods()), episode=Episode(number=1, seed="rimagent-1"), role=DIRECTOR)
         yield Stack(agents, deps, brain, seen, script, received, watchers)
 
 
