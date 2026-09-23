@@ -1,6 +1,8 @@
 ---
 name: storyteller-and-threats
 description: Pull in when planning the colony's first year, deciding whether to keep or sell loot, reading an incident letter (raid, manhunters, fallout, flare, drone, infestation), or judging how big the next threat will be.
+metadata:
+  wake-on: "incident, toxic fallout, solar flare, infestation, psychic, eclipse, quest"
 ---
 # Storyteller and threats
 

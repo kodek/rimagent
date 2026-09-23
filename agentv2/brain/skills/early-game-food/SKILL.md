@@ -1,6 +1,8 @@
 ---
 name: early-game-food
 description: Pull in when food stock is under ~10 days, when placing the first growing zones or choosing a crop, before designating any animal for hunting, and when deciding how to cook (campfire vs stove, raw food, food poisoning).
+metadata:
+  wake-on: "food, starv, malnutrition, hungry, hunger, food poisoning"
 ---
 # Early-game food
 

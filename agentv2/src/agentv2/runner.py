@@ -312,6 +312,7 @@ class Runner:
         self.bus.emit(Status.model_validate(report.numbers))
         self.bus.emit(Situation(trigger=wake.trigger, changes=report.changes, day=report.day, hour=report.hour, chars=len(report.text)))
         deps = self.director_deps()
+        deps.relevant_skills = self.brain.skills.matching(situation.wake_text(snap, wakeup))
         await self.game.set_speed(self.flags.danger_think_speed if wake.urgent else self.settings.play.think_speed)
         self.bus.emit(Status(phase="thinking"))
         try:

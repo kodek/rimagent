@@ -1,6 +1,8 @@
 ---
 name: defense-basics
 description: Pull in when a raid letter arrives, rw_state_threats shows hostiles, or when planning walls, traps, turrets, chokepoints and draft positioning for a small colony.
+metadata:
+  wake-on: "hostile_group, raid, raider, siege, sapper, breach, drop pod, mechanoid, danger"
 ---
 # Defense basics
 

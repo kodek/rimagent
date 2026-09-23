@@ -38,3 +38,4 @@ class Deps:
 @dataclass
 class DirectorDeps(Deps):
     turn: Turn = field(default_factory=Turn)
+    relevant_skills: list[str] = field(default_factory=list)

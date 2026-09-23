@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability, CombinedCapability, DynamicCapability
 from pydantic_ai_harness import CapabilityCreation, Memory, RepoContext, Skills
@@ -58,7 +59,8 @@ BRAIN_GUIDE = '''brain_* tools edit your brain directory: `AGENTS.md` (your doct
 `skills/<name>/SKILL.md` (one folder per skill: YAML frontmatter with `name` equal to the folder name and a one-line
 `description` of when to load it, then the Markdown body; create the folder first) and `watchers/<name>.py`. A new or edited
 skill is in the catalog from your next step. Keep skills concrete: triggers, steps, numbers, pitfalls; edit an existing skill
-before you add a near-duplicate.'''
+before you add a near-duplicate. The frontmatter `metadata: {wake-on: "raid, hostile_group"}` lists words: when a wake's
+trigger, events or alerts contain one, you are reminded to load the skill.'''
 
 KNOWLEDGE_GUIDE = '''kb_* tools read the offline RimWorld knowledge base: `wiki/<Page>.md` (the RimWorld wiki) and `source-1.6/**/*.cs`
 (the decompiled game source). Use kb_grep to search, kb_find_files for names, kb_read_file to read.'''
@@ -126,6 +128,7 @@ class SkillInfo:
     description: str
     chars: int
     error: str | None = None
+    wake_on: tuple[str, ...] = ()
 
 
 class SkillCatalog:
@@ -144,12 +147,18 @@ class SkillCatalog:
             except Exception as e:  # noqa: BLE001 - an agent-written skill must not break the others; the error is reported to it
                 out.append(SkillInfo(d.name, "", len(text), f"{type(e).__name__}: {e}"))
                 continue
-            out.append(SkillInfo(d.name, _description(text), len(text)))
+            front = _frontmatter(text)
+            out.append(SkillInfo(d.name, str(front.get("description", "")), len(text), wake_on=_wake_on(front)))
         return out
 
     def capability(self) -> Skills[Any] | None:
         good = [s.name for s in self.infos() if not s.error]
         return Skills(self.directory, include=good) if good else None
+
+    def matching(self, text: str) -> list[str]:
+        """The skills whose `wake-on` words are in `text`."""
+        low = text.lower()
+        return [s.name for s in self.infos() if not s.error and any(word in low for word in s.wake_on)]
 
 
 class Brain:
@@ -230,10 +239,13 @@ def _colony(ctx: RunContext[Deps]) -> str:
     return ctx.deps.episode.colony
 
 
-def _description(skill_text: str) -> str:
-    for line in skill_text.splitlines()[1:]:
-        if line.startswith("description:"):
-            return line.split(":", 1)[1].strip()
-        if line.strip() == "---":
-            break
-    return ""
+def _frontmatter(skill_text: str) -> dict[str, Any]:
+    head = skill_text.split("\n---", 1)[0].removeprefix("---")
+    front = yaml.safe_load(head)
+    return front if isinstance(front, dict) else {}
+
+
+def _wake_on(front: dict[str, Any]) -> tuple[str, ...]:
+    metadata = front.get("metadata")
+    words = metadata.get("wake-on", "") if isinstance(metadata, dict) else ""
+    return tuple(w.strip().lower() for w in str(words).split(",") if w.strip())

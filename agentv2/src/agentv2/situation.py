@@ -77,6 +77,12 @@ def render(snap: Snapshot, wake: Wakeup) -> Report:
     return Report("\n\n".join(parts), snap.numbers, brief, snap.summary.get("day"), snap.summary.get("hour"))
 
 
+def wake_text(snap: Snapshot, wake: Wakeup) -> str:
+    """What woke the director: the trigger, the new events, the watcher alerts and the game alerts."""
+    return "\n".join([wake.trigger, *(f"{e.get('kind')}: {e.get('text', '')}" for e in wake.events), *(a.text for a in wake.alerts),
+                      *(str(a.get("label")) for a in snap.summary.get("alerts") or [] if isinstance(a, dict))])
+
+
 async def _read(bridge: Bridge, method: str) -> tuple[Any, str | None]:
     try:
         return await bridge.call(method), None

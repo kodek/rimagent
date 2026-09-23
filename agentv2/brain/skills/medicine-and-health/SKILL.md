@@ -1,6 +1,8 @@
 ---
 name: medicine-and-health
 description: Pull in when a pawn is injured, bleeding, downed, sick (infection, flu, plague, malaria), when setting medical policies, assigning a doctor, or deciding what medicine to use or grow.
+metadata:
+  wake-on: "colonist_downed, downed, bleeding, rescue, treatment, tend, infection, sick, plague, flu, malaria, disease"
 ---
 # Medicine and health
 

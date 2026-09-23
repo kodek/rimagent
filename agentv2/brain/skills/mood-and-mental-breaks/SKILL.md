@@ -1,6 +1,8 @@
 ---
 name: mood-and-mental-breaks
 description: Pull in when a colonist's mood is below ~40%, a mental break alert fires, or when planning day 1-5 furniture (tables, beds, recreation) to prevent breaks.
+metadata:
+  wake-on: "mental_break, mental break, mood, berserk, tantrum, wander, catatonic"
 ---
 # Mood and mental breaks
 

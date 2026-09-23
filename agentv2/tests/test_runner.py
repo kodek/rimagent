@@ -284,3 +284,20 @@ async def test_a_failed_step_is_tried_again_after_an_hour(started, game):
     outcome = await rt.runner.step(Wake("event: hostile_group: raiders", True))
     assert outcome.error and rt.runner.wake.next_tick == game.tick + TICKS_PER_HOUR
     assert rt.runner.wake.check(game.tick + TICKS_PER_HOUR, [], [], None) == Wake("again after a failed step: event: hostile_group: raiders", True)
+
+
+def reminders(messages: list[ModelMessage]) -> list[str]:
+    return [str(p.content) for m in messages for p in getattr(m, "parts", []) if "<system-reminder>" in str(getattr(p, "content", ""))]
+
+
+async def test_the_director_is_reminded_of_matching_skills_until_it_loads_them(started):
+    rt, script = started
+    script.responses = [call("load_capability", {"id": "defense-basics"}), call("end_turn", {"notes": "ready"})]
+    await rt.runner.step(Wake("event: hostile_group: A pirate band approaches", True))
+    assert "not loaded: defense-basics" in reminders(script.received[0])[0]
+    assert reminders(script.received[1]) == []
+    history = await rt.director.history(rt.runner.episode.colony)
+    assert reminders(history) == []
+    script.responses = [call("end_turn", {"notes": "still ready"})]
+    await rt.runner.step(Wake("event: hostile_group: more raiders", True))
+    assert reminders(script.received[-1]) == []

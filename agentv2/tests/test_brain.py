@@ -89,3 +89,12 @@ def test_a_reload_rewinds_the_episode_to_its_checkpoint():
     cp = episode.rewind(GameStatus(state="playing", tick=90_000, day=1, hour=12))
     assert (cp.day, cp.hour) == (1, 12) and (episode.deaths, episode.raids) == (0, 1)
     assert [e["kind"] for e in episode.timeline] == ["hostile_group", "reloaded"]
+
+
+def test_skills_match_their_wake_on_words(brain):
+    assert all(s.wake_on for s in brain.skills.infos())
+    assert brain.skills.matching("alert (Critical): Colonist needs rescue\nevent: hostile_group: raiders") == ["defense-basics", "medicine-and-health"]
+    plain = brain.layout.skills_dir / "plain"
+    plain.mkdir()
+    (plain / "SKILL.md").write_text("---\nname: plain\ndescription: no wake words\n---\nbody\n", encoding="utf-8")
+    assert "plain" not in brain.skills.matching("plain raid") and brain.problems() == {}

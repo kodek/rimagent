@@ -1,6 +1,8 @@
 ---
 name: work-priorities
 description: Pull in when setting or auditing colonist work priorities (rw_ui_set_work), when a new pawn joins, or when jobs are not getting done (nobody cooking, hauling, researching); also for adding bills to a new work table.
+metadata:
+  wake-on: "idle, colonist_joined, joined, nobody, work table"
 ---
 # Work priorities
 

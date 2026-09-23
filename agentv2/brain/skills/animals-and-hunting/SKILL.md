@@ -1,6 +1,8 @@
 ---
 name: animals-and-hunting
 description: Pull in before designating hunt or tame on any wild animal, when a predator or manhunter pack is on the map, or when deciding which animals to keep, pen, train or butcher.
+metadata:
+  wake-on: "manhunter, predator, hunt, tame, wild animal, animal_joined"
 ---
 # Animals and hunting
 

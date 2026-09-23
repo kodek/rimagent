@@ -1,6 +1,8 @@
 ---
 name: temperature-and-seasons
 description: Pull in when a cold snap, heat wave or season change is announced, when pawns show hypothermia/heatstroke or "slept in the cold/heat", when placing heaters/coolers/passive coolers/vents, when choosing clothing, or when deciding if crops can still be sown before winter.
+metadata:
+  wake-on: "cold snap, heat wave, hypotherm, heatstroke, temperature, freezing, winter, frostbite"
 ---
 # Temperature and seasons
 

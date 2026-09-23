@@ -29,6 +29,7 @@ from .brain import Brain
 from .capabilities.access import method_access
 from .capabilities.arguments import CoerceArguments
 from .capabilities.sandbox_calls import SandboxCalls, outside_sandbox
+from .capabilities.skill_hints import skill_hints
 from .capabilities.speed import TrackSpeed
 from .capabilities.step import StepBudget
 from .capabilities.telemetry import telemetry
@@ -101,6 +102,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
         capabilities=[
             *common(),
             TrackSpeed(),
+            skill_hints(),
             compaction,
             ReportContextUsage(context_window=settings.llm.context_window),
             StepPersistence(store=steps, agent_name=DIRECTOR.name),

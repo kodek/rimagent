@@ -1,6 +1,8 @@
 ---
 name: base-building
 description: Pull in when planning or placing walls, doors, roofs, floors, bedrooms/barracks, the home area, or choosing wood vs stone; also when a roof collapse, fire or "sleeping outside" mood problem shows up.
+metadata:
+  wake-on: "roof collapse, collapsed, slept outside, sleeping outside, building_lost, blueprint, unroofed, no door"
 ---
 # Base building
 

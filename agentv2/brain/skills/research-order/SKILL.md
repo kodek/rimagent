@@ -1,6 +1,8 @@
 ---
 name: research-order
 description: Pull in when choosing or changing the research project (rw_ui_set_research), building a research bench, or asking what a Crashlanded colony already has unlocked.
+metadata:
+  wake-on: "research_finished, research"
 ---
 # Research order for a 3-colonist Crashlanded start
 
