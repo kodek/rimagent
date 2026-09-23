@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import is_multi_modal_content
 from pydantic_ai.models import Model
 from pydantic_ai.toolsets import AbstractToolset
+from pydantic_monty import MountDir
 from pydantic_ai_harness import (
     ClearToolResults,
     CodeMode,
@@ -43,6 +44,8 @@ from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd,
 from .tools.vision import vision
 from .watchers.tools import WatcherTools
 
+SCRATCH_BYTES = 5_000_000
+
 
 @dataclass
 class Agents:
@@ -64,7 +67,9 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
     toolsets: list[AbstractToolset[Deps]] = [BridgeToolset().prefixed("rw")]
     overflow = LocalFileStore(settings.runs / "overflow", cleanup_after=timedelta(days=2))
 
-    def common() -> list[AbstractCapability[Deps]]:
+    settings.scratch.mkdir(parents=True, exist_ok=True)
+
+    def common(scratch: Literal["read-write", "read-only"]) -> list[AbstractCapability[Deps]]:
         return [
             StepBudget(budget),
             RepairToolArguments(),
@@ -74,7 +79,8 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             watcher_tools,
             history,
             TrackedValues(),
-            CodeMode(max_retries=budget),
+            CodeMode(max_retries=budget, mount=MountDir(host_path=str(settings.scratch), virtual_path="/scratch", mode=scratch,
+                                                        write_bytes_limit=SCRATCH_BYTES)),
             SandboxCalls(),
             telemetry(),
             ToolOutputLimits(bands=[Band(over=10_000, action=Spill(then=Truncate()))], store=overflow, serializer=_measured_text,
@@ -100,7 +106,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
         end_strategy="graceful",
         toolsets=[*toolsets, operator, vision],
         capabilities=[
-            *common(),
+            *common("read-write"),
             TrackSpeed(),
             skill_hints(),
             compaction,
@@ -119,7 +125,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             retries={"tools": 3, "output": 3},
             end_strategy="graceful",
             toolsets=toolsets,
-            capabilities=[*common(), ConversationSearch(SnapshotHistorySource(steps), scope="conversation")],
+            capabilities=[*common("read-only"), ConversationSearch(SnapshotHistorySource(steps), scope="conversation")],
         )
 
     return Agents(director=director, improver=brain_pass(IMPROVER), reflector=brain_pass(REFLECTOR))

@@ -3,6 +3,7 @@ read the game, edit the brain, and end with a brain commit."""
 from __future__ import annotations
 
 import collections
+import itertools
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from .history import BrainGit, GitError, Scores
 from .roles import DIRECTOR
 from .running import run_agent
 from .tools.turn import Finished
+
+REPEATED = 3
 
 
 @dataclass
@@ -53,18 +56,27 @@ class BrainPasses:
         return await self._run(self.reflector, prompt, deps, f"episode {episode.number} ({episode.seed}): {reason}; score {total}")
 
     def usage_stats(self) -> str:
-        """The director's tool calls and failures since the last pass, from the bus. StepPersistence cannot supply the
-        failures: core skips `on_tool_execute_error` for `ToolFailed` (pydantic-ai 2.47, tool_manager.py)."""
+        """The director's tool calls and failures since the last pass, from the bus, and the call patterns its run_code
+        snippets repeat. StepPersistence cannot supply the failures: core skips `on_tool_execute_error` for `ToolFailed`
+        (pydantic-ai 2.47, tool_manager.py)."""
         counts, errors = collections.Counter[str](), collections.Counter[str]()
+        snippets: dict[str, list[str]] = {}
         for e in self.bus.since(self.usage_seq, limit=5000, kinds={ToolCall.KIND, ToolResult.KIND}):
-            if e["data"].get("stream") != DIRECTOR.stream:
+            data = e["data"]
+            if data.get("stream") != DIRECTOR.stream:
                 continue
             if e["kind"] == ToolCall.KIND:
-                counts[e["data"]["name"]] += 1
-            elif not e["data"].get("ok"):
-                errors[e["data"]["name"]] += 1
+                counts[data["name"]] += 1
+                if data.get("parent"):
+                    snippets.setdefault(data["parent"], []).append(data["name"])
+            elif not data.get("ok"):
+                errors[data["name"]] += 1
         self.usage_seq = self.bus.last_seq
-        return "\n".join(f"- {n}: {c}" + (f", {errors[n]} failed" if errors[n] else "") for n, c in counts.most_common(25)) or "(no tool calls)"
+        lines = [f"- {n}: {c}" + (f", {errors[n]} failed" if errors[n] else "") for n, c in counts.most_common(25)] or ["(no tool calls)"]
+        patterns = collections.Counter(_pattern(names) for names in snippets.values())
+        repeated = [f"- {p}  x{n}" for p, n in patterns.most_common(8) if n >= REPEATED and " > " in p]
+        return "\n".join(lines + (["", "Call patterns that run_code snippets repeated (candidates for a capability or a watcher):", *repeated]
+                                   if repeated else []))
 
     async def commit(self, message: str) -> str | None:
         try:
@@ -95,6 +107,10 @@ class BrainPasses:
         deps.emit(ThinkEnd(notes=notes, calls=calls, elapsed=round(time.monotonic() - started, 1)))
         await self.commit(commit)
         return notes
+
+
+def _pattern(names: list[str]) -> str:
+    return " > ".join(name for name, _ in itertools.groupby(names))
 
 
 def _bullets(lines: list[str]) -> str:

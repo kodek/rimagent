@@ -98,6 +98,10 @@ class Settings(BaseModel):
     def runs(self) -> Path:
         return self.root / "runs"
 
+    @property
+    def scratch(self) -> Path:
+        return self.runs / "scratch"
+
 
 _ENV = {
     "AGENTV2_LLM_BASE_URL": ("llm", "base_url"),

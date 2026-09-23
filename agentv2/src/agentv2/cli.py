@@ -101,6 +101,27 @@ async def _tools(_: argparse.Namespace) -> None:
         print(f"brain problem: {name}: {error}")
 
 
+async def _think(args: argparse.Namespace) -> None:
+    """One director step against the running game, then the game waits paused."""
+    from .runtime import open_runtime
+    from .wake import Wake
+
+    settings = config.load()
+    bridge = Bridge(settings.bridge.url, settings.bridge.timeout_s)
+    try:
+        async with open_runtime(settings, Bus(sinks=[_printer]), bridge, build_model(settings.llm)) as rt:
+            await rt.runner.prepare()
+            if not (await bridge.status()).playing:
+                print("no game is playing: start one with `agentv2 play`")
+                return
+            await rt.runner.ensure_game()
+            outcome = await rt.runner.step(Wake(args.trigger, args.urgent))
+            await rt.runner.game.set_speed(0)
+            print(f"\nnotes: {outcome.notes}\nwake: {outcome.end.model_dump() if outcome.end else outcome.episode_end or outcome.error}\nthe game is paused")
+    finally:
+        await bridge.aclose()
+
+
 async def _seed(args: argparse.Namespace) -> None:
     from .knowledge import seed
 
@@ -134,6 +155,9 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("--no-dashboard", action="store_true")
         p.add_argument("-v", "--verbose", action="store_true")
     sub.add_parser("tools", help="list the director's tools")
+    think = sub.add_parser("think", help="one director step against the running game (for debugging), then pause the game")
+    think.add_argument("--trigger", default="the operator asked for one step")
+    think.add_argument("--urgent", action="store_true")
     seed = sub.add_parser("seed", help="download the RimWorld wiki into ../knowledge and index it")
     seed.add_argument("--refresh", action="store_true", help="download the pages that are already there too")
     seed.add_argument("--limit", type=int, help="only the first N articles (for a quick check)")
@@ -147,6 +171,8 @@ def main(argv: list[str] | None = None) -> None:
                 asyncio.run(_play(args, fake=args.cmd == "fake"))
             case "tools":
                 asyncio.run(_tools(args))
+            case "think":
+                asyncio.run(_think(args))
             case "seed":
                 asyncio.run(_seed(args))
             case "llm":

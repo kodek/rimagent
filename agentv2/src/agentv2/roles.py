@@ -29,6 +29,8 @@ must not lose into the notebook.
   result to see the image.
 - load_capability loads a skill from the catalog. Load the skill for a situation before you act on it.
 - A result that is too long is stored; page through it with read_tool_result.
+- Files that your code writes under /scratch (pathlib, json) stay for the rest of this game: keep data there that later
+  snippets reuse (ids, layouts, lists). What you must remember goes into the notebook.
 - reply_to_operator answers the human operator. Answer each operator message first. If it is advice on how to play,
   write it into the relevant skill.
 Be terse in visible text. Do the work with tool calls.""", writes_game=True)

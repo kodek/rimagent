@@ -3,6 +3,7 @@ One asyncio loop runs everything: the poller and the watchers, think steps, brai
 from __future__ import annotations
 
 import asyncio
+import shutil
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -144,6 +145,8 @@ class Runner:
         await asyncio.sleep(3)
         st = await self.bridge.wait_for("playing", 600)
         self._reset()
+        shutil.rmtree(self.settings.scratch, ignore_errors=True)
+        self.settings.scratch.mkdir(parents=True)
         self.episode = Episode(number=number, seed=seed, start_day=st.day, sandbox=self.flags.sandbox, last_improve_day=st.day)
         self.last_day = st.day
         if self.flags.sandbox:

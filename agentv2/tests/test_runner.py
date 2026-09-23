@@ -10,6 +10,8 @@ from pydantic_ai.models.function import AgentInfo
 
 from agentv2.bridge import BridgeError
 from agentv2.episode import Episode
+from agentv2.events import ToolCall
+from agentv2.roles import IMPROVER
 from agentv2.runtime import open_runtime
 from agentv2.scripted import call, code, scripted_model
 from agentv2.wake import TICKS_PER_HOUR, Wake
@@ -301,3 +303,27 @@ async def test_the_director_is_reminded_of_matching_skills_until_it_loads_them(s
     script.responses = [call("end_turn", {"notes": "still ready"})]
     await rt.runner.step(Wake("event: hostile_group: more raiders", True))
     assert reminders(script.received[-1]) == []
+
+
+async def test_the_improver_sees_the_call_patterns_that_repeat(started, bus):
+    rt, _ = started
+    for snippet, names in enumerate([["rw_map_find", "rw_map_find", "rw_ui_designate"]] * 3 + [["rw_state_summary"]] * 4):
+        for n, name in enumerate(names):
+            bus.emit(ToolCall(name=name, args={}, id=f"c{snippet}-{n}", parent=f"run{snippet}"), stream="play")
+    stats = rt.runner.passes.usage_stats()
+    assert "- rw_map_find > rw_ui_designate  x3" in stats and "rw_state_summary  x" not in stats
+    assert "- rw_map_find: 6" in stats
+
+
+async def test_scratch_files_last_for_the_game_and_the_passes_only_read_them(started, settings):
+    rt, script = started
+    script.responses = [code("import json, pathlib\npathlib.Path('/scratch/beds.json').write_text(json.dumps([1, 2]))"), call("end_turn", {"notes": "x"})]
+    await rt.runner.step(Wake("first", False))
+    script.responses = [code("import json, pathlib\njson.loads(pathlib.Path('/scratch/beds.json').read_text())"), call("end_turn", {"notes": "x"})]
+    await rt.runner.step(Wake("second", False))
+    assert "[1,2]" in str(script.received[-1][-1].parts).replace(" ", "")
+    script.responses = [code("import pathlib\npathlib.Path('/scratch/pass.txt').write_text('x')"), call("finish", {"notes": "tried"})]
+    await rt.agents.improver.run("improve", deps=rt.runner.deps(IMPROVER))
+    assert not (settings.scratch / "pass.txt").exists() and (settings.scratch / "beds.json").exists()
+    await rt.runner.new_game()
+    assert list(settings.scratch.iterdir()) == []
