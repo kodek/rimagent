@@ -7,6 +7,7 @@ from typing import Any, Self
 
 from ..bridge import Bridge
 from ..bus import Bus
+from ..events import WatcherFailed
 from .actions import Alert, WatcherActions
 from .sandbox import WatcherError, WatcherSandbox
 from .source import Watcher, WatcherRepository
@@ -38,7 +39,7 @@ class Watchers:
                 items, watcher.memo = await self.sandbox.evaluate(watcher, events, status, watcher.memo)
             except WatcherError as e:
                 watcher.error = str(e)
-                self.bus.emit("watcher", {"name": watcher.name, "error": watcher.error})
+                self.bus.emit(WatcherFailed(name=watcher.name, error=watcher.error))
                 continue
             for item in items:
                 if alert := await self.actions.apply(watcher.name, item):

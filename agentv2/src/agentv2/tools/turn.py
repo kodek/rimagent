@@ -6,6 +6,7 @@ from pydantic_ai import RunContext, ToolOutput
 from pydantic_ai.toolsets import FunctionToolset
 
 from ..deps import DirectorDeps
+from ..events import Reply
 
 
 class TurnEnd(BaseModel):
@@ -65,5 +66,5 @@ def reply_to_operator(ctx: RunContext[DirectorDeps], text: str) -> str:
         text: Your reply, one or two sentences.
     """
     ctx.deps.turn.replies.append(text)
-    ctx.deps.emit("reply", {"text": text})
+    ctx.deps.emit(Reply(text=text))
     return "delivered to the operator"

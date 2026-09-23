@@ -8,6 +8,7 @@ from .bridge import Bridge
 from .bus import Bus
 from .catalog import Method
 from .episode import Episode
+from .events import Event
 from .policy import MethodPolicy
 from .roles import Role
 
@@ -31,8 +32,8 @@ class Deps:
     def policy(self) -> MethodPolicy:
         return MethodPolicy(writes=self.role.writes_game, dev=self.episode.sandbox)
 
-    def emit(self, kind: str, data: dict | None = None, *, ephemeral: bool = False) -> None:
-        self.bus.emit(kind, {"stream": self.role.stream, **(data or {})}, ephemeral=ephemeral)
+    def emit(self, event: Event) -> None:
+        self.bus.emit(event, stream=self.role.stream)
 
 
 @dataclass

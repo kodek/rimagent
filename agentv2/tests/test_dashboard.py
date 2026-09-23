@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from agentv2.dashboard.app import create_app
+from agentv2.events import Log
 from agentv2.runner import Runner
 from agentv2.scripted import call, scripted_model
 
@@ -49,7 +50,7 @@ async def test_controls_and_operator(client):
 
 async def test_events_and_bridge_views(client):
     c, runner = client
-    runner.bus.emit("log", {"text": "hi"})
+    runner.bus.emit(Log(text="hi"))
     events = (await c.get("/api/events", params={"kinds": "log"})).json()
     assert events[-1]["data"]["text"] == "hi"
     assert (await c.get("/api/base")).json()["home_center"] == [120, 120]

@@ -9,21 +9,25 @@ import time
 import webbrowser
 from typing import Any
 
-from . import config
+from . import config, events
 from .bridge import Bridge
-from .bus import Bus
+from .bus import Bus, JsonlLog
 from .model import build_model
+
+
+_PRINTED = {e.KIND for e in (events.Assistant, events.Log, events.Error, events.ThinkStart, events.ThinkEnd, events.EpisodeStart, events.EpisodeEnd,
+                             events.WatcherAlert, events.BrainChange, events.Reply, events.Harness)}
 
 
 def _printer(event: dict[str, Any]) -> None:
     kind, data = event["kind"], event["data"]
-    if kind == "tool_call":
+    if kind == events.ToolCall.KIND:
         print(f"→ [{data.get('stream')}] {data['name']} {json.dumps(data['args'])[:300]}")
-    elif kind == "tool_result":
+    elif kind == events.ToolResult.KIND:
         print(f"← [{data.get('stream')}] {data['name']} {'ok' if data['ok'] else 'FAILED'} {data['text'][:300]}")
-    elif kind == "reasoning":
+    elif kind == events.Reasoning.KIND:
         print(f"[thinking] {data['text'][:400].replace(chr(10), ' ')}…")
-    elif kind in ("assistant", "log", "error", "think_start", "think_end", "episode_start", "episode_end", "watcher", "brain_change", "reply", "harness"):
+    elif kind in _PRINTED:
         print(f"[{kind}] {json.dumps(data, default=str)[:600]}")
 
 
@@ -38,7 +42,8 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
     if args.seeds:
         settings.play.seeds = args.seeds.split(",")
     settings.runs.mkdir(parents=True, exist_ok=True)
-    bus = Bus(log_path=settings.runs / f"events-{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
+    log = JsonlLog(settings.runs / f"events-{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
+    bus = Bus(sinks=[log, _printer] if args.verbose else [log])
     tasks: list[asyncio.Task[None]] = []
     if fake:
         game = FakeGame()
@@ -47,14 +52,6 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
     else:
         bridge = Bridge(settings.bridge.url, settings.bridge.timeout_s)
     runner = Runner(settings, bus, bridge, build_model(settings.llm))
-    if args.verbose:
-        queue = bus.subscribe(maxsize=10_000)
-
-        async def pump() -> None:
-            while True:
-                _printer(await queue.get())
-
-        tasks.append(asyncio.create_task(pump(), name="printer"))
     if not args.no_dashboard:
         host, port = settings.dashboard.host, settings.dashboard.port
         tasks.append(asyncio.create_task(serve(create_app(runner), port, host), name="dashboard"))
@@ -68,6 +65,7 @@ async def _play(args: argparse.Namespace, fake: bool) -> None:
         for task in tasks:
             task.cancel()
         await bridge.aclose()
+        log.close()
 
 
 async def _tools(_: argparse.Namespace) -> None:

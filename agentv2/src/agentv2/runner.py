@@ -25,6 +25,8 @@ from .catalog import parse_catalog
 from .config import Settings
 from .deps import Deps, DirectorDeps, Turn
 from .episode import Episode, EpisodeStore
+from .events import BrainChange, EpisodeStart, Error, Ledger, Log, Operator, Situation, Status, ThinkEnd, ThinkStart, ToolCall, ToolResult
+from .events import EpisodeEnd as EpisodeEndEvent
 from .history import BrainGit, BrainTools, GitError, Scores, score
 from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
 from .tools.turn import EpisodeEnd, Finished, TurnEnd
@@ -104,27 +106,27 @@ class Runner:
                         await self.ensure_game()
                         await self.play_episode()
                     except BridgeError as e:
-                        self.bus.emit("error", {"text": f"bridge: {e}"})
+                        self.bus.emit(Error(text=f"bridge: {e}"))
                         await self.recover()
                     except Exception as e:  # noqa: BLE001 - the unattended runner reports and keeps playing
-                        self.bus.emit("error", {"text": f"runner: {e}\n{traceback.format_exc(limit=6)}"})
+                        self.bus.emit(Error(text=f"runner: {e}\n{traceback.format_exc(limit=6)}"))
                         await asyncio.sleep(5)
             finally:
                 poller.cancel()
                 if self.improve_task:
                     self.improve_task.cancel()
-        self.bus.emit("log", {"text": "runner stopped"})
+        self.bus.emit(Log(text="runner stopped"))
 
     async def prepare(self) -> None:
         """Build the agents and read the method catalog. Call inside `async with runner.watchers`."""
         self.agents = build_agents(self.model, self.s, self.brain, self.watchers, BrainTools(self.scores, self.git, self.brain.layout))
-        self.bus.emit("log", {"text": f"waiting for RimBridge at {self.bridge.url}"})
+        self.bus.emit(Log(text=f"waiting for RimBridge at {self.bridge.url}"))
         await self.bridge.wait_alive()
         await self.load_catalog()
 
     async def load_catalog(self) -> None:
         self.catalog = parse_catalog(await self.bridge.methods())
-        self.bus.emit("log", {"text": f"{len(self.catalog)} RimBridge methods as tools"})
+        self.bus.emit(Log(text=f"{len(self.catalog)} RimBridge methods as tools"))
 
     def _new_deps(self) -> None:
         self.deps = DirectorDeps(bridge=self.bridge, bus=self.bus, catalog=self.catalog, episode=self.episode, role=DIRECTOR)
@@ -160,8 +162,7 @@ class Runner:
         self.last_seq, self.last_day = st.seq, st.day
         self._new_deps()
         self.history = await self.restore_conversation()
-        self.bus.emit("episode_start", {"episode": self.episode.number, "seed": seed, "resumed": True, "day": self.episode.start_day,
-                                        "restored_messages": len(self.history)})
+        self.bus.emit(EpisodeStart(episode=self.episode.number, seed=seed, resumed=True, day=self.episode.start_day, restored_messages=len(self.history)))
         await self.apply_steward()
         self.force = "agent (re)started mid-game"
 
@@ -173,7 +174,7 @@ class Runner:
         play = self.s.play
         number = max(self._next_episode_number(), self.episode.number + 1)
         seed = play.seeds[(number - 1) % len(play.seeds)]
-        self.bus.emit("status", {"phase": "loading", "episode": number, "seed": seed})
+        self.bus.emit(Status(phase="loading", episode=number, seed=seed))
         await self.bridge.call("game.new_game", {"seed": seed, "scenario": play.scenario, "storyteller": play.storyteller, "difficulty": play.difficulty})
         await asyncio.sleep(3)
         st = await self.bridge.wait_for("playing", 600)
@@ -185,12 +186,12 @@ class Runner:
         if self.sandbox:
             await self.apply_sandbox(True)
         await self.apply_steward()
-        self.bus.emit("episode_start", {"episode": number, "seed": seed, "sandbox": self.sandbox})
+        self.bus.emit(EpisodeStart(episode=number, seed=seed, sandbox=self.sandbox))
         self.episodes.save(self.episode)
         self.force = "new game started"
 
     async def recover(self) -> None:
-        self.bus.emit("status", {"phase": "loading"})
+        self.bus.emit(Status(phase="loading"))
         for _ in range(40):
             if self.stop or await self.bridge.health():
                 break
@@ -207,7 +208,7 @@ class Runner:
             except BridgeError:
                 pass
             except Exception as e:  # noqa: BLE001 - the poller reports and keeps polling; the main loop owns recovery
-                self.bus.emit("error", {"text": f"poller: {e}\n{traceback.format_exc(limit=6)}"})
+                self.bus.emit(Error(text=f"poller: {e}\n{traceback.format_exc(limit=6)}"))
             await asyncio.sleep(0.5)
 
     async def poll_once(self) -> None:
@@ -215,8 +216,9 @@ class Runner:
         self.status = st
         if time.monotonic() - self._status_emitted >= 1.0:
             self._status_emitted = time.monotonic()
-            self.bus.emit("status", {**st.model_dump(exclude_unset=True), "episode": self.episode.number, "seed": self.episode.seed, "deaths": self.episode.deaths, "raids": self.episode.raids,
-                                     "phase": "thinking" if self.thinking else "playing", "next_wake_tick": self.next_wake_tick, "steward": self.steward})
+            self.bus.emit(Status.model_validate({**st.model_dump(exclude_unset=True), "episode": self.episode.number, "seed": self.episode.seed,
+                                                 "deaths": self.episode.deaths, "raids": self.episode.raids, "phase": "thinking" if self.thinking else "playing",
+                                                 "next_wake_tick": self.next_wake_tick, "steward": self.steward}))
         if not st.playing or not self.episode.seed:
             return
         data = await self.bridge.events(self.last_seq, 500)
@@ -224,7 +226,7 @@ class Runner:
         if events:
             self.last_seq = int(data.get("last_seq", self.last_seq))
             for e in events:
-                self.bus.emit("ledger", e)
+                self.bus.emit(Ledger.model_validate(e))
             self.episode.tally(events)
             self.pending_events += events
         alerts: list[Alert] = []
@@ -285,7 +287,7 @@ class Runner:
             try:
                 await self.bridge.call("game.save", {"name": "agentv2-autosave"})
             except BridgeError as e:
-                self.bus.emit("error", {"text": f"autosave: {e}"})
+                self.bus.emit(Error(text=f"autosave: {e}"))
         play = self.s.play
         since_start, since_improve = day - self.episode.start_day, day - self.episode.last_improve_day
         first = self.episode.last_improve_day == self.episode.start_day and since_start >= play.first_improve_day
@@ -348,20 +350,20 @@ class Runner:
         wakeup = situation.Wakeup(wake.trigger, events, alerts, operator, self.numbers, self.brain.problems() | self.watchers.errors(), self.sandbox)
         report = situation.render(await situation.read(self.bridge), wakeup)
         self.numbers = report.numbers
-        self.bus.emit("status", report.numbers)
-        self.bus.emit("situation", {"trigger": wake.trigger, "changes": report.changes, "day": report.day, "hour": report.hour, "chars": len(report.text)})
+        self.bus.emit(Status.model_validate(report.numbers))
+        self.bus.emit(Situation(trigger=wake.trigger, changes=report.changes, day=report.day, hour=report.hour, chars=len(report.text)))
         self.deps.turn = Turn()
         self.deps.urgent.clear()
         await self.set_speed(self.s.play.danger_think_speed if wake.urgent else self.s.play.think_speed)
         self.thinking = True
-        self.bus.emit("status", {"phase": "thinking"})
+        self.bus.emit(Status(phase="thinking"))
         try:
             outcome = await self.think(report.text, wake)
         finally:
             self.thinking = False
             chosen = self.deps.turn.model_speed
             await self.set_speed(self.s.play.speed if chosen is None else max(1, chosen))
-            self.bus.emit("status", {"phase": "playing", "model_speed": chosen})
+            self.bus.emit(Status(phase="playing", model_speed=chosen))
         if self.deps.turn.replies:
             self.operator_queue.clear()
         elif self.operator_queue:
@@ -382,12 +384,12 @@ class Runner:
     async def think(self, prompt: str, wake: Wake) -> StepOutcome:
         assert self.deps is not None
         self.step_no += 1
-        self.deps.emit("think_start", {"trigger": wake.trigger, "step": self.step_no, "urgent": wake.urgent, "prompt_chars": len(prompt)})
+        self.deps.emit(ThinkStart(trigger=wake.trigger, step=self.step_no, urgent=wake.urgent, prompt_chars=len(prompt)))
         started = time.monotonic()
         outcome, usage = await self._run_director(prompt)
-        self.deps.emit("think_end", {"notes": outcome.notes, "calls": usage.get("calls"), "elapsed": round(time.monotonic() - started, 1),
-                                     "wake": outcome.end.model_dump() if outcome.end else None, "end_episode": outcome.episode_end,
-                                     "requests": usage.get("requests"), "tokens": usage.get("total_tokens")})
+        self.deps.emit(ThinkEnd(notes=outcome.notes, calls=usage.get("calls"), elapsed=round(time.monotonic() - started, 1),
+                                wake=outcome.end.model_dump() if outcome.end else None, end_episode=outcome.episode_end,
+                                requests=usage.get("requests"), tokens=usage.get("total_tokens")))
         return outcome
 
     async def _run_director(self, prompt: str, authored: bool = True) -> tuple[StepOutcome, dict[str, Any]]:
@@ -401,12 +403,12 @@ class Runner:
             except UserError as e:
                 if not authored or not self.brain.has_authored():
                     raise
-                self.bus.emit("error", {"text": f"an authored capability broke the step; running without authored capabilities: {e}"})
+                self.bus.emit(Error(text=f"an authored capability broke the step; running without authored capabilities: {e}"))
                 return await self._run_director(prompt, authored=False)
             except AgentRunError as e:
                 self.history = list(captured) or self.history
                 error = f"{type(e).__name__}: {e}"
-                self.bus.emit("error", {"text": f"think step failed: {error}"})
+                self.bus.emit(Error(text=f"think step failed: {error}"))
                 return StepOutcome(notes=f"(step failed: {error})", error=error), {}
         self.history = result.all_messages()
         usage = {"calls": result.usage.tool_calls, "requests": result.usage.requests, "total_tokens": result.usage.total_tokens}
@@ -425,16 +427,16 @@ class Runner:
                 await self.bridge.call("game.speed", {"speed": speed})
                 await self.bridge.call("game.pause", {"paused": False})
         except BridgeError as e:
-            self.bus.emit("error", {"text": f"speed {speed}: {e}"})
+            self.bus.emit(Error(text=f"speed {speed}: {e}"))
 
     # ------------------------------------------------------------------ brain passes
 
     def _usage_stats(self) -> str:
         counts, errors = collections.Counter(), collections.Counter()
-        for e in self.bus.since(self.improve_seq, limit=5000, kinds={"tool_call", "tool_result"}):
-            if e["data"].get("stream") != "play":
+        for e in self.bus.since(self.improve_seq, limit=5000, kinds={ToolCall.KIND, ToolResult.KIND}):
+            if e["data"].get("stream") != DIRECTOR.stream:
                 continue
-            if e["kind"] == "tool_call":
+            if e["kind"] == ToolCall.KIND:
                 counts[e["data"]["name"]] += 1
             elif not e["data"].get("ok"):
                 errors[e["data"]["name"]] += 1
@@ -443,7 +445,7 @@ class Runner:
 
     async def _brain_pass(self, role: Role, agent: Agent[Deps, Finished], prompt: str, commit: str) -> str:
         deps = Deps(bridge=self.bridge, bus=self.bus, catalog=self.catalog, episode=self.episode, role=role)
-        deps.emit("think_start", {"trigger": commit, "step": 0, "urgent": False, "prompt_chars": len(prompt)})
+        deps.emit(ThinkStart(trigger=commit, step=0, urgent=False, prompt_chars=len(prompt)))
         started, calls = time.monotonic(), 0
         limits = UsageLimits(request_limit=self.s.play.max_requests + 5)
         try:
@@ -452,13 +454,13 @@ class Runner:
             except UserError as e:
                 if not self.brain.has_authored():
                     raise
-                self.bus.emit("error", {"text": f"{role.name}: an authored capability broke the pass; running without authored capabilities: {e}"})
+                self.bus.emit(Error(text=f"{role.name}: an authored capability broke the pass; running without authored capabilities: {e}"))
                 result = await agent.run(prompt, deps=deps, usage_limits=limits, metadata={AUTHORED: False})
             notes, calls = result.output.notes, result.usage.tool_calls
         except Exception as e:  # noqa: BLE001 - a failed pass is reported; the game and the episode go on
             notes = f"(pass failed: {type(e).__name__}: {e})"
-            self.bus.emit("error", {"text": f"{role.name}: {notes}\n{traceback.format_exc(limit=6)}"})
-        deps.emit("think_end", {"notes": notes, "calls": calls, "elapsed": round(time.monotonic() - started, 1)})
+            self.bus.emit(Error(text=f"{role.name}: {notes}\n{traceback.format_exc(limit=6)}"))
+        deps.emit(ThinkEnd(notes=notes, calls=calls, elapsed=round(time.monotonic() - started, 1)))
         await self.commit_brain(commit)
         return notes
 
@@ -466,15 +468,15 @@ class Runner:
         try:
             sha = await self.git.commit(message)
         except GitError as e:
-            self.bus.emit("error", {"text": f"brain commit: {e}"})
+            self.bus.emit(Error(text=f"brain commit: {e}"))
             return None
         if sha:
-            self.bus.emit("brain_change", {"kind": "git", "action": "commit", "sha": sha})
+            self.bus.emit(BrainChange(kind="git", action="commit", sha=sha))
         return sha
 
     def _report_failure(self, task: asyncio.Task[None]) -> None:
         if not task.cancelled() and (error := task.exception()):
-            self.bus.emit("error", {"text": f"{task.get_name()}: {error!r}\n" + "".join(traceback.format_exception(error, limit=6))})
+            self.bus.emit(Error(text=f"{task.get_name()}: {error!r}\n" + "".join(traceback.format_exception(error, limit=6))))
 
     async def improve(self, day: int) -> None:
         prompt = (f"# Improvement pass, day {day} of episode {self.episode.number}\n\n## Your tool use since the last pass (calls, failures)\n"
@@ -484,7 +486,7 @@ class Runner:
         self.episode.pass_notes.append(f"[improvement pass day {day}] {notes}")
 
     async def end_episode(self, reason: str) -> None:
-        self.bus.emit("status", {"phase": "reflecting"})
+        self.bus.emit(Status(phase="reflecting"))
         await self.set_speed(0)
         if self.improve_task:
             await asyncio.wait({self.improve_task})
@@ -493,13 +495,13 @@ class Runner:
             st = await self.bridge.status()
             summary = await self.bridge.call("state.summary")
         except BridgeError as e:
-            self.bus.emit("error", {"text": f"final read: {e}"})
+            self.bus.emit(Error(text=f"final read: {e}"))
         days = max(st.day, self.last_day) - self.episode.start_day
         colonists = int(summary.get("colonists", st.colonists) or 0)
         assisted = st.assisted or self.sandbox
         total = score(days, colonists, self.episode.deaths, float(summary.get("wealth", 0) or 0), float(summary.get("mood_avg", 0) or 0),
                       int(summary.get("research_done", 0) or 0), self.episode.raids)
-        self.bus.emit("log", {"text": f"episode {self.episode.number} over: {reason}; days={days} colonists={colonists} deaths={self.episode.deaths} score={total}"})
+        self.bus.emit(Log(text=f"episode {self.episode.number} over: {reason}; days={days} colonists={colonists} deaths={self.episode.deaths} score={total}"))
         timeline = "\n".join(f"[{e.get('day', '?')}d {e.get('hour', '?')}h] {e.get('kind')}: {e.get('text', '')}" for e in self.episode.timeline)[-14_000:]
         prompt = (f"# Episode {self.episode.number} reflection (seed {self.episode.seed})\n\nThis game is over ({reason}) after {days} days. Score {total}.\n\n## Timeline\n{timeline}\n\n"
                   "## Your step notes\n" + _bullets(self.step_notes[-40:]) + "\n\n## Improvement passes\n" + _bullets(self.episode.pass_notes)
@@ -509,7 +511,7 @@ class Runner:
         try:
             sha = await self.git.head()
         except GitError as e:
-            self.bus.emit("error", {"text": f"brain head: {e}"})
+            self.bus.emit(Error(text=f"brain head: {e}"))
             sha = ""
         self.scores.record({"episode": self.episode.number, "seed": self.episode.seed, "days": days, "colonists": colonists, "deaths": self.episode.deaths,
                             "raids": self.episode.raids, "wealth": summary.get("wealth"), "mood": summary.get("mood_avg"), "research": summary.get("research_done"),
@@ -517,7 +519,7 @@ class Runner:
         self.episode.ended = True
         self.episodes.save(self.episode)
         await self.commit_brain(f"episode {self.episode.number}: score")
-        self.bus.emit("episode_end", {"episode": self.episode.number, "score": total, "reason": reason, "assisted": assisted, "brain_sha": sha, "days": days})
+        self.bus.emit(EpisodeEndEvent(episode=self.episode.number, score=total, reason=reason, assisted=assisted, brain_sha=sha, days=days))
         self.episode = Episode(number=self.episode.number)
         if not self.stop:
             await self.new_game()
@@ -530,15 +532,15 @@ class Runner:
             await self.bridge.call("steward.enable", {"scorer": self.steward and st.scorer, "stock": self.steward and st.stock})
             await self.bridge.call("steward.orders.set", {"id": "all", "enabled": self.steward and st.orders})
         except BridgeError as e:
-            self.bus.emit("error", {"text": f"steward: {e} (the mod keeps its own defaults)"})
-        self.bus.emit("status", {"steward": self.steward})
+            self.bus.emit(Error(text=f"steward: {e} (the mod keeps its own defaults)"))
+        self.bus.emit(Status(steward=self.steward))
 
     async def apply_sandbox(self, on: bool) -> None:
         self.sandbox = self.episode.sandbox = on
         await self.bridge.call("game.dev_mode", {"enabled": True, "god": on})
         if on:
             await self.bridge.call("dev.unlock_all_research")
-        self.bus.emit("status", {"sandbox": on})
+        self.bus.emit(Status(sandbox=on))
 
 
 def _bullets(lines: list[str]) -> str:
@@ -569,11 +571,11 @@ class Controls:
 
     async def pause(self) -> None:
         self.r.agent_paused = True
-        self.r.bus.emit("log", {"text": "agent paused by the operator"})
+        self.r.bus.emit(Log(text="agent paused by the operator"))
 
     async def resume(self) -> None:
         self.r.agent_paused = False
-        self.r.bus.emit("log", {"text": "agent resumed by the operator"})
+        self.r.bus.emit(Log(text="agent resumed by the operator"))
 
     async def think_now(self) -> None:
         self.r.force = "the operator asked for a step"
@@ -604,7 +606,7 @@ class Controls:
 
     async def say(self, text: str) -> None:
         self.r.brain.operator.record(time.strftime("%Y-%m-%d %H:%M"), text)
-        self.r.bus.emit("operator", {"text": text})
+        self.r.bus.emit(Operator(text=text))
         self.r.operator_queue.append(text)
         if self.r.thinking and self.r.deps is not None:
             self.r.deps.urgent.append("## Message from the human operator\nAnswer it now with reply_to_operator, then continue.\n- " + text)

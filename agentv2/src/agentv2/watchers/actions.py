@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ..bridge import Bridge, BridgeError
 from ..bus import Bus
+from ..events import WatcherAction, WatcherAlert
 from .sandbox import ActionItem, WatchItem
 
 
@@ -22,12 +23,12 @@ class WatcherActions:
 
     async def apply(self, name: str, item: WatchItem) -> Alert | None:
         if not isinstance(item, ActionItem):
-            self.bus.emit("watcher", {"name": name, "alert": item.text, "wake": item.wake})
+            self.bus.emit(WatcherAlert(name=name, alert=item.text, wake=item.wake))
             return Alert(name, item.text, item.wake)
         params = item.params or {}
         try:
             result, ok = await self.bridge.call(item.method, params), True
         except BridgeError as e:
             result, ok = str(e), False
-        self.bus.emit("watcher", {"name": name, "action": item.method, "params": params, "note": item.note, "ok": ok, "result": result})
+        self.bus.emit(WatcherAction(name=name, action=item.method, params=params, note=item.note, ok=ok, result=result))
         return Alert(name, item.note or item.method, True) if item.wake else None

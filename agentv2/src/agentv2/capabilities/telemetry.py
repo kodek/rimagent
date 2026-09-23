@@ -29,6 +29,7 @@ from pydantic_ai_harness.filesystem import DirectoryCreatedEvent, FileEditedEven
 
 from ..brain import BrainLayout
 from ..deps import Deps
+from ..events import Assistant, BrainChange, Context, Delta, Harness, Log, Reasoning, ToolCall, ToolResult
 
 RESULT_CLIP = 3000
 DELTA_FLUSH_S = 0.15
@@ -69,28 +70,28 @@ class _Forwarder:
             case PartEndEvent(part=ThinkingPart(content=text)):
                 self.flush()
                 if text.strip():
-                    emit("reasoning", {"text": text})
+                    emit(Reasoning(text=text))
             case PartEndEvent(part=TextPart(content=text)):
                 self.flush()
                 if text.strip():
-                    emit("assistant", {"text": text})
+                    emit(Assistant(text=text))
             case FunctionToolCallEvent(part=part) | OutputToolCallEvent(part=part):
                 self._started[part.tool_call_id] = time.monotonic()
-                emit("tool_call", {"name": part.tool_name, "args": part.args_as_dict(), "id": part.tool_call_id})
+                emit(ToolCall(name=part.tool_name, args=part.args_as_dict(), id=part.tool_call_id))
             case FunctionToolResultEvent(part=part):
                 ok = isinstance(part, ToolReturnPart) and part.outcome != "failed"
                 text = part.model_response_str() if isinstance(part, ToolReturnPart) else part.model_response()
                 elapsed = time.monotonic() - self._started.pop(part.tool_call_id, time.monotonic())
-                emit("tool_result", {"name": part.tool_name, "id": part.tool_call_id, "ok": ok, "text": clip(text), "elapsed": round(elapsed, 2)})
+                emit(ToolResult(name=part.tool_name, id=part.tool_call_id, ok=ok, text=clip(text), elapsed=round(elapsed, 2)))
             case EnqueuedMessagesEvent():
-                emit("log", {"text": "delivered to the model mid-step"})
+                emit(Log(text="delivered to the model mid-step"))
             case ContextUsageEvent():
-                emit("context", {"used_tokens": event.used_tokens, "window_tokens": event.window_tokens, "fraction": event.fraction})
+                emit(Context(used_tokens=event.used_tokens, window_tokens=event.window_tokens, fraction=event.fraction))
             case FileWrittenEvent() | FileEditedEvent() | DirectoryCreatedEvent() if event.capability_id == "brain_files":
                 action = {FileWrittenEvent: "write", FileEditedEvent: "edit", DirectoryCreatedEvent: "mkdir"}[type(event)]
-                emit("brain_change", {"kind": BrainLayout.kind_of(event.path), "name": event.path, "action": action})
+                emit(BrainChange(kind=BrainLayout.kind_of(event.path), name=event.path, action=action))
             case CapabilityEvent(kind=kind) if kind not in QUIET:
-                emit("harness", {"kind": kind, "data": _payload(event)})
+                emit(Harness(kind=kind, data=_payload(event)))
             case _:
                 pass
 
@@ -102,7 +103,7 @@ class _Forwarder:
     def flush(self) -> None:
         for part, text in self._pending.items():
             if text:
-                self.deps.emit("delta", {"part": part, "text": text}, ephemeral=True)
+                self.deps.emit(Delta(part=part, text=text))
         self._pending.clear()
         self._flushed = time.monotonic()
 

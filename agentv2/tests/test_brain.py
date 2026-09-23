@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from agentv2.brain import Brain, BrainLayout
-from agentv2.bus import Bus
+from agentv2.bus import Bus, JsonlLog
 from agentv2.episode import Episode, EpisodeStore
+from agentv2.events import Delta, Status
 from agentv2.history import Scores, score
 
 
@@ -63,11 +66,15 @@ def test_episode_store_reads_the_old_file_format(tmp_path):
     assert again is not None and again.raids == 1 and [e["kind"] for e in again.timeline] == ["hostile_group"]
 
 
-def test_bus_keeps_persistent_events_and_streams_ephemeral_ones():
-    bus = Bus()
+def test_bus_keeps_persistent_events_and_streams_ephemeral_ones(tmp_path):
+    log = JsonlLog(tmp_path / "events.jsonl")
+    bus = Bus(sinks=[log])
     queue = bus.subscribe()
-    bus.emit("status", {"day": 3})
-    bus.emit("delta", {"text": "thinking…"}, ephemeral=True)
-    assert [e["kind"] for e in bus.since(0)] == ["status"]
-    assert bus.state["day"] == 3
-    assert [queue.get_nowait()["kind"] for _ in range(2)] == ["status", "delta"]
+    bus.emit(Status.model_validate({"day": 3, "phase": "playing"}))
+    bus.emit(Delta(part="thinking", text="thinking…"), stream="play")
+    bus.emit(Status(deaths=1))
+    log.close()
+    assert [e["kind"] for e in bus.since(0)] == ["status", "status"]
+    assert bus.state == {"phase": "playing", "day": 3, "deaths": 1}
+    assert [queue.get_nowait()["data"] for _ in range(3)][1] == {"stream": "play", "part": "thinking", "text": "thinking…"}
+    assert [json.loads(line)["data"] for line in (tmp_path / "events.jsonl").read_text().splitlines()] == [{"day": 3, "phase": "playing"}, {"deaths": 1}]

@@ -15,6 +15,7 @@ from pydantic_ai.toolsets import AgentToolset, FunctionToolset
 
 from .brain import BrainLayout
 from .deps import Deps
+from .events import BrainChange
 
 
 def score(days: int, colonists: int, deaths: int, wealth: float, mood: float, research: int, raids: int) -> float:
@@ -111,7 +112,7 @@ class BrainTools(AbstractCapability[Deps]):
         async def brain_revert(ctx: RunContext[Deps], sha: str) -> str:
             """Restore the whole brain to an earlier commit (when a change made play worse). History is kept."""
             new = await _git_call(git.revert_to(sha))
-            ctx.deps.emit("brain_change", {"kind": "git", "action": "revert", "sha": sha})
+            ctx.deps.emit(BrainChange(kind="git", action="revert", sha=sha))
             return f"brain restored to {sha[:7]}" + (f" (commit {new[:7]})" if new else " (it already matched)")
 
         @toolset.tool
@@ -144,5 +145,5 @@ def _delete(ctx: RunContext[Deps], locate: Callable[[str], Path], kind: str, nam
     path.unlink()
     if kind == "skill" and not any(path.parent.iterdir()):
         path.parent.rmdir()
-    ctx.deps.emit("brain_change", {"kind": kind, "name": name, "action": "delete"})
+    ctx.deps.emit(BrainChange(kind=kind, name=name, action="delete"))
     return f"deleted {kind} {name}"
