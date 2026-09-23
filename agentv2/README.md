@@ -31,31 +31,41 @@ sampling or thinking parameters: the server defaults apply. Reasoning text (`rea
 ## Architecture
 
 One asyncio loop runs everything: the game poller, the watchers, the think steps, the brain passes and the dashboard.
+`runtime.py` builds every part once; the CLI and the tests use it.
 
-- **Director** (`agents.py`): the agent that plays. One game is one continuous conversation. Each wake-up adds a
-  situation report (`situation.py`) as a new user turn; the step ends with the output tool `end_turn` (a wake plan) or
-  `end_episode`. The conversation is compacted as it grows and persisted, so a restarted agent continues where it stopped.
-- **Improver and reflector**: the same brain and tools, but they only read the game. The improver runs every few in-game
-  days beside the director; the reflector runs when a game ends. The brain is committed to git after each pass.
-- **Runner** (`runner.py`): episodes, wake policy (schedule, ledger events, game alerts, watcher alerts, operator
-  messages), game speed while thinking, autosave, scores. Urgent events and operator messages that arrive during a step
-  go into the running conversation.
+- **Director** (`director.py`, prompts in `roles.py`): the agent that plays. One game is one continuous conversation, kept
+  by `StepPersistence`: each step reads it back from `runs/steps.sqlite`, so the next step continues after a failed or
+  cancelled step and after a restart. Each wake-up adds a situation report (`situation.py`) as a new user turn; the step
+  ends with the output tool `end_turn` (a wake plan) or `end_episode`. Urgent events and operator messages that arrive
+  during a step go into the running step (`AgentRun.enqueue`); "end episode" and "kill" cancel it (`AgentRun.cancel`).
+- **Improver and reflector** (`passes.py`): the same brain and tools, but they only read the game, and they can search the
+  director's whole conversation (`search_conversation_history`). The improver runs every few in-game days beside the
+  director; the reflector runs when a game ends. The brain is committed to git after each pass.
+- **Runner** (`runner.py`): starts or resumes games, wakes the director (`wake.py`: schedule, ledger events, game alerts,
+  watcher alerts), sets the game speed while thinking (`game.py`), autosaves, scores. `poller.py` reads the ledger and runs
+  the watchers all the time; `episode.py` keeps the episode (tallies, timeline, pass notes) in `runs/episode.json`.
+- **Dashboard** (`dashboard/`): reads the bus (`bus.py`; one model per event kind in `events.py`) and the brain
+  (`brain_view.py`), and changes only what `controls.py` offers.
 
 | Piece | Built with |
 |---|---|
 | RimBridge methods as tools `rw_<group>_<name>` | a custom `AbstractToolset`; typed JSON schemas parsed from the method docs (`catalog.py`); bridge errors become `ToolFailed` |
+| Who may call which method (`policy.py`) | core `PrepareTools` hides the `rw_*` tools a role may not use; Harness `ToolGuardrail` blocks such `rpc` calls |
+| Tool arguments | Harness `RepairToolArguments` (broken JSON), then `CoerceArguments` (JSON inside string arguments) |
 | Batch reads and computation | Harness `CodeMode` (the Monty sandbox) with a sandbox-only `rpc(method, params)` tool |
 | Map screenshots | the `look` tool returns a marked PNG as `BinaryContent` (the model reads images) |
 | Doctrine (`brain/AGENTS.md`) | Harness `RepoContext` |
-| Skills (`brain/skills/<name>/SKILL.md`) | Harness `Skills`, loaded on demand with `load_capability`; re-read every step |
+| Skills (`brain/skills/<name>/SKILL.md`) | Harness `Skills`, loaded on demand with `load_capability`; re-read every run through core `DynamicCapability` |
 | Notebook (per colony) and journal (across games) | two Harness `Memory` capabilities on one `FileStore` |
-| Tools the agent writes for itself | Harness `CapabilityCreation` (`brain/capabilities/`), active from the next step, tools prefixed `my_` |
+| Tools the agent writes for itself | Harness `CapabilityCreation` (`brain/capabilities/`), active from the next run, tools prefixed `my_`; a run that they break runs again without them |
 | Editing the brain | Harness `FileSystem` on `brain/` (tools prefixed `brain_`) |
 | RimWorld wiki and decompiled source | Harness `FileSystem`, read-only, on `../knowledge` (tools prefixed `kb_`), when it exists |
-| Watchers (reflexes without the model) | agent-written scripts run in the Monty sandbox (`watchers.py`) |
+| Watchers (reflexes without the model) | agent-written scripts run in the Monty sandbox (`watchers/`) |
 | Large tool results | Harness `ToolOutputLimits` (spill to disk, page with `read_tool_result`) |
 | Long games | Harness `TieredCompaction` (clear old tool results, then summarize), `ReportContextUsage`, `StepPersistence` |
+| Recall in the brain passes | Harness `ConversationSearch` over the director's `StepPersistence` snapshots |
 | Step budget | `WarnNearLimits` plus `StepBudget`: after `max_requests` requests only `end_turn` is offered |
+| Live transcript | core `ProcessEventStream` forwards each run's events to the bus (`capabilities/telemetry.py`) |
 | Brain history | `score_history`, `brain_log`, `brain_diff`, `brain_revert`, `delete_skill`, `delete_watcher` |
 
 ## The brain
@@ -90,8 +100,8 @@ async def watch(events, status, memo):
 
 It runs in the Monty sandbox on every new ledger event and at least every `watchers.poll_s` seconds: no host files, no
 imports beyond Monty's subset, one second per call. `memo` persists between calls. `await rpc(method, params)` reads the
-game (read-only methods only). The runner executes returned actions and logs them. A failing watcher is disabled until
-its file changes. `test_watcher` dry-runs one.
+game (read-only methods only). The runner executes returned actions and logs them. A failing watcher, or one that returns
+an item that is not an action or an alert, is disabled until its file changes. `test_watcher` dry-runs one.
 
 ## Not in agentv2
 
