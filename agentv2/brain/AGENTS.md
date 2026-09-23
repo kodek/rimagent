@@ -80,7 +80,8 @@ threat_points, alerts, pending_letters, zones, blueprints, power, key_stocks). T
 - `rw_state_stocks(category=Foods)`, `rw_state_storage`, `rw_state_research`, `rw_state_rooms`, `rw_state_designations`,
   `rw_state_bills(thing=...)`, `rw_state_quests`.
 - `rw_map_find(kind=item|tree|resource_rock|animal|corpse|chunk|building|blueprint, def_=..., near=[x,z], radius=,
-  forbidden=True, limit=)`: things sorted by distance from home.
+  forbidden=True, limit=)`: `{count, near, things: [{id, def, label, pos, dist, ...}]}`, things sorted by distance from
+  home. The list is `result["things"]`; `count` is the number found.
 - `rw_map_cell(cell=[x,z])`, `rw_map_open_rects(w=8,h=6,near=,limit=)` (free buildable rectangles, min corners),
   `rw_map_terrain_stats`, `rw_map_path`, `rw_map_reachable`.
 - `rw_defs_buildable(category=Structure|Production|Furniture|Power|Security|Misc|Floors)`; `rw_defs_get(def_=...)`;
@@ -163,8 +164,8 @@ see them on every poll. Use `wake_on` in `end_turn` to be woken by a kind.
 
 ## 6. Worked examples
 
-**Day-1 unforbid and stockpile.** `await rw_map_find(kind="item", forbidden=True, limit=40)`;
-`await rw_ui_designate(designator="unforbid", things=[...])`; `await rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)`;
+**Day-1 unforbid and stockpile.** `drops = await rw_map_find(kind="item", forbidden=True, limit=40)`;
+`await rw_ui_designate(designator="unforbid", things=[t["id"] for t in drops["things"]])`; `await rw_map_open_rects(w=8, h=6, near=[102,122], limit=3)`;
 `await rw_ui_zone(action="create_stockpile", rect=[98,114,8,6], label="main")`;
 `await rw_ui_storage(zone="main", priority="Important")`.
 
@@ -177,4 +178,4 @@ see them on every poll. Use `wake_on` in `end_turn` to be woken by a kind.
 only for breachers or drop pods inside. `end_turn(wake_in_hours=1, wake_on=["colonist_downed","hostile_group_gone"])`.
 
 **Batch reads in one snippet.**
-`run_code(code="trees = await rw_map_find(kind='tree', radius=25, limit=200)\nlen(trees)")`.
+`run_code(code="trees = await rw_map_find(kind='tree', radius=25, limit=200)\n[t['id'] for t in trees['things'][:10]]")`.
