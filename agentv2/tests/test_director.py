@@ -14,7 +14,7 @@ from pydantic_ai.tools import ToolDefinition
 from agentv2.capabilities.arguments import CoerceArguments, coerce
 from agentv2.deps import DirectorDeps
 from agentv2.episode import Episode
-from agentv2.roles import IMPROVER
+from agentv2.roles import IMPROVER, TOOL_CALLS
 from agentv2.runtime import Runtime, open_runtime
 from agentv2.scripted import call, code, scripted_model
 from agentv2.tools.turn import TurnEnd
@@ -230,3 +230,11 @@ async def test_brain_file_tools_emit_their_events(stack, bus):
     changes = [(e["data"]["kind"], e["data"]["name"], e["data"]["action"]) for e in events if e["kind"] == "brain_change"]
     assert changes == [("skill", "skills/new-skill", "mkdir"), ("skill", "skills/new-skill/SKILL.md", "write")]
     assert "new-skill" in {s.name for s in stack.rt.brain.skills.infos()}
+
+
+
+async def test_tool_functions_are_not_values_yet(stack):
+    """Harness 0.33 leaves a tool name used as a value undefined. When a release binds it, delete TOOL_CALLS and this test."""
+    result = await run(stack, code("f = rw_game_status\nawait f()"), call("end_turn", {"notes": "x"}))
+    assert "NameError: name 'rw_game_status' is not defined" in code_errors(result)
+    assert TOOL_CALLS in (stack.seen[0].instructions or "")

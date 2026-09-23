@@ -37,7 +37,7 @@ from .capabilities.telemetry import telemetry
 from .config import Settings
 from .deps import Deps, DirectorDeps
 from .history import BrainTools
-from .roles import DIRECTOR, IMPROVER, REFLECTOR, Role
+from .roles import DIRECTOR, IMPROVER, REFLECTOR, TOOL_CALLS, Role
 from .tools.bridge import BridgeToolset
 from .tools.tracked import TrackedValues
 from .tools.turn import PASS_OUTPUT, PLAY_OUTPUT, EpisodeEnd, Finished, TurnEnd, operator
@@ -101,7 +101,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
         name=DIRECTOR.name,
         deps_type=DirectorDeps,
         output_type=PLAY_OUTPUT,
-        instructions=[DIRECTOR.instructions, brain.guides()],
+        instructions=[DIRECTOR.instructions, TOOL_CALLS, brain.guides()],
         retries={"tools": 3, "output": 3},
         end_strategy="graceful",
         toolsets=[*toolsets, operator, vision],
@@ -121,7 +121,7 @@ def build_agents(model: Model, settings: Settings, brain: Brain, watcher_tools: 
             name=role.name,
             deps_type=Deps,
             output_type=PASS_OUTPUT,
-            instructions=[role.instructions, brain.guides()],
+            instructions=[role.instructions, TOOL_CALLS, brain.guides()],
             retries={"tools": 3, "output": 3},
             end_strategy="graceful",
             toolsets=toolsets,

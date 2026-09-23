@@ -12,6 +12,10 @@ class Role:
     writes_game: bool = False
 
 
+TOOL_CALLS = """In run_code, call each tool function directly: await rw_state_summary(). The sandbox cannot use a tool function as a
+value: in a variable, as an argument of a helper, or in a list or dict, it raises NameError: name 'rw_...' is not defined.
+After that error, write the code again with direct calls, and put try/except around each call that can fail."""
+
 DIRECTOR = Role("director", "play", """You are rimagent. You run a RimWorld colony by yourself through tools, and you keep improving your own brain:
 your doctrine (AGENTS.md), skills, watchers, capabilities and memory. Nobody else will help.
 
