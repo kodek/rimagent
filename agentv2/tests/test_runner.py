@@ -189,12 +189,15 @@ async def test_an_ended_episode_is_not_resumed(started, settings, bridge, bus, g
 
 async def test_a_crashed_game_continues_from_its_save(started, game):
     rt, _ = started
-    checkpoint = rt.runner.episode.checkpoint
-    assert checkpoint is not None and "agentv2-autosave" in game.saves
     game.advance(30)
     game.add_event("colonist_died", "Bob died")
     await rt.runner.poller.poll_once(rt.runner.episode)
-    assert rt.runner.episode.deaths == 1
+    checkpoint = rt.runner.episode.checkpoint
+    assert checkpoint is not None and checkpoint.deaths == 1 and "agentv2-autosave" in game.saves
+    game.advance(3)
+    game.add_event("colonist_died", "Ann died")
+    await rt.runner.poller.poll_once(rt.runner.episode)
+    assert rt.runner.episode.deaths == 2
     game.crash()
     with pytest.raises(BridgeError):
         await rt.runner.ensure_game()
@@ -203,7 +206,7 @@ async def test_a_crashed_game_continues_from_its_save(started, game):
     await rt.runner.ensure_game()
     episode = rt.runner.episode
     assert game.state == "playing" and game.tick == checkpoint.tick
-    assert episode.number == 1 and episode.deaths == 0 and episode.timeline[-1]["kind"] == "reloaded"
+    assert episode.number == 1 and episode.deaths == 1 and episode.timeline[-1]["kind"] == "reloaded"
     assert rt.runner.poller.last_seq == len(game.ledger)
     assert ("game.load", {"name": "agentv2-autosave"}) in game.calls and "steward.enable" in [m for m, _ in game.calls]
     wake = rt.runner.inbox.take_forced()
@@ -388,3 +391,30 @@ async def test_a_new_game_does_not_replay_the_ledger_of_the_last_one(started, ga
     await rt.runner.poller.poll_once(rt.runner.episode)
     assert (rt.runner.episode.number, rt.runner.episode.deaths, rt.runner.episode.raids) == (2, 0, 0)
     assert [e["kind"] for e in rt.runner.inbox.events] == []
+
+
+async def test_a_new_day_during_a_step_saves_the_game_and_starts_the_improver(started, game):
+    rt, script = started
+    assert rt.runner.episode.checkpoint is not None
+    day = rt.runner.episode.checkpoint.day
+    improved: list[int] = []
+
+    async def improve(deps, day_now):
+        improved.append(day_now)
+        return "improved"
+
+    rt.runner.passes.improve = improve
+    original = rt.bridge.call
+
+    async def next_day_mid_step(method, params=None, timeout_ms=None):
+        result = await original(method, params, timeout_ms)
+        if method == "state.summary" and rt.director.active is not None and not improved and game.day == day:
+            game.advance(24)
+            await rt.runner.poller.poll_once(rt.runner.episode)
+        return result
+
+    rt.bridge.call = next_day_mid_step
+    script.responses = [code("await rw_state_summary()"), call("end_turn", {"notes": "x"})]
+    await rt.runner.step(Wake("scheduled check-in", False))
+    await rt.runner.improve_task
+    assert rt.runner.episode.checkpoint.day == day + 1 and improved == [day + 1]

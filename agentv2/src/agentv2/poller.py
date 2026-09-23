@@ -41,7 +41,8 @@ class Inbox:
 
 class LedgerPoller:
     def __init__(self, bridge: Bridge, bus: Bus, watchers: Watchers, inbox: Inbox, settings: Settings,
-                 on_urgent: Callable[[list[str]], Awaitable[None]], on_menu: Callable[[], None]) -> None:
+                 on_urgent: Callable[[list[str]], Awaitable[None]], on_menu: Callable[[], None],
+                 on_day: Callable[[GameStatus], Awaitable[None]]) -> None:
         self.bridge = bridge
         self.bus = bus
         self.watchers = watchers
@@ -50,6 +51,7 @@ class LedgerPoller:
         self.critical_kinds = set(settings.play.critical_kinds)
         self.on_urgent = on_urgent
         self.on_menu = on_menu
+        self.on_day = on_day
         self.lost_contact = False
         self.status = GameStatus()
         self.last_seq = 0
@@ -89,6 +91,7 @@ class LedgerPoller:
             if (episode.deaths, episode.raids) != before:
                 self.bus.emit(Status(deaths=episode.deaths, raids=episode.raids))
             self.inbox.events += events
+        await self.on_day(st)
         alerts: list[Alert] = []
         if events or time.monotonic() - self._watched >= self.poll_s:
             self._watched = time.monotonic()

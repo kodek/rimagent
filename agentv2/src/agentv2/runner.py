@@ -137,7 +137,7 @@ class Runner:
         if saved and saved.seed == seed:
             self.episode = saved.model_copy(update={"sandbox": st.god_mode})
         else:
-            self.episode = Episode(number=self._next_episode_number(), seed=seed, start_day=st.day, sandbox=st.god_mode)
+            self.episode = Episode(number=self._next_episode_number(), seed=seed, start_day=st.day, sandbox=st.god_mode, last_improve_day=st.day)
         self.poller.last_seq, self.last_day = st.seq, st.day
         restored = len(await self.director.history(self.episode.colony))
         self.bus.emit(EpisodeStart(episode=self.episode.number, seed=seed, resumed=True, day=self.episode.start_day, restored_messages=restored))
@@ -276,8 +276,6 @@ class Runner:
             if st.day - self.episode.start_day >= play.max_days:
                 await self.end_episode(f"reached max_days ({play.max_days})")
                 return
-            if st.day != self.last_day:
-                await self.day_rollover(st)
             if self.flags.paused:
                 await asyncio.sleep(1)
                 continue
@@ -291,6 +289,9 @@ class Runner:
                 return
 
     async def day_rollover(self, st: GameStatus) -> None:
+        """The poller calls it on every poll, also while the director thinks: a step can last several in-game days."""
+        if st.day == self.last_day:
+            return
         day = self.last_day = st.day
         self.episodes.save(self.episode)
         await self.save_game(st)

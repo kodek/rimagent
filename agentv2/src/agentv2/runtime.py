@@ -10,7 +10,7 @@ from pydantic_ai_harness.step_persistence import SqliteStepStore
 
 from .agents import Agents, build_agents
 from .brain import Brain, BrainLayout
-from .bridge import Bridge
+from .bridge import Bridge, GameStatus
 from .bus import Bus
 from .config import Settings
 from .controls import Controls
@@ -67,7 +67,10 @@ async def open_runtime(settings: Settings, bus: Bus, bridge: Bridge, model: Mode
                 bus.emit(Log(text="the game is at the main menu: the running step stops"))
                 director.cancel()
 
-        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent, on_menu)
+        async def on_day(st: GameStatus) -> None:
+            await runner.day_rollover(st)
+
+        poller = LedgerPoller(bridge, bus, watchers, inbox, settings, on_urgent, on_menu, on_day)
         runner = Runner(settings, bus, bridge, flags, inbox, EpisodeStore(settings.runs / "episode.json"), poller, WakePolicy(settings.play),
                         game, director, passes, brain, watchers, scores)
         controls = Controls(flags, inbox, director, game, brain.operator, bus, lambda: runner.episode)
